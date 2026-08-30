@@ -1,20 +1,42 @@
-# LivingWorth DevOps Mentorship Frontend
+# Livingworth Academy
 
-A dependency-free frontend prototype for the DevOps Mentorship Management System. It includes mentor and student UI sections for registration, approvals, assignment creation, submissions, grading, announcements, and an MVP roadmap.
+A complete full-stack starter for the Livingworth Academy website.
 
-## Run locally
+## Stack
+
+- React + Vite frontend
+- Node.js + Express backend
+- MySQL 8.4 database
+- Nginx reverse proxy
+- Docker Compose orchestration
+
+## Run with Docker
 
 ```bash
-npm install
-npm start
+cp .env.example .env
+# Change the passwords in .env
+docker compose up -d --build
 ```
 
-Then open <http://localhost:3000>.
+Open `http://YOUR_SERVER_IP`. The API health endpoint is available at `/api/health`.
 
-## Check static files
+## Useful commands
 
 ```bash
-npm run check
+docker compose ps
+docker compose logs -f
+docker compose down
+docker compose down -v  # also removes database data
 ```
 
-The check script verifies the core frontend files and confirms that the main dashboard sections are present.
+## Local development
+
+Start MySQL, create a database using `backend/sql/init.sql`, then:
+
+```bash
+cd backend && npm install && npm run dev
+cd frontend && npm install && npm run dev
+```
+
+The frontend development server proxies `/api` to `http://localhost:5000`.
+
