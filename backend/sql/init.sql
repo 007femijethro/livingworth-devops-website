@@ -14,8 +14,21 @@ CREATE TABLE IF NOT EXISTS enquiries (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  full_name VARCHAR(120) NOT NULL,
+  email VARCHAR(190) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  phone VARCHAR(40),
+  experience_level VARCHAR(60),
+  learning_goal TEXT,
+  role ENUM('student', 'admin') NOT NULL DEFAULT 'student',
+  status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
 INSERT INTO courses (title, description, duration, level) VALUES
   ('DevOps Foundations', 'Build practical skills in Linux, Git, Docker and deployment workflows.', '12 weeks', 'Beginner'),
   ('Cloud Engineering', 'Learn cloud infrastructure, networking, security and reliable operations.', '12 weeks', 'Intermediate'),
   ('Agile Delivery', 'Understand Scrum, sprint planning, Jira workflows, stories and epics.', '6 weeks', 'All levels');
-

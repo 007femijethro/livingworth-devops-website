@@ -1,81 +1,48 @@
 import { useEffect, useState } from 'react';
 
-export default function App() {
-  const [courses, setCourses] = useState([]);
-  const [status, setStatus] = useState('');
-
-  useEffect(() => {
-    fetch('/api/courses')
-      .then((response) => {
-        if (!response.ok) throw new Error('Unable to load courses');
-        return response.json();
-      })
-      .then(setCourses)
-      .catch(() => setStatus('Courses will be available shortly.'));
-  }, []);
-
-  async function submitEnquiry(event) {
-    event.preventDefault();
-    setStatus('Sending…');
-    const form = event.currentTarget;
-    const body = Object.fromEntries(new FormData(form));
-    try {
-      const response = await fetch('/api/enquiries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message);
-      setStatus(data.message);
-      form.reset();
-    } catch (error) {
-      setStatus(error.message || 'Please try again.');
-    }
-  }
-
-  return (
-    <>
-      <header className="nav">
-        <a className="brand" href="#top"><span>LW</span> Livingworth Academy</a>
-        <nav aria-label="Main navigation">
-          <a href="#courses">Courses</a><a href="#about">About</a><a href="#contact">Contact</a>
-        </nav>
-      </header>
-      <main id="top">
-        <section className="hero">
-          <p className="eyebrow">Learn. Build. Lead.</p>
-          <h1>Practical technology skills for tomorrow’s builders.</h1>
-          <p className="lead">Livingworth Academy turns complex technology into clear, hands-on learning that prepares you for real opportunities.</p>
-          <div className="actions"><a className="button primary" href="#courses">Explore courses</a><a className="button secondary" href="#contact">Talk to us</a></div>
-          <div className="stats"><div><strong>3</strong><span>Focused programmes</span></div><div><strong>Live</strong><span>Instructor-led learning</span></div><div><strong>Real</strong><span>Practical projects</span></div></div>
-        </section>
-
-        <section id="courses" className="section">
-          <p className="eyebrow">Programmes</p><h2>Start where you are. Grow with purpose.</h2>
-          <div className="grid">
-            {courses.map((course) => <article className="card" key={course.id}><span className="pill">{course.level}</span><h3>{course.title}</h3><p>{course.description}</p><small>{course.duration}</small></article>)}
-          </div>
-        </section>
-
-        <section id="about" className="section split">
-          <div><p className="eyebrow">Why Livingworth</p><h2>Training built around understanding, not memorising.</h2></div>
-          <p>We combine clear explanations, guided practice and collaborative sessions. Learners leave each class knowing what they learned, why it matters and how to apply it.</p>
-        </section>
-
-        <section id="contact" className="section contact">
-          <div><p className="eyebrow">Join the journey</p><h2>Ready to learn with us?</h2><p>Send an enquiry and the academy team will contact you.</p></div>
-          <form onSubmit={submitEnquiry}>
-            <label>Name<input name="name" required /></label>
-            <label>Email<input name="email" type="email" required /></label>
-            <label>Message<textarea name="message" rows="4" required /></label>
-            <button className="button primary" type="submit">Send enquiry</button>
-            <p className="form-status" role="status">{status}</p>
-          </form>
-        </section>
-      </main>
-      <footer>© {new Date().getFullYear()} Livingworth Academy. Learn with purpose.</footer>
-    </>
-  );
+async function api(path, options = {}) {
+  const token = localStorage.getItem('lw_token');
+  const response = await fetch(`/api${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }), ...options.headers } });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || 'Something went wrong.');
+  return data;
 }
 
+const Logo = () => <a className="brand" href="#home"><img src="/livingworth-logo.jpeg" alt="Livingworth Academy" /></a>;
+
+function Header({ navigate }) {
+  return <header className="nav"><Logo/><nav><a href="#programmes">Programmes</a><a href="#about">About</a></nav><div className="nav-actions"><button className="text-btn" onClick={()=>navigate('student-login')}>Student login</button><button className="button primary" onClick={()=>navigate('register')}>Apply now</button></div></header>;
+}
+
+function Home({ navigate }) {
+  const [courses,setCourses]=useState([]);
+  useEffect(()=>{api('/courses').then(setCourses).catch(()=>{})},[]);
+  return <><Header navigate={navigate}/><main><section className="hero" id="home"><div><p className="eyebrow">Training & mentorship</p><h1>Build the skills.<br/><em>Shape the future.</em></h1><p className="lead">Hands-on technology training that transforms curious learners into confident, job-ready professionals.</p><div className="actions"><button className="button gold" onClick={()=>navigate('register')}>Register as a student</button><a className="button light" href="#programmes">Explore programmes</a></div><div className="trust"><span>✓ Live sessions</span><span>✓ Practical projects</span><span>✓ Supportive community</span></div></div><div className="hero-art"><div className="orbit o1">&lt;/&gt;</div><div className="orbit o2">☁</div><div className="orbit o3">∞</div><div className="core">LW<span>ACADEMY</span></div></div></section><section className="intro" id="about"><p className="eyebrow">Learn. Build. Lead.</p><h2>More than a course.<br/>A pathway to possibility.</h2><p>We make complex technology clear, practical and accessible—so every learner can grow with purpose.</p></section><section className="programmes" id="programmes"><div className="section-head"><div><p className="eyebrow">Our programmes</p><h2>Choose your path</h2></div><button className="text-btn teal" onClick={()=>navigate('register')}>Start your application →</button></div><div className="course-grid">{courses.map((c,i)=><article className="course-card" key={c.id}><b className="number">0{i+1}</b><span className="pill">{c.level}</span><h3>{c.title}</h3><p>{c.description}</p><footer><strong>{c.duration}</strong><span>Learn more →</span></footer></article>)}</div></section><section className="cta"><Logo/><h2>Your next chapter starts here.</h2><p>Join a learning community built to help you succeed.</p><button className="button gold" onClick={()=>navigate('register')}>Apply to Livingworth Academy</button></section></main><footer className="footer"><Logo/><div><button onClick={()=>navigate('student-login')}>Student portal</button><button onClick={()=>navigate('admin-login')}>Admin portal</button></div><p>© {new Date().getFullYear()} Livingworth Academy.</p></footer></>;
+}
+
+function AuthLayout({title,subtitle,children,navigate}) {
+  return <main className="auth-page"><section className="auth-brand"><Logo/><div><p className="eyebrow">Livingworth Academy Portal</p><h1>Learn with purpose.<br/><em>Grow with confidence.</em></h1></div><button className="back" onClick={()=>navigate('home')}>← Return to website</button></section><section className="auth-panel"><div className="auth-box"><h2>{title}</h2><p>{subtitle}</p>{children}</div></section></main>;
+}
+
+function Login({portal,navigate,onLogin}) {
+  const [message,setMessage]=useState('');
+  async function submit(e){e.preventDefault();setMessage('Signing in…');try{const data=await api('/auth/login',{method:'POST',body:JSON.stringify({...Object.fromEntries(new FormData(e.currentTarget)),portal})});localStorage.setItem('lw_token',data.token);onLogin(data.user)}catch(err){setMessage(err.message)}}
+  return <AuthLayout navigate={navigate} title={portal==='admin'?'Administrator login':'Welcome back'} subtitle={portal==='admin'?'Manage student applications and academy access.':'Continue your Livingworth learning journey.'}><form className="form" onSubmit={submit}><label>Email address<input name="email" type="email" required /></label><label>Password<input name="password" type="password" required /></label><button className="button primary full">Sign in</button><p className="form-message">{message}</p></form><div className="switch">{portal==='admin'?<>Student? <button onClick={()=>navigate('student-login')}>Student login</button></>:<>New student? <button onClick={()=>navigate('register')}>Register here</button><br/><button className="admin-link" onClick={()=>navigate('admin-login')}>Administrator login</button></>}</div></AuthLayout>;
+}
+
+function Register({navigate}) {
+  const [message,setMessage]=useState(''); const [done,setDone]=useState(false);
+  async function submit(e){e.preventDefault();const values=Object.fromEntries(new FormData(e.currentTarget));if(values.password!==values.confirmPassword){setMessage('Passwords do not match.');return}setMessage('Submitting…');try{const data=await api('/auth/register',{method:'POST',body:JSON.stringify(values)});setMessage(data.message);setDone(true);e.currentTarget.reset()}catch(err){setMessage(err.message)}}
+  return <AuthLayout navigate={navigate} title="Student registration" subtitle="Apply for an account. An administrator will review your registration before you can log in."><form className="form two" onSubmit={submit}><label>Full name<input name="fullName" required /></label><label>Email address<input name="email" type="email" required /></label><label>Phone number<input name="phone" /></label><label>Experience level<select name="experienceLevel"><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></label><label className="wide">What do you want to achieve?<textarea name="learningGoal" rows="3" required /></label><label>Password<input name="password" type="password" minLength="8" required /></label><label>Confirm password<input name="confirmPassword" type="password" minLength="8" required /></label><button className="button primary full wide" disabled={done}>{done?'Application submitted':'Submit application'}</button><p className={`form-message wide ${done?'success':''}`}>{message}</p></form><p className="switch">Already registered? <button onClick={()=>navigate('student-login')}>Sign in</button></p></AuthLayout>;
+}
+
+function Sidebar({admin,logout}) {return <aside className="sidebar"><Logo/><nav><a className="active">{admin?'Applications':'Overview'}</a><a>{admin?'Students':'My programme'}</a><a>{admin?'Courses':'Assignments'}</a><a>{admin?'Announcements':'Resources'}</a></nav><button className="text-btn" onClick={logout}>Log out</button></aside>}
+
+function StudentDashboard({user,logout}) {return <main className="dashboard"><Sidebar logout={logout}/><section className="dash-main"><div className="dash-title"><div><p className="eyebrow">Student portal</p><h1>Welcome, {user.fullName.split(' ')[0]}.</h1></div><span className="avatar">{user.fullName[0]}</span></div><div className="notice"><strong>✓ Your account is approved</strong><p>You now have access to the Livingworth Academy learning portal.</p></div><div className="dash-grid"><article><span>Current programme</span><h3>DevOps Foundations</h3><p>Your course details and materials will appear here.</p></article><article><span>Account status</span><h3 className="green">● Approved</h3><p>You are ready to begin learning.</p></article><article><span>Next step</span><h3>Complete your profile</h3><p>Help your mentor understand your learning goals.</p></article></div></section></main>}
+
+function AdminDashboard({user,logout}) {
+  const [students,setStudents]=useState([]);const [message,setMessage]=useState('');const load=()=>api('/admin/students').then(setStudents).catch(e=>setMessage(e.message));useEffect(load,[]);
+  async function decide(id,status){try{const data=await api(`/admin/students/${id}/status`,{method:'PATCH',body:JSON.stringify({status})});setMessage(data.message);load()}catch(e){setMessage(e.message)}}
+  return <main className="dashboard"><Sidebar admin logout={logout}/><section className="dash-main"><div className="dash-title"><div><p className="eyebrow">Administrator portal</p><h1>Student applications</h1><p>Review registrations and control academy access.</p></div><span className="avatar">{user.fullName[0]}</span></div><div className="metrics"><article><span>Pending</span><strong>{students.filter(s=>s.status==='pending').length}</strong></article><article><span>Approved</span><strong>{students.filter(s=>s.status==='approved').length}</strong></article><article><span>Total applications</span><strong>{students.length}</strong></article></div><p className="form-message success">{message}</p><div className="student-list">{students.length===0?<div className="empty">No student applications yet.</div>:students.map(s=><article key={s.id}><span className="student-avatar">{s.fullName[0]}</span><div className="student-info"><h3>{s.fullName}</h3><p>{s.email} · {s.phone||'No phone'}</p><small>{s.experienceLevel} — {s.learningGoal}</small></div><b className={`status ${s.status}`}>{s.status}</b>{s.status==='pending'&&<div className="review"><button onClick={()=>decide(s.id,'approved')}>Approve</button><button onClick={()=>decide(s.id,'rejected')}>Reject</button></div>}</article>)}</div></section></main>}
+
+export default function App(){const[page,setPage]=useState('home');const[user,setUser]=useState(null);const[loading,setLoading]=useState(true);const navigate=p=>{setPage(p);scrollTo(0,0)};const logout=()=>{localStorage.removeItem('lw_token');setUser(null);setPage('home')};useEffect(()=>{const token=localStorage.getItem('lw_token');if(token)api('/auth/me').then(u=>{setUser(u);setPage('dashboard')}).catch(()=>localStorage.removeItem('lw_token')).finally(()=>setLoading(false));else setLoading(false)},[]);if(loading)return <div className="loading">Loading Livingworth Academy…</div>;if(page==='register')return <Register navigate={navigate}/>;if(page==='student-login')return <Login portal="student" navigate={navigate} onLogin={u=>{setUser(u);setPage('dashboard')}}/>;if(page==='admin-login')return <Login portal="admin" navigate={navigate} onLogin={u=>{setUser(u);setPage('dashboard')}}/>;if(page==='dashboard'&&user)return user.role==='admin'?<AdminDashboard user={user} logout={logout}/>:<StudentDashboard user={user} logout={logout}/>;return <Home navigate={navigate}/>}
