@@ -3,14 +3,20 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import bcrypt from 'bcryptjs';
+import { createServer } from 'node:http';
+import { Server as SocketServer } from 'socket.io';
 import { pool } from './db.js';
-import { createToken, requireAdmin, requireAuth } from './auth.js';
+import { createToken, requireAdmin, requireAuth, verifyToken } from './auth.js';
+import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
 
 const app = express();
+const httpServer = createServer(app);
+const io = new SocketServer(httpServer, { cors: { origin: true, credentials: true } });
 const port = Number(process.env.PORT || 5000);
 
 app.use(helmet());
 app.use(cors());
+app.use('/api/admin/quizzes/import', express.text({ type: ['text/csv', 'text/plain'], limit: '2mb' }));
 app.use(express.json());
 
 app.get('/api/health', async (_req, res) => {
@@ -94,6 +100,9 @@ app.patch('/api/admin/students/:id/status', requireAuth, requireAdmin, async (re
   } catch (error) { next(error); }
 });
 
+registerQuizRoutes(app, pool, requireAuth, requireAdmin);
+configureQuizSockets(io, pool, verifyToken);
+
 app.post('/api/enquiries', async (req, res, next) => {
   try {
     const { name, email, message } = req.body;
@@ -127,7 +136,7 @@ async function start() {
       [adminEmail, passwordHash]
     );
   }
-  app.listen(port, '0.0.0.0', () => console.log(`Livingworth API listening on port ${port}`));
+  httpServer.listen(port, '0.0.0.0', () => console.log(`Livingworth API and live quiz server listening on port ${port}`));
 }
 
 start().catch((error) => { console.error('Failed to start API', error); process.exit(1); });

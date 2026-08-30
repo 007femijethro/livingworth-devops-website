@@ -8,6 +8,12 @@ The public experience presents Livingworth Academy's 12-week DevOps Engineering 
 
 For frontend-only demonstrations, the administrator login page includes an offline preview. It uses browser-local sample applications and clearly labels approvals as non-production changes. Real authentication and persistent approvals continue to require the Express API and MySQL.
 
+## Live quiz
+
+Authenticated students can join a synchronized quiz room using a code. An administrator can build questions manually or import a CSV, open the lobby and start every student together. Each question is server-timed for 30 seconds, late and duplicate answers are rejected, and the leaderboard updates after every reveal.
+
+CSV columns: `question,option1,option2,option3,option4,correctAnswer`. The correct answer is a number from 1 to 4.
+
 ## Stack
 
 - React + Vite frontend

@@ -28,6 +28,41 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS quizzes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(180) NOT NULL,
+  join_code VARCHAR(8) NOT NULL UNIQUE,
+  status ENUM('draft','lobby','live','completed') NOT NULL DEFAULT 'draft',
+  created_by INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS quiz_questions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  quiz_id INT NOT NULL,
+  prompt TEXT NOT NULL,
+  options_json JSON NOT NULL,
+  correct_index TINYINT NOT NULL,
+  sequence_no INT NOT NULL,
+  FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS quiz_answers (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  quiz_id INT NOT NULL,
+  question_id INT NOT NULL,
+  student_id INT NOT NULL,
+  answer_index TINYINT NOT NULL,
+  is_correct BOOLEAN NOT NULL,
+  response_ms INT NOT NULL,
+  answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY one_answer (quiz_id, question_id, student_id),
+  FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,
+  FOREIGN KEY (question_id) REFERENCES quiz_questions(id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 INSERT INTO courses (title, description, duration, level) VALUES
   ('DevOps Engineering Bootcamp', 'A complete practical journey through Linux, Git, AWS, automation, Docker, Kubernetes, CI/CD and monitoring.', '12 weeks', 'Beginner–Intermediate'),
   ('Cloud & Infrastructure Automation', 'Build AWS environments and automate infrastructure with Ansible and Terraform.', 'Included', 'Practical track'),

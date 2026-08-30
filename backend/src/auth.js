@@ -6,6 +6,10 @@ export function createToken(user) {
   return jwt.sign({ id: user.id, role: user.role, status: user.status }, secret(), { expiresIn: '8h' });
 }
 
+export function verifyToken(token) {
+  return jwt.verify(token, secret());
+}
+
 export function requireAuth(req, res, next) {
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
   if (!token) return res.status(401).json({ message: 'Please log in.' });
