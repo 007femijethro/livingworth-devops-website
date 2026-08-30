@@ -4,6 +4,8 @@ A complete full-stack starter for the Livingworth Academy website.
 
 The portal includes student registration, administrator approval, separate student and admin sign-in, protected dashboards, and role-based API access.
 
+The public experience presents Livingworth Academy's 12-week DevOps Engineering Bootcamp, including its 54-class-day roadmap, Monday/Wednesday/Friday class rhythm, toolchain, cumulative practical projects, learner expectations and final capstone.
+
 ## Stack
 
 - React + Vite frontend
