@@ -6,6 +6,8 @@ The portal includes student registration, administrator approval, separate stude
 
 The public experience presents Livingworth Academy's 12-week DevOps Engineering Bootcamp, including its 54-class-day roadmap, Monday/Wednesday/Friday class rhythm, toolchain, cumulative practical projects, learner expectations and final capstone.
 
+For frontend-only demonstrations, the administrator login page includes an offline preview. It uses browser-local sample applications and clearly labels approvals as non-production changes. Real authentication and persistent approvals continue to require the Express API and MySQL.
+
 ## Stack
 
 - React + Vite frontend
