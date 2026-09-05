@@ -1,0 +1,38 @@
+name: Deploy Livingworth
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+
+            cd /home/ubuntu/livingworth-devops-website
+
+            echo "Pulling latest code..."
+            git fetch origin
+            git reset --hard origin/main
+
+            echo "Building application..."
+            sudo docker compose up -d --build
+
+            echo "Checking containers..."
+            sudo docker compose ps
+
+            echo "Testing application..."
+            sleep 10
+            curl -f http://localhost || exit 1
+
+            echo "Deployment completed successfully"
