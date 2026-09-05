@@ -41,19 +41,25 @@ app.get('/api/courses', async (_req, res, next) => {
 
 app.post('/api/auth/register', async (req, res, next) => {
   try {
-    const { fullName, email, password, phone = '', experienceLevel = '', learningGoal = '' } = req.body;
-    if (!fullName?.trim() || !email?.trim() || !password) {
-      return res.status(400).json({ message: 'Full name, email and password are required.' });
+    const { firstName, lastName, email, password, phone = '', gender, country, stateCity,
+      employmentStatus, educationalLevel, courseChoice, learningMode, techExperience, termsAccepted } = req.body;
+    const required = [firstName, lastName, email, phone, gender, country, stateCity, employmentStatus,
+      educationalLevel, courseChoice, learningMode, techExperience];
+    if (required.some(value => !String(value || '').trim()) || !password) {
+      return res.status(400).json({ message: 'Please complete every required field.' });
     }
+    if (termsAccepted !== 'on' && termsAccepted !== true) return res.status(400).json({ message: 'You must accept the Livingworth Academy Terms and Conditions.' });
     if (password.length < 8) return res.status(400).json({ message: 'Password must contain at least 8 characters.' });
     const normalEmail = email.trim().toLowerCase();
     const [existing] = await pool.execute('SELECT id FROM users WHERE email = ?', [normalEmail]);
     if (existing.length) return res.status(409).json({ message: 'An account already exists for this email.' });
     const passwordHash = await bcrypt.hash(password, 12);
     await pool.execute(
-      `INSERT INTO users (full_name, email, password_hash, phone, experience_level, learning_goal)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [fullName.trim(), normalEmail, passwordHash, phone.trim(), experienceLevel, learningGoal.trim()]
+      `INSERT INTO users (full_name, first_name, last_name, email, password_hash, phone, gender, country,
+        state_city, employment_status, educational_level, course_choice, learning_mode, tech_experience, terms_accepted)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
+      [`${firstName.trim()} ${lastName.trim()}`, firstName.trim(), lastName.trim(), normalEmail, passwordHash,
+        phone.trim(), gender, country, stateCity.trim(), employmentStatus, educationalLevel, courseChoice, learningMode, techExperience]
     );
     res.status(201).json({ message: 'Registration received. You can log in after an administrator approves your account.' });
   } catch (error) { next(error); }
@@ -86,7 +92,7 @@ app.get('/api/auth/me', requireAuth, async (req, res, next) => {
 
 app.get('/api/admin/students', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const [rows] = await pool.query("SELECT id, full_name AS fullName, email, phone, experience_level AS experienceLevel, learning_goal AS learningGoal, status, created_at AS createdAt FROM users WHERE role = 'student' ORDER BY FIELD(status, 'pending', 'approved', 'rejected'), created_at DESC");
+    const [rows] = await pool.query("SELECT id, full_name AS fullName, first_name AS firstName, last_name AS lastName, email, phone, gender, country, state_city AS stateCity, employment_status AS employmentStatus, educational_level AS educationalLevel, course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience, experience_level AS experienceLevel, learning_goal AS learningGoal, status, created_at AS createdAt FROM users WHERE role = 'student' ORDER BY FIELD(status, 'pending', 'approved', 'rejected'), created_at DESC");
     res.json(rows);
   } catch (error) { next(error); }
 });
@@ -222,6 +228,17 @@ async function start() {
   // Keep long-lived Docker volumes compatible with new portal releases. The
   // init script only runs when MySQL creates a volume for the first time.
   await pool.query("ALTER TABLE users MODIFY role ENUM('student', 'mentor', 'admin') NOT NULL DEFAULT 'student'");
+  const registrationColumns = {
+    first_name: 'VARCHAR(80) NULL', last_name: 'VARCHAR(80) NULL', gender: 'VARCHAR(30) NULL',
+    country: 'VARCHAR(80) NULL', state_city: 'VARCHAR(120) NULL', employment_status: 'VARCHAR(100) NULL',
+    educational_level: 'VARCHAR(80) NULL', course_choice: 'VARCHAR(120) NULL', learning_mode: 'VARCHAR(60) NULL',
+    tech_experience: 'VARCHAR(100) NULL', terms_accepted: 'BOOLEAN NOT NULL DEFAULT FALSE'
+  };
+  const [existingColumns] = await pool.query('SHOW COLUMNS FROM users');
+  const existingNames = new Set(existingColumns.map(column => column.Field));
+  for (const [column, definition] of Object.entries(registrationColumns)) {
+    if (!existingNames.has(column)) await pool.query(`ALTER TABLE users ADD COLUMN ${column} ${definition}`);
+  }
   await pool.query(`CREATE TABLE IF NOT EXISTS attendance (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     student_id INT NOT NULL,

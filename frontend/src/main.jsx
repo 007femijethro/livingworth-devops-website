@@ -6,6 +6,7 @@ import './devops.css';
 import './quiz.css';
 import './enhancements.css';
 import './attendance.css';
+import './application.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode><App /></React.StrictMode>
