@@ -272,6 +272,95 @@ app.get('/api/student/attendance', requireAuth, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+function validDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value || '') && !Number.isNaN(new Date(`${value}T12:00:00Z`).getTime());
+}
+
+function currentWeekDates() {
+  const today = new Date();
+  const day = today.getUTCDay();
+  const monday = new Date(today);
+  monday.setUTCDate(today.getUTCDate() - ((day + 6) % 7));
+  const wednesday = new Date(monday);
+  wednesday.setUTCDate(monday.getUTCDate() + 2);
+  return {
+    monday: monday.toISOString().slice(0, 10),
+    wednesday: wednesday.toISOString().slice(0, 10),
+    canWarn: today >= wednesday
+  };
+}
+
+async function attendanceReport(query) {
+  const from = String(query.from || '');
+  const to = String(query.to || '');
+  if (!validDate(from) || !validDate(to) || from > to) throw new Error('Choose a valid attendance date range.');
+  const studentId = Number.parseInt(query.studentId, 10) || 0;
+  const status = ['present', 'late', 'absent', 'excused'].includes(query.status) ? query.status : '';
+  const where = ['a.session_date BETWEEN ? AND ?'];
+  const params = [from, to];
+  if (studentId) { where.push('a.student_id = ?'); params.push(studentId); }
+  if (status) { where.push('a.status = ?'); params.push(status); }
+  const [records] = await pool.execute(
+    `SELECT a.student_id AS studentId, u.full_name AS fullName, u.email, a.session_date AS sessionDate,
+      a.status, COALESCE(a.note, '') AS note, a.marked_at AS markedAt
+     FROM attendance a JOIN users u ON u.id = a.student_id
+     WHERE ${where.join(' AND ')} ORDER BY a.session_date DESC, u.full_name`, params
+  );
+  const aggregateWhere = ['u.role = \'student\'', "u.status = 'approved'"];
+  const aggregateParams = [from, to];
+  if (studentId) { aggregateWhere.push('u.id = ?'); aggregateParams.push(studentId); }
+  const [students] = await pool.execute(
+    `SELECT u.id AS studentId, u.full_name AS fullName, u.email,
+      SUM(a.status = 'present') AS present, SUM(a.status = 'late') AS late,
+      SUM(a.status = 'absent') AS absent, SUM(a.status = 'excused') AS excused,
+      SUM(a.status <> 'excused') AS counted, SUM(a.status IN ('present','late')) AS attended
+     FROM users u LEFT JOIN attendance a ON a.student_id = u.id AND a.session_date BETWEEN ? AND ?
+     WHERE ${aggregateWhere.join(' AND ')} GROUP BY u.id ORDER BY u.full_name`, aggregateParams
+  );
+  const week = currentWeekDates();
+  const [warnings] = week.canWarn ? await pool.execute(
+    `SELECT student_id AS studentId FROM attendance WHERE session_date IN (?, ?) AND status = 'absent'
+     GROUP BY student_id HAVING COUNT(DISTINCT session_date) = 2`, [week.monday, week.wednesday]
+  ) : [[]];
+  const warningIds = new Set(warnings.map(row => row.studentId));
+  const studentSummaries = students.map(row => ({
+    ...row,
+    present: Number(row.present || 0), late: Number(row.late || 0), absent: Number(row.absent || 0),
+    excused: Number(row.excused || 0), counted: Number(row.counted || 0), attended: Number(row.attended || 0),
+    percentage: Number(row.counted) ? Math.round((Number(row.attended) / Number(row.counted)) * 100) : 0,
+    warning: warningIds.has(row.studentId)
+  }));
+  const summary = records.reduce((result, record) => {
+    result.total += 1;
+    result[record.status] += 1;
+    return result;
+  }, { total: 0, present: 0, late: 0, absent: 0, excused: 0 });
+  return { records, students: studentSummaries, summary, range: { from, to }, warningWeek: week };
+}
+
+app.get('/api/staff/attendance/report', requireAuth, requireStaff, async (req, res, next) => {
+  try { res.json(await attendanceReport(req.query)); }
+  catch (error) {
+    if (error.message.includes('date range')) return res.status(400).json({ message: error.message });
+    next(error);
+  }
+});
+
+app.get('/api/staff/attendance/export', requireAuth, requireStaff, async (req, res, next) => {
+  try {
+    const report = await attendanceReport(req.query);
+    const columns = ['fullName', 'email', 'sessionDate', 'status', 'note', 'markedAt'];
+    const csvCell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const csv = [columns.join(','), ...report.records.map(row => columns.map(column => csvCell(row[column])).join(','))].join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="livingworth-attendance-${report.range.from}-to-${report.range.to}.csv"`);
+    res.send(csv);
+  } catch (error) {
+    if (error.message.includes('date range')) return res.status(400).json({ message: error.message });
+    next(error);
+  }
+});
+
 registerQuizRoutes(app, pool, requireAuth, requireStaff);
 configureQuizSockets(io, pool, verifyToken);
 
