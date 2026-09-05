@@ -589,6 +589,7 @@ function Login({ portal, navigate, onLogin }) {
 function Register({ navigate }) {
   const [message, setMessage] = useState("");
   const [done, setDone] = useState(false);
+  const [applicant, setApplicant] = useState(null);
   const [country, setCountry] = useState("Nigeria");
   const courses = ["DevOps Engineering"];
   async function submit(e) {
@@ -607,12 +608,47 @@ function Register({ navigate }) {
         body: JSON.stringify(values),
       });
       setMessage(data.message);
+      setApplicant({ firstName: values.firstName, email: values.email, emailSent: data.emailSent });
       form.reset();
       setCountry("Nigeria");
       setDone(true);
     } catch (err) {
       setMessage(err.message);
     }
+  }
+  if (done) {
+    return (
+      <AuthLayout
+        navigate={navigate}
+        title="Application received"
+        subtitle="Your Livingworth Academy application has been submitted successfully."
+      >
+        <section className="application-success">
+          <span className="success-mark" aria-hidden="true">✓</span>
+          <h2>Thank you, {applicant?.firstName}.</h2>
+          <p>
+            {applicant?.emailSent
+              ? <>We sent your confirmation to <strong>{applicant.email}</strong>. </>
+              : <>Your application was saved for <strong>{applicant?.email}</strong>. </>}
+            It is now awaiting administrator review.
+          </p>
+          <div className="success-next">
+            <b>What happens next?</b>
+            <ol>
+              <li>An administrator reviews your application.</li>
+              <li>You receive an email when a decision is made.</li>
+              <li>After approval, sign in using the password you created.</li>
+            </ol>
+          </div>
+          <button className="button primary full" onClick={() => navigate("student-login")}>
+            Go to student sign in
+          </button>
+          <button className="text-btn" onClick={() => navigate("home")}>
+            Return to homepage
+          </button>
+        </section>
+      </AuthLayout>
+    );
   }
   return (
     <AuthLayout

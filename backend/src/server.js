@@ -8,6 +8,7 @@ import { Server as SocketServer } from 'socket.io';
 import { pool } from './db.js';
 import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } from './auth.js';
 import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
+import { sendApplicationDecision, sendApplicationEmails } from './mailer.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -61,7 +62,16 @@ app.post('/api/auth/register', async (req, res, next) => {
       [`${firstName.trim()} ${lastName.trim()}`, firstName.trim(), lastName.trim(), normalEmail, passwordHash,
         phone.trim(), gender, country, stateCity.trim(), employmentStatus, educationalLevel, courseChoice, learningMode, techExperience]
     );
-    res.status(201).json({ message: 'Registration received. You can log in after an administrator approves your account.' });
+    const emailResults = await sendApplicationEmails({
+      fullName: `${firstName.trim()} ${lastName.trim()}`,
+      email: normalEmail,
+      courseChoice
+    });
+    const emailSent = emailResults[0].status === 'fulfilled' && emailResults[0].value === true;
+    res.status(201).json({
+      message: 'Registration received. You can log in after an administrator approves your account.',
+      emailSent
+    });
   } catch (error) { next(error); }
 });
 
@@ -103,6 +113,8 @@ app.patch('/api/admin/students/:id/status', requireAuth, requireAdmin, async (re
     if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ message: 'Choose approved or rejected.' });
     const [result] = await pool.execute("UPDATE users SET status = ? WHERE id = ? AND role = 'student'", [status, req.params.id]);
     if (!result.affectedRows) return res.status(404).json({ message: 'Student not found.' });
+    const [students] = await pool.execute("SELECT full_name AS fullName, email FROM users WHERE id = ?", [req.params.id]);
+    if (students[0]) void sendApplicationDecision(students[0], status);
     res.json({ message: `Student ${status}.` });
   } catch (error) { next(error); }
 });
