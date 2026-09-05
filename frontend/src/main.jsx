@@ -6,6 +6,7 @@ import './devops.css';
 import './quiz.css';
 import './enhancements.css';
 import './attendance.css';
+import './student-progress.css';
 import './application.css';
 import './learning.css';
 

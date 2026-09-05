@@ -1303,12 +1303,79 @@ function LearningCenter({ mode, demo = false }) {
   );
 }
 
+function nextClassSession() {
+  const now = new Date();
+  for (let offset = 0; offset < 8; offset += 1) {
+    const candidate = new Date(now);
+    candidate.setUTCDate(now.getUTCDate() + offset);
+    candidate.setUTCHours(19, 0, 0, 0);
+    if ([1, 3, 5].includes(candidate.getUTCDay()) && candidate > now) return candidate;
+  }
+  return null;
+}
+
+function StudentProgressOverview({ user, onNavigate }) {
+  const [data, setData] = useState({ learning: null, attendance: null, quizzes: null });
+  const [message, setMessage] = useState("Loading your progress…");
+  useEffect(() => {
+    Promise.all([api("/student/learning"), api("/student/attendance"), api("/student/quiz-results")])
+      .then(([learning, attendance, quizzes]) => {
+        setData({ learning, attendance, quizzes });
+        setMessage("");
+      })
+      .catch((error) => setMessage(error.message));
+  }, []);
+  const nextClass = nextClassSession();
+  const assignments = data.learning?.modules.flatMap((module) =>
+    module.assignments.map((assignment) => ({ ...assignment, moduleTitle: module.title, weekNumber: module.weekNumber })),
+  ) || [];
+  const outstanding = assignments
+    .filter((assignment) => assignment.submissionStatus !== "completed")
+    .sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt));
+  const quizAverage = data.quizzes?.length
+    ? Math.round(data.quizzes.reduce((total, quiz) => total + Number(quiz.percentage || 0), 0) / data.quizzes.length)
+    : 0;
+  const firstName = user.fullName.split(" ")[0];
+  return (
+    <section className="student-progress-overview">
+      <div className="progress-welcome">
+        <div><p className="eyebrow">DevOps student portal</p><h1>Welcome back, {firstName}.</h1><p>Here is your progress and what needs your attention next.</p></div>
+        <span className="avatar">{user.fullName[0]}</span>
+      </div>
+      {message && <div className="progress-loading">{message}</div>}
+      {!message && <>
+        <div className="progress-metrics">
+          <button onClick={() => onNavigate("Attendance")}><span>Attendance</span><strong>{data.attendance.summary.percentage}%</strong><small>{data.attendance.summary.attended} of {data.attendance.summary.total} counted sessions</small></button>
+          <button onClick={() => onNavigate("Learning")}><span>Assignments</span><strong>{data.learning.progress.percentage}%</strong><small>{data.learning.progress.completed} of {data.learning.progress.total} completed</small></button>
+          <button onClick={() => onNavigate("Live quiz")}><span>Quiz average</span><strong>{quizAverage}%</strong><small>{data.quizzes.length} completed attempt{data.quizzes.length === 1 ? "" : "s"}</small></button>
+          <article><span>Next class</span><strong>{nextClass ? new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Lagos" }).format(nextClass) : "—"}</strong><small>8:00 p.m. GMT+1</small></article>
+        </div>
+        <div className="progress-columns">
+          <section className="next-class-card">
+            <span className="progress-kicker">Next live session</span>
+            <h2>{nextClass ? new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "Africa/Lagos" }).format(nextClass) : "Class schedule"}</h2>
+            <p>Live DevOps class · 8:00–9:00 p.m. GMT+1</p>
+            <button className="button gold" onClick={() => onNavigate("Learning")}>Open learning workspace</button>
+          </section>
+          <section className="attention-card">
+            <div className="progress-section-title"><div><span>Assignments</span><h2>Needs your attention</h2></div><button onClick={() => onNavigate("Learning")}>View all</button></div>
+            {outstanding.length === 0 ? <p className="progress-empty">You have no outstanding assignments.</p> : outstanding.slice(0, 3).map((assignment) => {
+              const overdue = new Date(assignment.dueAt) < new Date();
+              return <article key={assignment.id}><div><small>Week {assignment.weekNumber} · {assignment.moduleTitle}</small><h3>{assignment.title}</h3><p>Due {new Date(assignment.dueAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p></div><b className={overdue ? "overdue" : "upcoming"}>{overdue ? "Overdue" : "Upcoming"}</b></article>;
+            })}
+          </section>
+        </div>
+        <section className="recent-quiz-card">
+          <div className="progress-section-title"><div><span>Performance</span><h2>Recent quiz results</h2></div><button onClick={() => onNavigate("Live quiz")}>Quiz history</button></div>
+          {data.quizzes.length === 0 ? <p className="progress-empty">Your quiz results will appear here after your first completed quiz.</p> : <div>{data.quizzes.slice(0, 3).map((quiz) => <article key={quiz.id}><div><h3>{quiz.title}</h3><p>{new Date(quiz.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} · Attempt {quiz.attemptNo}</p></div><span>{quiz.correctCount}/{quiz.totalQuestions} correct</span><strong>{quiz.percentage}%</strong></article>)}</div>}
+        </section>
+      </>}
+    </section>
+  );
+}
+
 function StudentDashboard({ user, logout }) {
   const [active, setActive] = useState("Overview");
-  const [learningProgress, setLearningProgress] = useState({ completed: 0, total: 0, percentage: 0 });
-  useEffect(() => {
-    api("/student/learning").then((data) => setLearningProgress(data.progress)).catch(() => {});
-  }, []);
   return (
     <main className="dashboard">
       <Sidebar
@@ -1318,45 +1385,7 @@ function StudentDashboard({ user, logout }) {
         logout={logout}
       />
       <section className="dash-main">
-        <div className="dash-title">
-          <div>
-            <p className="eyebrow">DevOps student portal</p>
-            <h1>Welcome, {user.fullName.split(" ")[0]}.</h1>
-          </div>
-          <span className="avatar">{user.fullName[0]}</span>
-        </div>
-        {active === "Overview" && (
-          <>
-            <div className="notice">
-              <strong>✓ Your account is approved</strong>
-              <p>
-                You now have access to the Livingworth Academy learning portal.
-              </p>
-            </div>
-            <div className="dash-grid">
-              <article>
-                <span>Current programme</span>
-                <h3>12-Week DevOps Bootcamp</h3>
-                <p>
-                  Linux, Git, AWS, IaC, containers, Kubernetes, CI/CD and
-                  monitoring.
-                </p>
-              </article>
-              <article>
-                <span>Weekly schedule</span>
-                <h3>Mon · Wed · Fri</h3>
-                <p>Live on Google Meet, 8:00–9:00 p.m. GMT+1.</p>
-              </article>
-              <article>
-                <span>Completion path</span>
-                <h3>{learningProgress.percentage}% complete</h3>
-                <p>
-                  {learningProgress.completed} of {learningProgress.total} assignments completed.
-                </p>
-              </article>
-            </div>
-          </>
-        )}
+        {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} />}
         {active === "Programme" && (
           <section className="portal-path">
             <p className="eyebrow">Your learning path</p>
