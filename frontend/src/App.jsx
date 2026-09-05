@@ -1455,6 +1455,7 @@ function QuizCenter({ mode, demo = false }) {
     [leaderboard, setLeaderboard] = useState([]),
     [view, setView] = useState("live");
   const [title, setTitle] = useState("DevOps Knowledge Check");
+  const [questionTimeSeconds, setQuestionTimeSeconds] = useState(30);
   const [questions, setQuestions] = useState([
     { prompt: "", topic: "General", options: ["", "", "", ""], correctIndex: 0 },
   ]);
@@ -1549,7 +1550,7 @@ function QuizCenter({ mode, demo = false }) {
     try {
       const quiz = await api("/admin/quizzes", {
         method: "POST",
-        body: JSON.stringify({ title, questions }),
+        body: JSON.stringify({ title, questions, questionTimeSeconds }),
       });
       setMessage(`Quiz created. Join code: ${quiz.joinCode}`);
       load();
@@ -1562,7 +1563,7 @@ function QuizCenter({ mode, demo = false }) {
     try {
       const text = await file.text();
       const quiz = await api(
-        `/admin/quizzes/import?title=${encodeURIComponent(title)}`,
+        `/admin/quizzes/import?title=${encodeURIComponent(title)}&questionTimeSeconds=${questionTimeSeconds}`,
         { method: "POST", headers: { "Content-Type": "text/csv" }, body: text },
       );
       setMessage(`CSV imported. Join code: ${quiz.joinCode}`);
@@ -1576,6 +1577,23 @@ function QuizCenter({ mode, demo = false }) {
       const data = await api(`/admin/quizzes/${quiz.id}/settings`, { method: "PATCH", body: JSON.stringify({ allowRetakes: !quiz.allowRetakes }) });
       setMessage(data.message); load();
     } catch (error) { setMessage(error.message); }
+  }
+  async function updateQuizTime(quiz, value) {
+    const seconds = Number(value);
+    if (!Number.isInteger(seconds) || seconds < 5 || seconds > 300) {
+      setMessage("Question time must be between 5 and 300 seconds.");
+      load();
+      return;
+    }
+    if (seconds === Number(quiz.questionTimeSeconds)) return;
+    try {
+      const data = await api(`/admin/quizzes/${quiz.id}/settings`, {
+        method: "PATCH",
+        body: JSON.stringify({ questionTimeSeconds: seconds }),
+      });
+      setMessage(data.message);
+      load();
+    } catch (error) { setMessage(error.message); load(); }
   }
   async function openQuiz(quiz) {
     try {
@@ -1608,7 +1626,9 @@ function QuizCenter({ mode, demo = false }) {
               : "Join your class quiz"}
           </h2>
         </div>
-        <span className="timer-badge">30 sec / question</span>
+        <span className="timer-badge">
+          {room?.questionTimeSeconds || questionTimeSeconds} sec / question
+        </span>
       </div>
       <p className="form-message">{message}</p>
       {!room && mode === "student" && (
@@ -1642,6 +1662,19 @@ function QuizCenter({ mode, demo = false }) {
                 onChange={(e) => setTitle(e.target.value)}
                 required
               />
+            </label>
+            <label>
+              Time per question (seconds)
+              <input
+                type="number"
+                min="5"
+                max="300"
+                step="1"
+                value={questionTimeSeconds}
+                onChange={(e) => setQuestionTimeSeconds(Number(e.target.value))}
+                required
+              />
+              <small>Choose between 5 seconds and 5 minutes.</small>
             </label>
             {questions.map((q, qi) => (
               <fieldset key={qi}>
@@ -1720,9 +1753,22 @@ function QuizCenter({ mode, demo = false }) {
               <div>
                 <b>{q.title}</b>
                 <span>
-                  {q.questionCount} questions · Code {q.joinCode}
+                  {q.questionCount} questions · {q.questionTimeSeconds} sec each · Code {q.joinCode}
                 </span>
               </div>
+              <label className="quiz-time-setting">
+                Seconds
+                <input
+                  type="number"
+                  min="5"
+                  max="300"
+                  step="1"
+                  defaultValue={q.questionTimeSeconds}
+                  disabled={q.status === "live"}
+                  aria-label={`Seconds per question for ${q.title}`}
+                  onBlur={(e) => updateQuizTime(q, e.target.value)}
+                />
+              </label>
               <button
                 className="button primary"
                 onClick={() => openQuiz(q)}
@@ -1745,6 +1791,7 @@ function QuizCenter({ mode, demo = false }) {
           <p>
             {presence} connected participant{presence === 1 ? "" : "s"}
           </p>
+          <p>{room.questionTimeSeconds} seconds per question</p>
           {mode === "admin" ? (
             <button className="button gold" onClick={start}>
               Start quiz for everyone

@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS quizzes (
   join_code VARCHAR(8) NOT NULL UNIQUE,
   status ENUM('draft','lobby','live','completed') NOT NULL DEFAULT 'draft',
   allow_retakes BOOLEAN NOT NULL DEFAULT FALSE,
+  question_time_seconds INT NOT NULL DEFAULT 30,
   created_by INT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (created_by) REFERENCES users(id)

@@ -72,6 +72,13 @@
   gap: 6px;
   font-weight: 800;
 }
+.quiz-builder > label + label {
+  margin-top: 14px;
+}
+.quiz-builder > label small {
+  color: #657b88;
+  font-weight: 600;
+}
 .quiz-builder input,
 .csv-import input {
   padding: 11px;
@@ -146,6 +153,18 @@
 .quiz-list article span {
   color: #71818c;
   font-size: 0.85rem;
+}
+.quiz-time-setting {
+  display: grid;
+  gap: 4px;
+  color: #5f7380;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+.quiz-time-setting input {
+  width: 78px;
+  padding: 8px;
+  border: 1px solid #bdccd5;
 }
 .quiz-lobby {
   text-align: center;

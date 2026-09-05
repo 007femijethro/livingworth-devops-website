@@ -1,6 +1,16 @@
 const rooms = new Map();
-const QUESTION_MS = 30_000;
 const REVEAL_MS = 3_000;
+const MIN_QUESTION_SECONDS = 5;
+const MAX_QUESTION_SECONDS = 300;
+
+function validQuestionTime(value, fallback = 30) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const seconds = Number(value);
+  if (!Number.isInteger(seconds) || seconds < MIN_QUESTION_SECONDS || seconds > MAX_QUESTION_SECONDS) {
+    throw new Error(`Question time must be between ${MIN_QUESTION_SECONDS} and ${MAX_QUESTION_SECONDS} seconds.`);
+  }
+  return seconds;
+}
 
 function joinCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -32,6 +42,7 @@ function parseCsv(text) {
 export async function ensureQuizSchema(pool) {
   const [quizColumns] = await pool.query('SHOW COLUMNS FROM quizzes');
   if (!quizColumns.some(column => column.Field === 'allow_retakes')) await pool.query('ALTER TABLE quizzes ADD COLUMN allow_retakes BOOLEAN NOT NULL DEFAULT FALSE');
+  if (!quizColumns.some(column => column.Field === 'question_time_seconds')) await pool.query('ALTER TABLE quizzes ADD COLUMN question_time_seconds INT NOT NULL DEFAULT 30');
   const [questionColumns] = await pool.query('SHOW COLUMNS FROM quiz_questions');
   if (!questionColumns.some(column => column.Field === 'topic')) await pool.query("ALTER TABLE quiz_questions ADD COLUMN topic VARCHAR(120) NOT NULL DEFAULT 'General'");
   await pool.query(`CREATE TABLE IF NOT EXISTS quiz_attempts (
@@ -51,43 +62,55 @@ export async function ensureQuizSchema(pool) {
   )`);
 }
 
-async function createQuiz(pool, adminId, title, questions) {
+async function createQuiz(pool, adminId, title, questions, requestedQuestionTime) {
   if (!title?.trim() || !Array.isArray(questions) || !questions.length) throw new Error('A title and at least one question are required.');
+  const questionTimeSeconds = validQuestionTime(requestedQuestionTime);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
     const code = joinCode();
-    const [result] = await connection.execute('INSERT INTO quizzes (title, join_code, created_by) VALUES (?, ?, ?)', [title.trim(), code, adminId]);
+    const [result] = await connection.execute('INSERT INTO quizzes (title, join_code, question_time_seconds, created_by) VALUES (?, ?, ?, ?)', [title.trim(), code, questionTimeSeconds, adminId]);
     for (let i = 0; i < questions.length; i += 1) {
       const q = questions[i];
       if (!q.prompt?.trim() || !Array.isArray(q.options) || q.options.length !== 4 || q.correctIndex < 0 || q.correctIndex > 3) throw new Error(`Question ${i + 1} is incomplete.`);
       await connection.execute('INSERT INTO quiz_questions (quiz_id, prompt, topic, options_json, correct_index, sequence_no) VALUES (?, ?, ?, ?, ?, ?)', [result.insertId, q.prompt.trim(), String(q.topic || 'General').trim(), JSON.stringify(q.options.map(String)), q.correctIndex, i + 1]);
     }
     await connection.commit();
-    return { id: result.insertId, title: title.trim(), joinCode: code, status: 'draft', questionCount: questions.length };
+    return { id: result.insertId, title: title.trim(), joinCode: code, status: 'draft', questionCount: questions.length, questionTimeSeconds };
   } catch (error) { await connection.rollback(); throw error; }
   finally { connection.release(); }
 }
 
 export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
   app.get('/api/admin/quizzes', requireAuth, requireStaff, async (_req, res, next) => {
-    try { const [rows] = await pool.query('SELECT q.id, q.title, q.join_code AS joinCode, q.status, q.allow_retakes AS allowRetakes, COUNT(qq.id) AS questionCount FROM quizzes q LEFT JOIN quiz_questions qq ON qq.quiz_id=q.id GROUP BY q.id ORDER BY q.created_at DESC'); res.json(rows); } catch (e) { next(e); }
+    try { const [rows] = await pool.query('SELECT q.id, q.title, q.join_code AS joinCode, q.status, q.allow_retakes AS allowRetakes, q.question_time_seconds AS questionTimeSeconds, COUNT(qq.id) AS questionCount FROM quizzes q LEFT JOIN quiz_questions qq ON qq.quiz_id=q.id GROUP BY q.id ORDER BY q.created_at DESC'); res.json(rows); } catch (e) { next(e); }
   });
   app.post('/api/admin/quizzes', requireAuth, requireStaff, async (req, res, next) => {
-    try { res.status(201).json(await createQuiz(pool, req.user.id, req.body.title, req.body.questions)); } catch (e) { if (e.message.includes('required') || e.message.includes('incomplete')) return res.status(400).json({message:e.message}); next(e); }
+    try { res.status(201).json(await createQuiz(pool, req.user.id, req.body.title, req.body.questions, req.body.questionTimeSeconds)); } catch (e) { if (e.message.includes('required') || e.message.includes('incomplete') || e.message.includes('Question time')) return res.status(400).json({message:e.message}); next(e); }
   });
   app.post('/api/admin/quizzes/import', requireAuth, requireStaff, async (req, res, next) => {
-    try { res.status(201).json(await createQuiz(pool, req.user.id, req.query.title || 'Imported DevOps Quiz', parseCsv(req.body))); } catch (e) { return res.status(400).json({message:e.message}); }
+    try { res.status(201).json(await createQuiz(pool, req.user.id, req.query.title || 'Imported DevOps Quiz', parseCsv(req.body), req.query.questionTimeSeconds)); } catch (e) { return res.status(400).json({message:e.message}); }
   });
   app.get('/api/quizzes/active', requireAuth, async (_req, res, next) => {
-    try { const [rows] = await pool.query("SELECT id, title, join_code AS joinCode, status FROM quizzes WHERE status IN ('lobby','live') ORDER BY id DESC"); res.json(rows); } catch (e) { next(e); }
+    try { const [rows] = await pool.query("SELECT id, title, join_code AS joinCode, status, question_time_seconds AS questionTimeSeconds FROM quizzes WHERE status IN ('lobby','live') ORDER BY id DESC"); res.json(rows); } catch (e) { next(e); }
   });
   app.patch('/api/admin/quizzes/:id/settings', requireAuth, requireStaff, async (req, res, next) => {
     try {
-      const [result] = await pool.execute('UPDATE quizzes SET allow_retakes = ? WHERE id = ?', [Boolean(req.body.allowRetakes), req.params.id]);
+      const allowRetakes = req.body.allowRetakes === undefined ? null : Boolean(req.body.allowRetakes);
+      const questionTimeSeconds = req.body.questionTimeSeconds === undefined ? null : validQuestionTime(req.body.questionTimeSeconds);
+      if (allowRetakes === null && questionTimeSeconds === null) return res.status(400).json({ message: 'Choose a quiz setting to update.' });
+      if (questionTimeSeconds !== null) {
+        const [quizzes] = await pool.execute('SELECT status FROM quizzes WHERE id = ?', [req.params.id]);
+        if (!quizzes.length) return res.status(404).json({ message: 'Quiz not found.' });
+        if (quizzes[0].status === 'live') return res.status(400).json({ message: 'Quiz time cannot be changed while the quiz is live.' });
+      }
+      const [result] = await pool.execute('UPDATE quizzes SET allow_retakes = COALESCE(?, allow_retakes), question_time_seconds = COALESCE(?, question_time_seconds) WHERE id = ?', [allowRetakes, questionTimeSeconds, req.params.id]);
       if (!result.affectedRows) return res.status(404).json({ message: 'Quiz not found.' });
-      res.json({ message: req.body.allowRetakes ? 'Retakes enabled.' : 'Retakes disabled.' });
-    } catch (error) { next(error); }
+      res.json({ message: questionTimeSeconds !== null ? `Quiz time changed to ${questionTimeSeconds} seconds per question.` : allowRetakes ? 'Retakes enabled.' : 'Retakes disabled.' });
+    } catch (error) {
+      if (error.message.includes('Question time')) return res.status(400).json({ message: error.message });
+      next(error);
+    }
   });
   app.post('/api/admin/quizzes/:id/reopen', requireAuth, requireStaff, async (req, res, next) => {
     try {
@@ -203,12 +226,12 @@ export function configureQuizSockets(io, pool, verifyToken) {
     const state = rooms.get(quizId); if (!state) return;
     if (state.index >= state.questions.length) { await finalizeAttempts(pool, state); await pool.execute("UPDATE quizzes SET status='completed' WHERE id=?",[quizId]); io.to(`quiz:${quizId}`).emit('quiz:completed',{leaderboard:await leaderboard(pool,quizId,state.answers)}); rooms.delete(quizId); return; }
     const q=state.questions[state.index]; state.startedAt=Date.now(); state.questionAnswers=new Set();
-    io.to(`quiz:${quizId}`).emit('quiz:question',{id:q.id,index:state.index,total:state.questions.length,prompt:q.prompt,options:q.options,endsAt:state.startedAt+QUESTION_MS});
-    state.timer=setTimeout(async()=>{io.to(`quiz:${quizId}`).emit('quiz:reveal',{correctIndex:q.correctIndex,leaderboard:await leaderboard(pool,quizId,state.answers)});state.index+=1;state.timer=setTimeout(()=>sendQuestion(quizId),REVEAL_MS)},QUESTION_MS);
+    io.to(`quiz:${quizId}`).emit('quiz:question',{id:q.id,index:state.index,total:state.questions.length,prompt:q.prompt,options:q.options,endsAt:state.startedAt+state.questionMs});
+    state.timer=setTimeout(async()=>{io.to(`quiz:${quizId}`).emit('quiz:reveal',{correctIndex:q.correctIndex,leaderboard:await leaderboard(pool,quizId,state.answers)});state.index+=1;state.timer=setTimeout(()=>sendQuestion(quizId),REVEAL_MS)},state.questionMs);
   };
   io.on('connection', socket => {
-    socket.on('quiz:join', async ({joinCode}, ack=()=>{}) => { try { const [rows]=await pool.execute("SELECT id,title,status,allow_retakes AS allowRetakes FROM quizzes WHERE join_code=? AND status IN ('draft','lobby','live')",[String(joinCode||'').toUpperCase()]);if(!rows.length)throw new Error('Quiz room not found.');const quiz=rows[0];if(socket.user.role==='student'&&!quiz.allowRetakes){const [done]=await pool.execute("SELECT id FROM quiz_attempts WHERE quiz_id=? AND student_id=? AND status='completed' LIMIT 1",[quiz.id,socket.user.id]);if(done.length)throw new Error('You have already completed this quiz.');}socket.join(`quiz:${quiz.id}`);socket.data.quizId=quiz.id;if(quiz.status==='draft')await pool.execute("UPDATE quizzes SET status='lobby' WHERE id=?",[quiz.id]);ack({ok:true,quiz:{id:quiz.id,title:quiz.title,status:quiz.status==='draft'?'lobby':quiz.status}});io.to(`quiz:${quiz.id}`).emit('quiz:presence',{count:(await io.in(`quiz:${quiz.id}`).fetchSockets()).length});}catch(e){ack({ok:false,message:e.message})} });
-    socket.on('quiz:start', async ({quizId}, ack=()=>{}) => { try { if(!['admin','mentor'].includes(socket.user.role))throw new Error('Staff access required.');const [rows]=await pool.execute('SELECT id,prompt,topic,options_json AS options,correct_index AS correctIndex FROM quiz_questions WHERE quiz_id=? ORDER BY sequence_no',[quizId]);const questions=rows.map(q=>({...q,options:typeof q.options==='string'?JSON.parse(q.options):q.options}));if(!questions.length)throw new Error('This quiz has no questions.');await pool.execute("UPDATE quizzes SET status='live' WHERE id=?",[quizId]);const state={questions,index:0,answers:new Map(),questionAnswers:new Set(),attempts:new Map(),startedAt:0,timer:null};rooms.set(Number(quizId),state);io.to(`quiz:${quizId}`).emit('quiz:started',{questionCount:questions.length});sendQuestion(Number(quizId));ack({ok:true});}catch(e){ack({ok:false,message:e.message})} });
-    socket.on('quiz:answer', async ({quizId,questionId,answerIndex}, ack=()=>{}) => { try { if(socket.user.role!=='student'||socket.user.status!=='approved')throw new Error('Approved student access required.');const state=rooms.get(Number(quizId));const q=state?.questions[state.index];if(!state||!q||q.id!==questionId||Date.now()>state.startedAt+QUESTION_MS)throw new Error('This question is closed.');const key=`${questionId}:${socket.user.id}`;if(state.questionAnswers.has(key))throw new Error('Answer already submitted.');state.questionAnswers.add(key);const responseMs=Date.now()-state.startedAt,correct=Number(answerIndex)===q.correctIndex;state.answers.set(key,{studentId:socket.user.id,correct,responseMs});const attemptId=await ensureAttempt(pool,state,quizId,socket.user.id);await pool.execute('INSERT INTO quiz_attempt_answers (attempt_id,question_id,answer_index,is_correct,response_ms) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE answer_index=VALUES(answer_index),is_correct=VALUES(is_correct),response_ms=VALUES(response_ms)',[attemptId,questionId,answerIndex,correct,responseMs]);ack({ok:true});}catch(e){ack({ok:false,message:e.message})} });
+    socket.on('quiz:join', async ({joinCode}, ack=()=>{}) => { try { const [rows]=await pool.execute("SELECT id,title,join_code AS joinCode,status,allow_retakes AS allowRetakes,question_time_seconds AS questionTimeSeconds FROM quizzes WHERE join_code=? AND status IN ('draft','lobby','live')",[String(joinCode||'').toUpperCase()]);if(!rows.length)throw new Error('Quiz room not found.');const quiz=rows[0];if(socket.user.role==='student'&&!quiz.allowRetakes){const [done]=await pool.execute("SELECT id FROM quiz_attempts WHERE quiz_id=? AND student_id=? AND status='completed' LIMIT 1",[quiz.id,socket.user.id]);if(done.length)throw new Error('You have already completed this quiz.');}socket.join(`quiz:${quiz.id}`);socket.data.quizId=quiz.id;if(quiz.status==='draft')await pool.execute("UPDATE quizzes SET status='lobby' WHERE id=?",[quiz.id]);ack({ok:true,quiz:{id:quiz.id,title:quiz.title,joinCode:quiz.joinCode,questionTimeSeconds:quiz.questionTimeSeconds,status:quiz.status==='draft'?'lobby':quiz.status}});io.to(`quiz:${quiz.id}`).emit('quiz:presence',{count:(await io.in(`quiz:${quiz.id}`).fetchSockets()).length});}catch(e){ack({ok:false,message:e.message})} });
+    socket.on('quiz:start', async ({quizId}, ack=()=>{}) => { try { if(!['admin','mentor'].includes(socket.user.role))throw new Error('Staff access required.');const [quizRows]=await pool.execute('SELECT question_time_seconds AS questionTimeSeconds FROM quizzes WHERE id=?',[quizId]);if(!quizRows.length)throw new Error('Quiz not found.');const [rows]=await pool.execute('SELECT id,prompt,topic,options_json AS options,correct_index AS correctIndex FROM quiz_questions WHERE quiz_id=? ORDER BY sequence_no',[quizId]);const questions=rows.map(q=>({...q,options:typeof q.options==='string'?JSON.parse(q.options):q.options}));if(!questions.length)throw new Error('This quiz has no questions.');await pool.execute("UPDATE quizzes SET status='live' WHERE id=?",[quizId]);const state={questions,index:0,answers:new Map(),questionAnswers:new Set(),attempts:new Map(),startedAt:0,timer:null,questionMs:validQuestionTime(quizRows[0].questionTimeSeconds)*1000};rooms.set(Number(quizId),state);io.to(`quiz:${quizId}`).emit('quiz:started',{questionCount:questions.length,questionTimeSeconds:state.questionMs/1000});sendQuestion(Number(quizId));ack({ok:true});}catch(e){ack({ok:false,message:e.message})} });
+    socket.on('quiz:answer', async ({quizId,questionId,answerIndex}, ack=()=>{}) => { try { if(socket.user.role!=='student'||socket.user.status!=='approved')throw new Error('Approved student access required.');const state=rooms.get(Number(quizId));const q=state?.questions[state.index];if(!state||!q||q.id!==questionId||Date.now()>state.startedAt+state.questionMs)throw new Error('This question is closed.');const key=`${questionId}:${socket.user.id}`;if(state.questionAnswers.has(key))throw new Error('Answer already submitted.');state.questionAnswers.add(key);const responseMs=Date.now()-state.startedAt,correct=Number(answerIndex)===q.correctIndex;state.answers.set(key,{studentId:socket.user.id,correct,responseMs});const attemptId=await ensureAttempt(pool,state,quizId,socket.user.id);await pool.execute('INSERT INTO quiz_attempt_answers (attempt_id,question_id,answer_index,is_correct,response_ms) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE answer_index=VALUES(answer_index),is_correct=VALUES(is_correct),response_ms=VALUES(response_ms)',[attemptId,questionId,answerIndex,correct,responseMs]);ack({ok:true});}catch(e){ack({ok:false,message:e.message})} });
   });
 }
