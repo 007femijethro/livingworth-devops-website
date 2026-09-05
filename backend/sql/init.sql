@@ -63,6 +63,20 @@ CREATE TABLE IF NOT EXISTS quiz_answers (
   FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS attendance (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  session_date DATE NOT NULL,
+  status ENUM('present', 'late', 'absent', 'excused') NOT NULL,
+  note VARCHAR(255),
+  marked_by INT NOT NULL,
+  marked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY one_attendance_per_session (student_id, session_date),
+  INDEX attendance_session_date (session_date),
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (marked_by) REFERENCES users(id)
+);
+
 INSERT INTO courses (title, description, duration, level) VALUES
   ('DevOps Engineering Bootcamp', 'A complete practical journey through Linux, Git, AWS, automation, Docker, Kubernetes, CI/CD and monitoring.', '12 weeks', 'Beginner–Intermediate'),
   ('Cloud & Infrastructure Automation', 'Build AWS environments and automate infrastructure with Ansible and Terraform.', 'Included', 'Practical track'),

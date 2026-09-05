@@ -36,6 +36,10 @@ The initial administrator uses `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env`. T
 
 Existing MySQL volumes are upgraded automatically when the backend starts, so adding the mentor portal does not require deleting academy data.
 
+## Attendance
+
+Administrators and mentors can mark approved students as present, late, absent or excused for Monday, Wednesday and Friday sessions. Students can see their attendance history and percentage in their own portal; excused sessions are excluded from the percentage.
+
 ## Useful commands
 
 ```bash
