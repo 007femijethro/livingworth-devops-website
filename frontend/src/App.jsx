@@ -1527,41 +1527,104 @@ function AdminDashboard({ user, logout }) {
   const [active, setActive] = useState("Overview");
   const [students, setStudents] = useState(user.demo ? savedDemo() : []);
   const [mentors, setMentors] = useState([]);
+  const [applicationSummary, setApplicationSummary] = useState({
+    total: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+  });
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [selectedApplicant, setSelectedApplicant] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState("");
   const [message, setMessage] = useState(
     user.demo
       ? "Offline preview: changes are stored only in this browser."
       : "",
   );
-  const load = () => {
+  const loadApplications = () => {
     if (user.demo) {
-      setStudents(savedDemo());
+      const all = savedDemo();
+      const filtered = all.filter(
+        (student) =>
+          (!statusFilter || student.status === statusFilter) &&
+          (!search || `${student.fullName} ${student.email} ${student.phone}`.toLowerCase().includes(search.toLowerCase())),
+      );
+      setStudents(filtered);
+      setApplicationSummary({
+        total: all.length,
+        pending: all.filter((student) => student.status === "pending").length,
+        approved: all.filter((student) => student.status === "approved").length,
+        rejected: all.filter((student) => student.status === "rejected").length,
+      });
+      setPagination({ page: 1, pages: 1, total: filtered.length });
       return;
     }
-    Promise.all([api("/admin/students"), api("/admin/mentors")])
-      .then(([s, m]) => {
-        setStudents(s);
-        setMentors(m);
+    const params = new URLSearchParams({ page: String(page) });
+    if (statusFilter) params.set("status", statusFilter);
+    if (search) params.set("search", search);
+    api(`/admin/students?${params}`)
+      .then((data) => {
+        setStudents(data.students);
+        setApplicationSummary(data.summary);
+        setPagination(data.pagination);
       })
       .catch((e) => setMessage(e.message));
   };
-  useEffect(load, []);
-  async function decide(id, status) {
+  useEffect(loadApplications, [page, statusFilter, search]);
+  useEffect(() => {
+    if (!user.demo) api("/admin/mentors").then(setMentors).catch((e) => setMessage(e.message));
+  }, []);
+  async function decide(student, status, reason = "") {
     if (user.demo) {
-      const next = students.map((s) => (s.id === id ? { ...s, status } : s));
-      setStudents(next);
+      const all = savedDemo();
+      const next = all.map((s) => (s.id === student.id ? { ...s, status, rejectionReason: reason } : s));
       localStorage.setItem("lw_demo_students", JSON.stringify(next));
       setMessage(`Demo student ${status}. This change is local only.`);
+      setSelectedApplicant(null);
+      loadApplications();
       return;
     }
     try {
-      const data = await api(`/admin/students/${id}/status`, {
+      const data = await api(`/admin/students/${student.id}/status`, {
         method: "PATCH",
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, rejectionReason: reason }),
       });
       setMessage(data.message);
-      load();
+      setSelectedApplicant(null);
+      setRejectionReason("");
+      loadApplications();
     } catch (e) {
       setMessage(e.message);
+    }
+  }
+  function confirmDecision(student, status) {
+    const action = status === "approved" ? "approve" : "return to pending review";
+    if (window.confirm(`Are you sure you want to ${action} ${student.fullName}?`)) {
+      decide(student, status);
+    }
+  }
+  async function exportApplications() {
+    try {
+      const params = new URLSearchParams();
+      if (statusFilter) params.set("status", statusFilter);
+      if (search) params.set("search", search);
+      const response = await fetch(`/api/admin/students/export?${params}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("lw_token")}` },
+      });
+      if (!response.ok) throw new Error("Could not export applications.");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `livingworth-applications-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setMessage(error.message);
     }
   }
   async function addMentor(e) {
@@ -1573,51 +1636,103 @@ function AdminDashboard({ user, logout }) {
       });
       setMessage(data.message);
       e.currentTarget.reset();
-      load();
+      api("/admin/mentors").then(setMentors);
     } catch (err) {
       setMessage(err.message);
     }
   }
   const applications = (
-    <div className="student-list">
-      {students.length === 0 ? (
-        <div className="empty">No student applications yet.</div>
-      ) : (
-        students.map((s) => (
-          <article key={s.id}>
-            <span className="student-avatar">{s.fullName[0]}</span>
+    <section className="application-manager">
+      <div className="application-metrics">
+        {[
+          ["All", applicationSummary.total, ""],
+          ["Pending", applicationSummary.pending, "pending"],
+          ["Approved", applicationSummary.approved, "approved"],
+          ["Rejected", applicationSummary.rejected, "rejected"],
+        ].map(([label, count, value]) => (
+          <button
+            key={label}
+            className={statusFilter === value ? "active" : ""}
+            onClick={() => { setStatusFilter(value); setPage(1); }}
+          >
+            <span>{label}</span><strong>{count}</strong>
+          </button>
+        ))}
+      </div>
+      <div className="application-toolbar">
+        <form onSubmit={(event) => { event.preventDefault(); setSearch(searchInput.trim()); setPage(1); }}>
+          <input
+            type="search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="Search name, email or phone"
+            aria-label="Search applications"
+          />
+          <button className="button primary">Search</button>
+          {search && <button type="button" className="text-btn" onClick={() => { setSearch(""); setSearchInput(""); setPage(1); }}>Clear</button>}
+        </form>
+        <button className="button light-border" onClick={exportApplications} disabled={user.demo}>
+          Export CSV
+        </button>
+      </div>
+      <div className="student-list application-list">
+        {students.length === 0 ? (
+          <div className="empty">No applications match this view.</div>
+        ) : students.map((student) => (
+          <article key={student.id}>
+            <span className="student-avatar">{student.fullName[0]}</span>
             <div className="student-info">
-              <h3>{s.fullName}</h3>
-              <p>
-                {s.email} · {s.phone || "No phone"}
-              </p>
-              {s.courseChoice ? (
-                <div className="application-details">
-                  <span><b>Course</b>{s.courseChoice}</span>
-                  <span><b>Location</b>{s.stateCity}, {s.country}</span>
-                  <span><b>Learning</b>{s.learningMode}</span>
-                  <span><b>Status</b>{s.employmentStatus}</span>
-                  <span><b>Education</b>{s.educationalLevel}</span>
-                  <span><b>Tech experience</b>{s.techExperience}</span>
-                  <span><b>Gender</b>{s.gender}</span>
-                </div>
-              ) : (
-                <small>{s.experienceLevel} — {s.learningGoal}</small>
-              )}
+              <h3>{student.fullName}</h3>
+              <p>{student.email} · {student.phone || "No phone"}</p>
+              <small>{student.courseChoice || "DevOps Engineering"} · Applied {student.createdAt ? new Date(student.createdAt).toLocaleDateString() : "recently"}</small>
             </div>
-            <b className={`status ${s.status}`}>{s.status}</b>
-            {s.status === "pending" && (
-              <div className="review">
-                <button onClick={() => decide(s.id, "approved")}>
-                  Approve
-                </button>
-                <button onClick={() => decide(s.id, "rejected")}>Reject</button>
-              </div>
-            )}
+            <b className={`status ${student.status}`}>{student.status}</b>
+            <button className="profile-button" onClick={() => { setSelectedApplicant(student); setRejectionReason(student.rejectionReason || ""); }}>
+              View application
+            </button>
           </article>
-        ))
+        ))}
+      </div>
+      {pagination.pages > 1 && (
+        <nav className="application-pagination" aria-label="Application pages">
+          <button disabled={pagination.page === 1} onClick={() => setPage((value) => value - 1)}>Previous</button>
+          <span>Page {pagination.page} of {pagination.pages}</span>
+          <button disabled={pagination.page === pagination.pages} onClick={() => setPage((value) => value + 1)}>Next</button>
+        </nav>
       )}
-    </div>
+      {selectedApplicant && (
+        <div className="applicant-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedApplicant(null); }}>
+          <section className="applicant-panel" role="dialog" aria-modal="true" aria-labelledby="applicant-name">
+            <div className="applicant-panel-head">
+              <div><p className="eyebrow">Student application</p><h2 id="applicant-name">{selectedApplicant.fullName}</h2></div>
+              <button aria-label="Close application" onClick={() => setSelectedApplicant(null)}>×</button>
+            </div>
+            <b className={`status ${selectedApplicant.status}`}>{selectedApplicant.status}</b>
+            <div className="applicant-profile">
+              {[
+                ["Email", selectedApplicant.email], ["Phone", selectedApplicant.phone],
+                ["Gender", selectedApplicant.gender], ["Location", [selectedApplicant.stateCity, selectedApplicant.country].filter(Boolean).join(", ")],
+                ["Employment/Study", selectedApplicant.employmentStatus], ["Education", selectedApplicant.educationalLevel],
+                ["Course", selectedApplicant.courseChoice], ["Learning mode", selectedApplicant.learningMode],
+                ["Tech experience", selectedApplicant.techExperience], ["Applied", selectedApplicant.createdAt ? new Date(selectedApplicant.createdAt).toLocaleString() : "—"],
+              ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value || "—"}</strong></div>)}
+            </div>
+            {selectedApplicant.rejectionReason && selectedApplicant.status === "rejected" && (
+              <div className="rejection-record"><b>Rejection reason</b><p>{selectedApplicant.rejectionReason}</p></div>
+            )}
+            {selectedApplicant.status === "pending" ? (
+              <div className="applicant-decisions">
+                <button className="button approve-button" onClick={() => confirmDecision(selectedApplicant, "approved")}>Approve application</button>
+                <label>Reason for rejection<textarea value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} maxLength="500" placeholder="Explain why this application is not being approved." /></label>
+                <button className="button reject-button" disabled={!rejectionReason.trim()} onClick={() => { if (window.confirm(`Reject ${selectedApplicant.fullName}'s application?`)) decide(selectedApplicant, "rejected", rejectionReason); }}>Reject application</button>
+              </div>
+            ) : (
+              <button className="button light-border full" onClick={() => confirmDecision(selectedApplicant, "pending")}>Return to pending review</button>
+            )}
+          </section>
+        </div>
+      )}
+    </section>
   );
   return (
     <main className="dashboard">
@@ -1652,15 +1767,11 @@ function AdminDashboard({ user, logout }) {
             <div className="metrics">
               <article>
                 <span>Pending applications</span>
-                <strong>
-                  {students.filter((s) => s.status === "pending").length}
-                </strong>
+                <strong>{applicationSummary.pending}</strong>
               </article>
               <article>
                 <span>Approved students</span>
-                <strong>
-                  {students.filter((s) => s.status === "approved").length}
-                </strong>
+                <strong>{applicationSummary.approved}</strong>
               </article>
               <article>
                 <span>Active mentors</span>

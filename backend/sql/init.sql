@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS users (
   terms_accepted BOOLEAN NOT NULL DEFAULT FALSE,
   role ENUM('student', 'mentor', 'admin') NOT NULL DEFAULT 'student',
   status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+  rejection_reason VARCHAR(500),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );

@@ -102,19 +102,79 @@ app.get('/api/auth/me', requireAuth, async (req, res, next) => {
 
 app.get('/api/admin/students', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const [rows] = await pool.query("SELECT id, full_name AS fullName, first_name AS firstName, last_name AS lastName, email, phone, gender, country, state_city AS stateCity, employment_status AS employmentStatus, educational_level AS educationalLevel, course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience, experience_level AS experienceLevel, learning_goal AS learningGoal, status, created_at AS createdAt FROM users WHERE role = 'student' ORDER BY FIELD(status, 'pending', 'approved', 'rejected'), created_at DESC");
-    res.json(rows);
+    const search = String(req.query.search || '').trim().slice(0, 100);
+    const status = ['pending', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : '';
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = 10;
+    const where = ["role = 'student'"];
+    const params = [];
+    if (status) { where.push('status = ?'); params.push(status); }
+    if (search) {
+      where.push('(full_name LIKE ? OR email LIKE ? OR phone LIKE ?)');
+      const term = `%${search}%`;
+      params.push(term, term, term);
+    }
+    const [totals] = await pool.query("SELECT status, COUNT(*) AS count FROM users WHERE role = 'student' GROUP BY status");
+    const [countRows] = await pool.execute(`SELECT COUNT(*) AS count FROM users WHERE ${where.join(' AND ')}`, params);
+    const total = Number(countRows[0].count);
+    const pages = Math.max(1, Math.ceil(total / limit));
+    const currentPage = Math.min(page, pages);
+    const offset = (currentPage - 1) * limit;
+    const [students] = await pool.execute(
+      `SELECT id, full_name AS fullName, first_name AS firstName, last_name AS lastName, email, phone, gender,
+        country, state_city AS stateCity, employment_status AS employmentStatus, educational_level AS educationalLevel,
+        course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience,
+        experience_level AS experienceLevel, learning_goal AS learningGoal, status,
+        rejection_reason AS rejectionReason, created_at AS createdAt, updated_at AS updatedAt
+       FROM users WHERE ${where.join(' AND ')}
+       ORDER BY FIELD(status, 'pending', 'approved', 'rejected'), created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+      params
+    );
+    const summary = { total: 0, pending: 0, approved: 0, rejected: 0 };
+    for (const row of totals) { summary[row.status] = Number(row.count); summary.total += Number(row.count); }
+    res.json({ students, summary, pagination: { page: currentPage, pages, total, limit } });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/admin/students/export', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const search = String(req.query.search || '').trim().slice(0, 100);
+    const status = ['pending', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : '';
+    const where = ["role = 'student'"];
+    const params = [];
+    if (status) { where.push('status = ?'); params.push(status); }
+    if (search) {
+      where.push('(full_name LIKE ? OR email LIKE ? OR phone LIKE ?)');
+      const term = `%${search}%`;
+      params.push(term, term, term);
+    }
+    const [rows] = await pool.execute(
+      `SELECT full_name, email, phone, gender, country, state_city, employment_status, educational_level,
+        course_choice, learning_mode, tech_experience, status, rejection_reason, created_at
+       FROM users WHERE ${where.join(' AND ')} ORDER BY created_at DESC`, params
+    );
+    const columns = ['full_name','email','phone','gender','country','state_city','employment_status','educational_level','course_choice','learning_mode','tech_experience','status','rejection_reason','created_at'];
+    const csvCell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const csv = [columns.join(','), ...rows.map(row => columns.map(column => csvCell(row[column])).join(','))].join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="livingworth-applications-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
   } catch (error) { next(error); }
 });
 
 app.patch('/api/admin/students/:id/status', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { status } = req.body;
-    if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ message: 'Choose approved or rejected.' });
-    const [result] = await pool.execute("UPDATE users SET status = ? WHERE id = ? AND role = 'student'", [status, req.params.id]);
+    const rejectionReason = String(req.body.rejectionReason || '').trim().slice(0, 500);
+    if (!['pending', 'approved', 'rejected'].includes(status)) return res.status(400).json({ message: 'Choose pending, approved or rejected.' });
+    if (status === 'rejected' && !rejectionReason) return res.status(400).json({ message: 'Add a reason before rejecting this application.' });
+    const [result] = await pool.execute(
+      "UPDATE users SET status = ?, rejection_reason = ? WHERE id = ? AND role = 'student'",
+      [status, status === 'rejected' ? rejectionReason : null, req.params.id]
+    );
     if (!result.affectedRows) return res.status(404).json({ message: 'Student not found.' });
     const [students] = await pool.execute("SELECT full_name AS fullName, email FROM users WHERE id = ?", [req.params.id]);
-    if (students[0]) void sendApplicationDecision(students[0], status);
+    if (students[0] && status !== 'pending') void sendApplicationDecision(students[0], status);
     res.json({ message: `Student ${status}.` });
   } catch (error) { next(error); }
 });
@@ -245,6 +305,7 @@ async function start() {
     country: 'VARCHAR(80) NULL', state_city: 'VARCHAR(120) NULL', employment_status: 'VARCHAR(100) NULL',
     educational_level: 'VARCHAR(80) NULL', course_choice: 'VARCHAR(120) NULL', learning_mode: 'VARCHAR(60) NULL',
     tech_experience: 'VARCHAR(100) NULL', terms_accepted: 'BOOLEAN NOT NULL DEFAULT FALSE'
+    , rejection_reason: 'VARCHAR(500) NULL'
   };
   const [existingColumns] = await pool.query('SHOW COLUMNS FROM users');
   const existingNames = new Set(existingColumns.map(column => column.Field));
