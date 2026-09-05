@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import { createServer } from 'node:http';
 import { Server as SocketServer } from 'socket.io';
 import { pool } from './db.js';
-import { createToken, requireAdmin, requireAuth, verifyToken } from './auth.js';
+import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } from './auth.js';
 import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
 
 const app = express();
@@ -67,7 +67,8 @@ app.post('/api/auth/login', async (req, res, next) => {
     if (!user || !(await bcrypt.compare(password || '', user.password_hash))) {
       return res.status(401).json({ message: 'Incorrect email or password.' });
     }
-    if (portal !== user.role) return res.status(403).json({ message: `Please use the ${user.role} login.` });
+    if (!['student', 'mentor', 'admin'].includes(portal)) return res.status(400).json({ message: 'Choose a valid portal.' });
+    if (portal !== user.role) return res.status(403).json({ message: `This account belongs in the ${user.role} portal.` });
     if (user.role === 'student' && user.status !== 'approved') {
       return res.status(403).json({ message: user.status === 'pending' ? 'Your registration is awaiting administrator approval.' : 'Your registration was not approved.' });
     }
@@ -100,7 +101,36 @@ app.patch('/api/admin/students/:id/status', requireAuth, requireAdmin, async (re
   } catch (error) { next(error); }
 });
 
-registerQuizRoutes(app, pool, requireAuth, requireAdmin);
+app.get('/api/staff/students', requireAuth, requireStaff, async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query("SELECT id, full_name AS fullName, email, phone, experience_level AS experienceLevel, learning_goal AS learningGoal, status, created_at AS createdAt FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name");
+    res.json(rows);
+  } catch (error) { next(error); }
+});
+
+app.get('/api/admin/mentors', requireAuth, requireAdmin, async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query("SELECT id, full_name AS fullName, email, phone, status, created_at AS createdAt FROM users WHERE role = 'mentor' ORDER BY created_at DESC");
+    res.json(rows);
+  } catch (error) { next(error); }
+});
+
+app.post('/api/admin/mentors', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const { fullName, email, phone = '', password } = req.body;
+    if (!fullName?.trim() || !email?.trim() || !password) return res.status(400).json({ message: 'Name, email and temporary password are required.' });
+    if (password.length < 8) return res.status(400).json({ message: 'Temporary password must contain at least 8 characters.' });
+    const normalEmail = email.trim().toLowerCase();
+    const passwordHash = await bcrypt.hash(password, 12);
+    await pool.execute("INSERT INTO users (full_name, email, password_hash, phone, role, status) VALUES (?, ?, ?, ?, 'mentor', 'approved')", [fullName.trim(), normalEmail, passwordHash, phone.trim()]);
+    res.status(201).json({ message: 'Mentor account created.' });
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'An account already exists for this email.' });
+    next(error);
+  }
+});
+
+registerQuizRoutes(app, pool, requireAuth, requireStaff);
 configureQuizSockets(io, pool, verifyToken);
 
 app.post('/api/enquiries', async (req, res, next) => {
@@ -125,6 +155,9 @@ app.use((error, _req, res, _next) => {
 });
 
 async function start() {
+  // Keep long-lived Docker volumes compatible with new portal releases. The
+  // init script only runs when MySQL creates a volume for the first time.
+  await pool.query("ALTER TABLE users MODIFY role ENUM('student', 'mentor', 'admin') NOT NULL DEFAULT 'student'");
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (adminEmail && adminPassword) {
@@ -134,6 +167,17 @@ async function start() {
        VALUES ('Livingworth Administrator', ?, ?, 'admin', 'approved')
        ON DUPLICATE KEY UPDATE role = 'admin', status = 'approved', password_hash = VALUES(password_hash)`,
       [adminEmail, passwordHash]
+    );
+  }
+  const mentorEmail = process.env.MENTOR_EMAIL?.trim().toLowerCase();
+  const mentorPassword = process.env.MENTOR_PASSWORD;
+  if (mentorEmail && mentorPassword) {
+    const passwordHash = await bcrypt.hash(mentorPassword, 12);
+    await pool.execute(
+      `INSERT INTO users (full_name, email, password_hash, role, status)
+       VALUES (?, ?, ?, 'mentor', 'approved')
+       ON DUPLICATE KEY UPDATE role = 'mentor', status = 'approved', password_hash = VALUES(password_hash)`,
+      [process.env.MENTOR_NAME?.trim() || 'Livingworth Mentor', mentorEmail, passwordHash]
     );
   }
   httpServer.listen(port, '0.0.0.0', () => console.log(`Livingworth API and live quiz server listening on port ${port}`));

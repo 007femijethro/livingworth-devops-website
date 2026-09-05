@@ -47,14 +47,14 @@ async function createQuiz(pool, adminId, title, questions) {
   finally { connection.release(); }
 }
 
-export function registerQuizRoutes(app, pool, requireAuth, requireAdmin) {
-  app.get('/api/admin/quizzes', requireAuth, requireAdmin, async (_req, res, next) => {
+export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
+  app.get('/api/admin/quizzes', requireAuth, requireStaff, async (_req, res, next) => {
     try { const [rows] = await pool.query('SELECT q.id, q.title, q.join_code AS joinCode, q.status, COUNT(qq.id) AS questionCount FROM quizzes q LEFT JOIN quiz_questions qq ON qq.quiz_id=q.id GROUP BY q.id ORDER BY q.created_at DESC'); res.json(rows); } catch (e) { next(e); }
   });
-  app.post('/api/admin/quizzes', requireAuth, requireAdmin, async (req, res, next) => {
+  app.post('/api/admin/quizzes', requireAuth, requireStaff, async (req, res, next) => {
     try { res.status(201).json(await createQuiz(pool, req.user.id, req.body.title, req.body.questions)); } catch (e) { if (e.message.includes('required') || e.message.includes('incomplete')) return res.status(400).json({message:e.message}); next(e); }
   });
-  app.post('/api/admin/quizzes/import', requireAuth, requireAdmin, async (req, res, next) => {
+  app.post('/api/admin/quizzes/import', requireAuth, requireStaff, async (req, res, next) => {
     try { res.status(201).json(await createQuiz(pool, req.user.id, req.query.title || 'Imported DevOps Quiz', parseCsv(req.body))); } catch (e) { return res.status(400).json({message:e.message}); }
   });
   app.get('/api/quizzes/active', requireAuth, async (_req, res, next) => {
@@ -81,7 +81,7 @@ export function configureQuizSockets(io, pool, verifyToken) {
   };
   io.on('connection', socket => {
     socket.on('quiz:join', async ({joinCode}, ack=()=>{}) => { try { const [rows]=await pool.execute("SELECT id,title,status FROM quizzes WHERE join_code=? AND status IN ('draft','lobby','live')",[String(joinCode||'').toUpperCase()]);if(!rows.length)throw new Error('Quiz room not found.');const quiz=rows[0];socket.join(`quiz:${quiz.id}`);socket.data.quizId=quiz.id;if(quiz.status==='draft')await pool.execute("UPDATE quizzes SET status='lobby' WHERE id=?",[quiz.id]);ack({ok:true,quiz:{id:quiz.id,title:quiz.title,status:quiz.status==='draft'?'lobby':quiz.status}});io.to(`quiz:${quiz.id}`).emit('quiz:presence',{count:(await io.in(`quiz:${quiz.id}`).fetchSockets()).length});}catch(e){ack({ok:false,message:e.message})} });
-    socket.on('quiz:start', async ({quizId}, ack=()=>{}) => { try { if(socket.user.role!=='admin')throw new Error('Administrator access required.');const [rows]=await pool.execute('SELECT id,prompt,options_json AS options,correct_index AS correctIndex FROM quiz_questions WHERE quiz_id=? ORDER BY sequence_no',[quizId]);const questions=rows.map(q=>({...q,options:typeof q.options==='string'?JSON.parse(q.options):q.options}));if(!questions.length)throw new Error('This quiz has no questions.');await pool.execute("UPDATE quizzes SET status='live' WHERE id=?",[quizId]);const state={questions,index:0,answers:new Map(),questionAnswers:new Set(),startedAt:0,timer:null};rooms.set(Number(quizId),state);io.to(`quiz:${quizId}`).emit('quiz:started',{questionCount:questions.length});sendQuestion(Number(quizId));ack({ok:true});}catch(e){ack({ok:false,message:e.message})} });
+    socket.on('quiz:start', async ({quizId}, ack=()=>{}) => { try { if(!['admin','mentor'].includes(socket.user.role))throw new Error('Staff access required.');const [rows]=await pool.execute('SELECT id,prompt,options_json AS options,correct_index AS correctIndex FROM quiz_questions WHERE quiz_id=? ORDER BY sequence_no',[quizId]);const questions=rows.map(q=>({...q,options:typeof q.options==='string'?JSON.parse(q.options):q.options}));if(!questions.length)throw new Error('This quiz has no questions.');await pool.execute("UPDATE quizzes SET status='live' WHERE id=?",[quizId]);const state={questions,index:0,answers:new Map(),questionAnswers:new Set(),startedAt:0,timer:null};rooms.set(Number(quizId),state);io.to(`quiz:${quizId}`).emit('quiz:started',{questionCount:questions.length});sendQuestion(Number(quizId));ack({ok:true});}catch(e){ack({ok:false,message:e.message})} });
     socket.on('quiz:answer', async ({quizId,questionId,answerIndex}, ack=()=>{}) => { try { if(socket.user.role!=='student'||socket.user.status!=='approved')throw new Error('Approved student access required.');const state=rooms.get(Number(quizId));const q=state?.questions[state.index];if(!state||!q||q.id!==questionId||Date.now()>state.startedAt+QUESTION_MS)throw new Error('This question is closed.');const key=`${questionId}:${socket.user.id}`;if(state.questionAnswers.has(key))throw new Error('Answer already submitted.');state.questionAnswers.add(key);const responseMs=Date.now()-state.startedAt,correct=Number(answerIndex)===q.correctIndex;state.answers.set(key,{studentId:socket.user.id,correct,responseMs});await pool.execute('INSERT INTO quiz_answers (quiz_id,question_id,student_id,answer_index,is_correct,response_ms) VALUES (?,?,?,?,?,?)',[quizId,questionId,socket.user.id,answerIndex,correct,responseMs]);ack({ok:true});}catch(e){ack({ok:false,message:e.message})} });
   });
 }

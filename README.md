@@ -2,7 +2,7 @@
 
 A complete full-stack starter for the Livingworth Academy website.
 
-The portal includes student registration, administrator approval, separate student and admin sign-in, protected dashboards, and role-based API access.
+The portal includes student registration, administrator approval, separate student, mentor and administrator sign-in, protected dashboards, and role-based API access. Administrators can create mentor accounts; mentors can view approved learners and run live quizzes.
 
 The public experience presents Livingworth Academy's 12-week DevOps Engineering Bootcamp, including its 54-class-day roadmap, Monday/Wednesday/Friday class rhythm, toolchain, cumulative practical projects, learner expectations and final capstone.
 
@@ -32,7 +32,9 @@ docker compose up -d --build
 
 Open `http://YOUR_SERVER_IP`. The API health endpoint is available at `/api/health`.
 
-The initial administrator uses `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env`. Change these values before starting. Student accounts remain pending until approved in the administrator portal.
+The initial administrator uses `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env`. The optional first mentor uses `MENTOR_NAME`, `MENTOR_EMAIL` and `MENTOR_PASSWORD`. Change these values before starting. Student accounts remain pending until approved in the administrator portal.
+
+Existing MySQL volumes are upgraded automatically when the backend starts, so adding the mentor portal does not require deleting academy data.
 
 ## Useful commands
 

@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone VARCHAR(40),
   experience_level VARCHAR(60),
   learning_goal TEXT,
-  role ENUM('student', 'admin') NOT NULL DEFAULT 'student',
+  role ENUM('student', 'mentor', 'admin') NOT NULL DEFAULT 'student',
   status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

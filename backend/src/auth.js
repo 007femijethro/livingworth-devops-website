@@ -25,3 +25,10 @@ export function requireAdmin(req, res, next) {
   if (req.user?.role !== 'admin') return res.status(403).json({ message: 'Administrator access required.' });
   next();
 }
+
+export function requireStaff(req, res, next) {
+  if (!['admin', 'mentor'].includes(req.user?.role)) {
+    return res.status(403).json({ message: 'Staff access required.' });
+  }
+  next();
+}
