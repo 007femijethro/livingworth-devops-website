@@ -7,6 +7,7 @@ import './quiz.css';
 import './enhancements.css';
 import './attendance.css';
 import './student-progress.css';
+import './announcements.css';
 import './application.css';
 import './learning.css';
 

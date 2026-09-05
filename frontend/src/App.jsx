@@ -882,13 +882,13 @@ function Register({ navigate }) {
   );
 }
 
-function Sidebar({ role, active, onSelect, logout }) {
+function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0 }) {
   const items =
     role === "admin"
-      ? ["Overview", "Applications", "Mentors", "Learning", "Attendance", "Live quiz"]
+      ? ["Overview", "Applications", "Mentors", "Announcements", "Learning", "Attendance", "Live quiz"]
       : role === "mentor"
-        ? ["Overview", "Learners", "Learning", "Attendance", "Live quiz"]
-        : ["Overview", "Programme", "Learning", "Attendance", "Live quiz"];
+        ? ["Overview", "Learners", "Announcements", "Learning", "Attendance", "Live quiz"]
+        : ["Overview", "Announcements", "Programme", "Learning", "Attendance", "Live quiz"];
   return (
     <aside className="sidebar">
       <Logo />
@@ -900,7 +900,7 @@ function Sidebar({ role, active, onSelect, logout }) {
             className={active === item ? "active" : ""}
             onClick={() => onSelect(item)}
           >
-            {item}
+            <span>{item}</span>{item === "Announcements" && unreadAnnouncements > 0 && <b className="nav-count">{unreadAnnouncements}</b>}
           </button>
         ))}
       </nav>
@@ -1314,13 +1314,14 @@ function nextClassSession() {
   return null;
 }
 
-function StudentProgressOverview({ user, onNavigate }) {
-  const [data, setData] = useState({ learning: null, attendance: null, quizzes: null });
+function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
+  const [data, setData] = useState({ learning: null, attendance: null, quizzes: null, announcements: null });
   const [message, setMessage] = useState("Loading your progress…");
   useEffect(() => {
-    Promise.all([api("/student/learning"), api("/student/attendance"), api("/student/quiz-results")])
-      .then(([learning, attendance, quizzes]) => {
-        setData({ learning, attendance, quizzes });
+    Promise.all([api("/student/learning"), api("/student/attendance"), api("/student/quiz-results"), api("/announcements")])
+      .then(([learning, attendance, quizzes, announcements]) => {
+        setData({ learning, attendance, quizzes, announcements });
+        onUnreadChange(announcements.unreadCount);
         setMessage("");
       })
       .catch((error) => setMessage(error.message));
@@ -1344,6 +1345,7 @@ function StudentProgressOverview({ user, onNavigate }) {
       </div>
       {message && <div className="progress-loading">{message}</div>}
       {!message && <>
+        {data.announcements.announcements[0] && <button className="dashboard-announcement" onClick={() => onNavigate("Announcements")}><span>{data.announcements.announcements[0].category}</span><div><strong>{data.announcements.announcements[0].title}</strong><p>{data.announcements.announcements[0].message}</p></div><b>View update</b></button>}
         <div className="progress-metrics">
           <button onClick={() => onNavigate("Attendance")}><span>Attendance</span><strong>{data.attendance.summary.percentage}%</strong><small>{data.attendance.summary.attended} of {data.attendance.summary.total} counted sessions</small></button>
           <button onClick={() => onNavigate("Learning")}><span>Assignments</span><strong>{data.learning.progress.percentage}%</strong><small>{data.learning.progress.completed} of {data.learning.progress.total} completed</small></button>
@@ -1374,8 +1376,59 @@ function StudentProgressOverview({ user, onNavigate }) {
   );
 }
 
+function AnnouncementsCenter({ mode, demo = false, onUnreadChange = () => {} }) {
+  const staff = mode === "staff";
+  const [announcements, setAnnouncements] = useState([]);
+  const [message, setMessage] = useState(demo ? "Connect the backend to publish announcements." : "");
+  async function load() {
+    if (demo) return;
+    try {
+      const data = await api("/announcements");
+      setAnnouncements(data.announcements);
+      onUnreadChange(data.unreadCount);
+    } catch (error) { setMessage(error.message); }
+  }
+  useEffect(() => { load(); }, [mode, demo]);
+  async function publish(event) {
+    event.preventDefault();
+    try {
+      const data = await api("/staff/announcements", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) });
+      setMessage(data.message); event.currentTarget.reset(); load();
+    } catch (error) { setMessage(error.message); }
+  }
+  async function markRead(announcement) {
+    if (announcement.readAt) return;
+    try { await api(`/announcements/${announcement.id}/read`, { method: "POST" }); load(); }
+    catch (error) { setMessage(error.message); }
+  }
+  async function remove(announcement) {
+    if (!window.confirm(`Delete “${announcement.title}”?`)) return;
+    try { const data = await api(`/staff/announcements/${announcement.id}`, { method: "DELETE" }); setMessage(data.message); load(); }
+    catch (error) { setMessage(error.message); }
+  }
+  return <section className="announcements-center">
+    <div className="announcements-head"><div><p className="eyebrow">Academy updates</p><h2>{staff ? "Publish announcements" : "Announcements"}</h2><p>{staff ? "Share class information with every learner." : "Class reminders, links and important programme updates."}</p></div></div>
+    <p className="form-message success">{message}</p>
+    {staff && !demo && <form className="announcement-form" onSubmit={publish}>
+      <label>Title<input name="title" maxLength="180" required /></label>
+      <label>Category<select name="category"><option value="general">General update</option><option value="class">Class reminder</option><option value="quiz">Quiz</option><option value="assignment">Assignment</option></select></label>
+      <label className="announcement-message">Message<textarea name="message" rows="4" required /></label>
+      <label>Meeting or resource link<input name="meetingLink" type="url" placeholder="https://…" /></label>
+      <label>Expires (optional)<input name="expiresAt" type="datetime-local" /></label>
+      <button className="button primary">Publish announcement</button>
+    </form>}
+    <div className="announcement-list">{announcements.length === 0 ? <div className="empty">No announcements yet.</div> : announcements.map((announcement) => <article key={announcement.id} className={`${announcement.readAt ? "read" : "unread"} ${announcement.expired ? "expired" : ""}`}>
+      <div className="announcement-meta"><b>{announcement.category}</b><span>{new Date(announcement.createdAt).toLocaleString("en-GB")}</span>{announcement.expired && <strong>Expired</strong>}</div>
+      <h3>{announcement.title}</h3><p>{announcement.message}</p>
+      <footer><span>Posted by {announcement.authorName}{announcement.expiresAt ? ` · Expires ${new Date(announcement.expiresAt).toLocaleString("en-GB")}` : ""}</span><div>{announcement.meetingLink && <a className="button gold" href={announcement.meetingLink} target="_blank" rel="noreferrer">Open link</a>}{!staff && !announcement.readAt && <button className="button light-border" onClick={() => markRead(announcement)}>Mark as read</button>}{staff && <button className="delete-announcement" onClick={() => remove(announcement)}>Delete</button>}</div></footer>
+    </article>)}</div>
+  </section>;
+}
+
 function StudentDashboard({ user, logout }) {
   const [active, setActive] = useState("Overview");
+  const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
+  useEffect(() => { api("/announcements").then((data) => setUnreadAnnouncements(data.unreadCount)).catch(() => {}); }, []);
   return (
     <main className="dashboard">
       <Sidebar
@@ -1383,9 +1436,11 @@ function StudentDashboard({ user, logout }) {
         active={active}
         onSelect={setActive}
         logout={logout}
+        unreadAnnouncements={unreadAnnouncements}
       />
       <section className="dash-main">
-        {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} />}
+        {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} onUnreadChange={setUnreadAnnouncements} />}
+        {active === "Announcements" && <AnnouncementsCenter mode="student" onUnreadChange={setUnreadAnnouncements} />}
         {active === "Programme" && (
           <section className="portal-path">
             <p className="eyebrow">Your learning path</p>
@@ -2145,6 +2200,7 @@ function AdminDashboard({ user, logout }) {
           </>
         )}
         {active === "Applications" && applications}
+        {active === "Announcements" && <AnnouncementsCenter mode="staff" demo={user.demo} />}
         {active === "Mentors" &&
           (user.demo ? (
             <div className="empty">
@@ -2262,6 +2318,7 @@ function MentorDashboard({ user, logout }) {
             </div>
           </>
         )}
+        {active === "Announcements" && <AnnouncementsCenter mode="staff" />}
         {active === "Learners" && (
           <div className="student-list">
             {students.length === 0 ? (

@@ -10,6 +10,7 @@ import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } fro
 import { configureQuizSockets, ensureQuizSchema, registerQuizRoutes } from './quiz.js';
 import { sendApplicationDecision, sendApplicationEmails } from './mailer.js';
 import { ensureLearningSchema, registerLearningRoutes } from './learning.js';
+import { ensureAnnouncementSchema, registerAnnouncementRoutes } from './announcements.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -365,6 +366,7 @@ app.get('/api/staff/attendance/export', requireAuth, requireStaff, async (req, r
 
 registerQuizRoutes(app, pool, requireAuth, requireStaff);
 registerLearningRoutes(app, pool, requireAuth, requireStaff);
+registerAnnouncementRoutes(app, pool, requireAuth, requireStaff);
 configureQuizSockets(io, pool, verifyToken);
 
 app.post('/api/enquiries', async (req, res, next) => {
@@ -420,6 +422,7 @@ async function start() {
     FOREIGN KEY (marked_by) REFERENCES users(id)
   )`);
   await ensureLearningSchema(pool);
+  await ensureAnnouncementSchema(pool);
   await ensureQuizSchema(pool);
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;

@@ -122,6 +122,27 @@ CREATE TABLE IF NOT EXISTS attendance (
   FOREIGN KEY (marked_by) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS announcements (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(180) NOT NULL,
+  message TEXT NOT NULL,
+  category ENUM('general','class','quiz','assignment') NOT NULL DEFAULT 'general',
+  meeting_link VARCHAR(1000),
+  expires_at DATETIME NULL,
+  created_by INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS announcement_reads (
+  announcement_id INT NOT NULL,
+  user_id INT NOT NULL,
+  read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (announcement_id, user_id),
+  FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS learning_modules (
   id INT AUTO_INCREMENT PRIMARY KEY,
   week_number INT NOT NULL UNIQUE,
