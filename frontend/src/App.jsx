@@ -593,7 +593,8 @@ function Register({ navigate }) {
   const courses = ["DevOps Engineering"];
   async function submit(e) {
     e.preventDefault();
-    const values = Object.fromEntries(new FormData(e.currentTarget));
+    const form = e.currentTarget;
+    const values = Object.fromEntries(new FormData(form));
     if (values.country === "Other") values.country = values.otherCountry;
     if (values.password !== values.confirmPassword) {
       setMessage("Passwords do not match.");
@@ -606,8 +607,9 @@ function Register({ navigate }) {
         body: JSON.stringify(values),
       });
       setMessage(data.message);
+      form.reset();
+      setCountry("Nigeria");
       setDone(true);
-      e.currentTarget.reset();
     } catch (err) {
       setMessage(err.message);
     }
