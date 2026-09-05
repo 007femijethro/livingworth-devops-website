@@ -1391,6 +1391,57 @@ function StudentDashboard({ user, logout }) {
   );
 }
 
+function QuizResults({ mode, onLive }) {
+  const staff = mode === "admin";
+  const [results, setResults] = useState(staff ? { attempts: [], summary: {}, topics: [], leaderboard: [] } : []);
+  const [quizzes, setQuizzes] = useState([]);
+  const [quizId, setQuizId] = useState("");
+  const [student, setStudent] = useState("");
+  const [selected, setSelected] = useState(null);
+  const [message, setMessage] = useState("");
+  async function load() {
+    try {
+      if (staff) {
+        const params = new URLSearchParams();
+        if (quizId) params.set("quizId", quizId);
+        if (student) params.set("student", student);
+        setResults(await api(`/staff/quiz-results?${params}`));
+      } else setResults(await api("/student/quiz-results"));
+      setMessage("");
+    } catch (error) { setMessage(error.message); }
+  }
+  useEffect(() => {
+    load();
+    if (staff) api("/admin/quizzes").then(setQuizzes).catch(() => {});
+  }, [mode, quizId]);
+  async function openResult(id) {
+    try { setSelected(await api(`/student/quiz-results/${id}`)); }
+    catch (error) { setMessage(error.message); }
+  }
+  async function exportResults() {
+    const params = new URLSearchParams();
+    if (quizId) params.set("quizId", quizId);
+    if (student) params.set("student", student);
+    const response = await fetch(`/api/staff/quiz-results/export?${params}`, { headers: { Authorization: `Bearer ${localStorage.getItem("lw_token")}` } });
+    if (!response.ok) { setMessage("Could not export quiz results."); return; }
+    const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement("a");
+    link.href = url; link.download = "livingworth-quiz-results.csv"; link.click(); URL.revokeObjectURL(url);
+  }
+  if (selected) return <section className="quiz-results"><div className="quiz-mode-tabs"><button onClick={() => setSelected(null)}>← Quiz history</button></div><div className="result-detail-head"><div><p className="eyebrow">Answer review</p><h2>{selected.title}</h2><p>Attempt {selected.attemptNo} · {selected.correctCount}/{selected.totalQuestions} correct · Average response {(selected.averageResponseMs / 1000).toFixed(1)}s</p></div><strong>{Math.round(selected.correctCount * 100 / selected.totalQuestions)}%</strong></div><div className="answer-review">{selected.answers.map((answer) => <article key={answer.sequenceNo} className={answer.isCorrect ? "right" : "wrong"}><div><span>Question {answer.sequenceNo} · {answer.topic}</span><h3>{answer.prompt}</h3></div><p>Your answer: <b>{answer.options[answer.answerIndex]}</b></p><p>Correct answer: <b>{answer.options[answer.correctIndex]}</b></p><small>{(answer.responseMs / 1000).toFixed(1)} seconds</small></article>)}</div></section>;
+  return <section className="quiz-results">
+    <div className="quiz-mode-tabs"><button onClick={onLive}>Live quiz</button><button className="active">Results & history</button></div>
+    <div className="quiz-heading"><div><p className="eyebrow">Quiz performance</p><h2>{staff ? "Class results and insights" : "My quiz history"}</h2></div>{staff && <button className="button light-border" onClick={exportResults}>Export CSV</button>}</div>
+    <p className="form-message">{message}</p>
+    {staff ? <>
+      <form className="quiz-result-filters" onSubmit={(event) => { event.preventDefault(); load(); }}><label>Quiz<select value={quizId} onChange={(event) => setQuizId(event.target.value)}><option value="">All quizzes</option>{quizzes.map((quiz) => <option key={quiz.id} value={quiz.id}>{quiz.title}</option>)}</select></label><label>Student<input value={student} onChange={(event) => setStudent(event.target.value)} placeholder="Name or email" /></label><button className="button primary">Search</button></form>
+      <div className="quiz-result-metrics">{[["Attempts", results.summary.participants || 0], ["Class average", `${results.summary.average || 0}%`], ["Highest", `${results.summary.highest || 0}%`], ["Lowest", `${results.summary.lowest || 0}%`]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}</div>
+      {results.leaderboard?.length > 0 && <div className="leaderboard result-leaderboard"><h3>Class leaderboard</h3>{results.leaderboard.map((attempt, index) => <div key={attempt.id}><b>#{index + 1}</b><span>{attempt.studentName}</span><strong>{attempt.percentage}%</strong></div>)}</div>}
+      {results.topics.length > 0 && <div className="topic-performance"><h3>Performance by topic</h3>{results.topics.map((topic) => <div key={topic.topic}><span>{topic.topic}</span><div><i style={{ width: `${topic.percentage}%` }} /></div><strong>{topic.percentage}%</strong></div>)}</div>}
+      <div className="result-table">{results.attempts.length === 0 ? <div className="empty">No completed quiz results yet.</div> : results.attempts.map((attempt) => <article key={attempt.id} className={attempt.percentage < 50 ? "support-needed" : ""}><div><h3>{attempt.studentName}</h3><p>{attempt.title} · Attempt {attempt.attemptNo}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct</span><strong>{attempt.percentage}%</strong>{attempt.percentage < 50 && <b>Needs support</b>}</article>)}</div>
+    </> : <div className="student-result-list">{results.length === 0 ? <div className="empty">Your completed quizzes will appear here.</div> : results.map((attempt) => <article key={attempt.id}><div><h3>{attempt.title}</h3><p>Attempt {attempt.attemptNo} · {new Date(attempt.completedAt).toLocaleString()}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct</span><strong>{attempt.percentage}%</strong><button className="profile-button" onClick={() => openResult(attempt.id)}>Review answers</button></article>)}</div>}
+  </section>;
+}
+
 function QuizCenter({ mode, demo = false }) {
   const [socket, setSocket] = useState(null),
     [message, setMessage] = useState(""),
@@ -1401,10 +1452,11 @@ function QuizCenter({ mode, demo = false }) {
     [seconds, setSeconds] = useState(30),
     [submitted, setSubmitted] = useState(false),
     [reveal, setReveal] = useState(null),
-    [leaderboard, setLeaderboard] = useState([]);
+    [leaderboard, setLeaderboard] = useState([]),
+    [view, setView] = useState("live");
   const [title, setTitle] = useState("DevOps Knowledge Check");
   const [questions, setQuestions] = useState([
-    { prompt: "", options: ["", "", "", ""], correctIndex: 0 },
+    { prompt: "", topic: "General", options: ["", "", "", ""], correctIndex: 0 },
   ]);
   const load = () =>
     api(mode === "admin" ? "/admin/quizzes" : "/quizzes/active")
@@ -1519,6 +1571,19 @@ function QuizCenter({ mode, demo = false }) {
       setMessage(err.message);
     }
   }
+  async function toggleRetakes(quiz) {
+    try {
+      const data = await api(`/admin/quizzes/${quiz.id}/settings`, { method: "PATCH", body: JSON.stringify({ allowRetakes: !quiz.allowRetakes }) });
+      setMessage(data.message); load();
+    } catch (error) { setMessage(error.message); }
+  }
+  async function openQuiz(quiz) {
+    try {
+      if (quiz.status === "completed") await api(`/admin/quizzes/${quiz.id}/reopen`, { method: "POST" });
+      join(quiz.joinCode);
+      load();
+    } catch (error) { setMessage(error.message); }
+  }
   if (demo)
     return (
       <section className="quiz-center">
@@ -1530,8 +1595,10 @@ function QuizCenter({ mode, demo = false }) {
         </div>
       </section>
     );
+  if (view === "results") return <QuizResults mode={mode} onLive={() => setView("live")} />;
   return (
     <section className="quiz-center">
+      <div className="quiz-mode-tabs"><button className="active">Live quiz</button><button onClick={() => setView("results")}>Results & history</button></div>
       <div className="quiz-heading">
         <div>
           <p className="eyebrow">Live DevOps quiz</p>
@@ -1585,6 +1652,12 @@ function QuizCenter({ mode, demo = false }) {
                   onChange={(e) => updateQuestion(qi, "prompt", e.target.value)}
                   required
                 />
+                <input
+                  placeholder="Topic, e.g. Linux or Git"
+                  value={q.topic}
+                  onChange={(e) => updateQuestion(qi, "topic", e.target.value)}
+                  required
+                />
                 {q.options.map((o, oi) => (
                   <label className="option-edit" key={oi}>
                     <input
@@ -1612,7 +1685,7 @@ function QuizCenter({ mode, demo = false }) {
                 onClick={() =>
                   setQuestions([
                     ...questions,
-                    { prompt: "", options: ["", "", "", ""], correctIndex: 0 },
+                    { prompt: "", topic: "General", options: ["", "", "", ""], correctIndex: 0 },
                   ])
                 }
               >
@@ -1625,9 +1698,9 @@ function QuizCenter({ mode, demo = false }) {
             <h3>Import questions from CSV</h3>
             <p>
               Columns: question, option 1, option 2, option 3, option 4, correct
-              answer number.
+              answer number, topic.
             </p>
-            <pre>question,option1,option2,option3,option4,correctAnswer</pre>
+            <pre>question,option1,option2,option3,option4,correctAnswer,topic</pre>
             <label className="button light-border file-button">
               Choose CSV
               <input
@@ -1652,10 +1725,14 @@ function QuizCenter({ mode, demo = false }) {
               </div>
               <button
                 className="button primary"
-                onClick={() => join(q.joinCode)}
+                onClick={() => openQuiz(q)}
               >
-                Open lobby
+                {q.status === "completed" ? "Reopen quiz" : "Open lobby"}
               </button>
+              <label className="retake-toggle">
+                <input type="checkbox" checked={Boolean(q.allowRetakes)} onChange={() => toggleRetakes(q)} />
+                Allow retakes
+              </label>
             </article>
           ))}
         </div>

@@ -7,7 +7,7 @@ import { createServer } from 'node:http';
 import { Server as SocketServer } from 'socket.io';
 import { pool } from './db.js';
 import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } from './auth.js';
-import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
+import { configureQuizSockets, ensureQuizSchema, registerQuizRoutes } from './quiz.js';
 import { sendApplicationDecision, sendApplicationEmails } from './mailer.js';
 import { ensureLearningSchema, registerLearningRoutes } from './learning.js';
 
@@ -420,6 +420,7 @@ async function start() {
     FOREIGN KEY (marked_by) REFERENCES users(id)
   )`);
   await ensureLearningSchema(pool);
+  await ensureQuizSchema(pool);
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (adminEmail && adminPassword) {

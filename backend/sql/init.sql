@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS quizzes (
   title VARCHAR(180) NOT NULL,
   join_code VARCHAR(8) NOT NULL UNIQUE,
   status ENUM('draft','lobby','live','completed') NOT NULL DEFAULT 'draft',
+  allow_retakes BOOLEAN NOT NULL DEFAULT FALSE,
   created_by INT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (created_by) REFERENCES users(id)
@@ -54,10 +55,41 @@ CREATE TABLE IF NOT EXISTS quiz_questions (
   id INT AUTO_INCREMENT PRIMARY KEY,
   quiz_id INT NOT NULL,
   prompt TEXT NOT NULL,
+  topic VARCHAR(120) NOT NULL DEFAULT 'General',
   options_json JSON NOT NULL,
   correct_index TINYINT NOT NULL,
   sequence_no INT NOT NULL,
   FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  quiz_id INT NOT NULL,
+  student_id INT NOT NULL,
+  attempt_no INT NOT NULL DEFAULT 1,
+  status ENUM('in_progress','completed') NOT NULL DEFAULT 'in_progress',
+  score INT NOT NULL DEFAULT 0,
+  correct_count INT NOT NULL DEFAULT 0,
+  total_questions INT NOT NULL DEFAULT 0,
+  average_response_ms INT NOT NULL DEFAULT 0,
+  started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  completed_at TIMESTAMP NULL,
+  UNIQUE KEY one_numbered_attempt (quiz_id, student_id, attempt_no),
+  FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS quiz_attempt_answers (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  attempt_id BIGINT NOT NULL,
+  question_id INT NOT NULL,
+  answer_index TINYINT NOT NULL,
+  is_correct BOOLEAN NOT NULL,
+  response_ms INT NOT NULL,
+  answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY one_attempt_answer (attempt_id, question_id),
+  FOREIGN KEY (attempt_id) REFERENCES quiz_attempts(id) ON DELETE CASCADE,
+  FOREIGN KEY (question_id) REFERENCES quiz_questions(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS quiz_answers (
