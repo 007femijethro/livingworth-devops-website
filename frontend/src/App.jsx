@@ -590,26 +590,7 @@ function Register({ navigate }) {
   const [message, setMessage] = useState("");
   const [done, setDone] = useState(false);
   const [country, setCountry] = useState("Nigeria");
-  const courses = [
-    "AI & Automation",
-    "Cybersecurity",
-    "Data Analytics",
-    "Cloud Computing",
-    "Product Design (UI & UX)",
-    "Digital Marketing",
-    "Product Management",
-    "Becoming an Influencer (Content Creation)",
-    "Graphics Design",
-    "Software Development",
-    "Virtual Assistant",
-    "DevOps Engineering",
-    "Social Media Marketing",
-    "Frontend Development",
-    "Backend Development",
-    "Data Science",
-    "Project Management",
-    "Product Marketing",
-  ];
+  const courses = ["DevOps Engineering"];
   async function submit(e) {
     e.preventDefault();
     const values = Object.fromEntries(new FormData(e.currentTarget));
@@ -773,7 +754,7 @@ function Register({ navigate }) {
           <span>03</span>
           <div>
             <h3>Course preference</h3>
-            <p>Choose the learning path and format that suit you.</p>
+            <p>Choose the learning format that suits you.</p>
           </div>
         </div>
         <label className="wide">
