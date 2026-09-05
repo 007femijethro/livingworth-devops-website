@@ -42,6 +42,9 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       ADMIN_NOTIFICATION_EMAIL: ${ADMIN_NOTIFICATION_EMAIL:-}
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - learning_uploads:/app/uploads
     depends_on:
       mysql:
         condition: service_healthy
@@ -67,6 +70,7 @@ services:
 
 volumes:
   mysql_data:
+  learning_uploads:
 
 networks:
   livingworth:

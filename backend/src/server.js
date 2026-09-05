@@ -9,6 +9,7 @@ import { pool } from './db.js';
 import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } from './auth.js';
 import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
 import { sendApplicationDecision, sendApplicationEmails } from './mailer.js';
+import { ensureLearningSchema, registerLearningRoutes } from './learning.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -19,6 +20,7 @@ app.use(helmet());
 app.use(cors());
 app.use('/api/admin/quizzes/import', express.text({ type: ['text/csv', 'text/plain'], limit: '2mb' }));
 app.use(express.json());
+app.use('/uploads', express.static(process.env.UPLOAD_DIR || '/app/uploads'));
 
 app.get('/api/health', async (_req, res) => {
   try {
@@ -362,6 +364,7 @@ app.get('/api/staff/attendance/export', requireAuth, requireStaff, async (req, r
 });
 
 registerQuizRoutes(app, pool, requireAuth, requireStaff);
+registerLearningRoutes(app, pool, requireAuth, requireStaff);
 configureQuizSockets(io, pool, verifyToken);
 
 app.post('/api/enquiries', async (req, res, next) => {
@@ -382,6 +385,8 @@ app.post('/api/enquiries', async (req, res, next) => {
 
 app.use((error, _req, res, _next) => {
   console.error(error);
+  if (error.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ message: 'The file is larger than 10 MB.' });
+  if (error.message?.startsWith('Upload a PDF')) return res.status(400).json({ message: error.message });
   res.status(500).json({ message: 'Something went wrong.' });
 });
 
@@ -414,6 +419,7 @@ async function start() {
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (marked_by) REFERENCES users(id)
   )`);
+  await ensureLearningSchema(pool);
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (adminEmail && adminPassword) {

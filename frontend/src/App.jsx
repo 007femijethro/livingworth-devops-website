@@ -885,10 +885,10 @@ function Register({ navigate }) {
 function Sidebar({ role, active, onSelect, logout }) {
   const items =
     role === "admin"
-      ? ["Overview", "Applications", "Mentors", "Attendance", "Live quiz"]
+      ? ["Overview", "Applications", "Mentors", "Learning", "Attendance", "Live quiz"]
       : role === "mentor"
-        ? ["Overview", "Learners", "Attendance", "Live quiz"]
-        : ["Overview", "Programme", "Attendance", "Live quiz"];
+        ? ["Overview", "Learners", "Learning", "Attendance", "Live quiz"]
+        : ["Overview", "Programme", "Learning", "Attendance", "Live quiz"];
   return (
     <aside className="sidebar">
       <Logo />
@@ -1205,8 +1205,110 @@ function AttendanceCenter({ mode, demo = false }) {
   );
 }
 
+function submissionLabel(status) {
+  return status ? status.replaceAll("_", " ") : "Not started";
+}
+
+function LearningCenter({ mode, demo = false }) {
+  const staff = mode === "staff";
+  const [modules, setModules] = useState([]);
+  const [submissions, setSubmissions] = useState([]);
+  const [progress, setProgress] = useState({ completed: 0, total: 0, percentage: 0 });
+  const [message, setMessage] = useState("");
+  const [selectedModule, setSelectedModule] = useState(null);
+  const [view, setView] = useState("modules");
+  async function load() {
+    if (demo) { setMessage("Connect the backend to manage learning content."); return; }
+    try {
+      const data = await api(staff ? "/staff/learning" : "/student/learning");
+      setModules(data.modules || []);
+      setSubmissions(data.submissions || []);
+      if (data.progress) setProgress(data.progress);
+      setMessage("");
+    } catch (error) { setMessage(error.message); }
+  }
+  useEffect(() => { load(); }, [mode, demo]);
+  async function createModule(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+      const values = Object.fromEntries(new FormData(form));
+      const data = await api("/staff/learning/modules", { method: "POST", body: JSON.stringify({ ...values, published: values.published === "on" }) });
+      setMessage(data.message); form.reset(); load();
+    } catch (error) { setMessage(error.message); }
+  }
+  async function togglePublished(module) {
+    try {
+      const data = await api(`/staff/learning/modules/${module.id}`, { method: "PATCH", body: JSON.stringify({ published: !module.published }) });
+      setMessage(data.message); load();
+    } catch (error) { setMessage(error.message); }
+  }
+  async function addMaterial(event, moduleId) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+      const response = await fetch(`/api/staff/learning/modules/${moduleId}/materials`, {
+        method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("lw_token")}` }, body: new FormData(form),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Could not add material.");
+      setMessage(data.message); form.reset(); load();
+    } catch (error) { setMessage(error.message); }
+  }
+  async function addAssignment(event, moduleId) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+      const data = await api(`/staff/learning/modules/${moduleId}/assignments`, { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      setMessage(data.message); form.reset(); load();
+    } catch (error) { setMessage(error.message); }
+  }
+  async function submitAssignment(event, assignmentId) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+      const data = await api(`/student/assignments/${assignmentId}/submission`, { method: "PUT", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      setMessage(data.message); load();
+    } catch (error) { setMessage(error.message); }
+  }
+  async function reviewSubmission(event, submissionId) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+      const data = await api(`/staff/submissions/${submissionId}/review`, { method: "PATCH", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      setMessage(data.message); load();
+    } catch (error) { setMessage(error.message); }
+  }
+  if (staff) return (
+    <section className="learning-center">
+      <div className="learning-head"><div><p className="eyebrow">Course workspace</p><h2>Learning & assignments</h2><p>Build the weekly programme, publish resources and review student work.</p></div><div className="learning-tabs"><button className={view === "modules" ? "active" : ""} onClick={() => setView("modules")}>Modules</button><button className={view === "submissions" ? "active" : ""} onClick={() => setView("submissions")}>Submissions ({submissions.filter((item) => item.status === "submitted").length})</button></div></div>
+      <p className="form-message success">{message}</p>
+      {view === "modules" && <div className="learning-staff-grid">
+        <form className="learning-form" onSubmit={createModule}><h3>Create weekly module</h3><label>Week number<input name="weekNumber" type="number" min="1" max="52" required /></label><label>Module title<input name="title" required /></label><label>Summary<textarea name="summary" rows="4" /></label><label className="inline-check"><input name="published" type="checkbox" /> Publish immediately</label><button className="button primary">Create module</button></form>
+        <div className="module-admin-list">{modules.length === 0 ? <div className="empty">No modules created yet.</div> : modules.map((module) => <article key={module.id} className={selectedModule === module.id ? "open" : ""}>
+          <div className="module-row"><span>Week {module.weekNumber}</span><div><h3>{module.title}</h3><p>{module.summary || "No summary yet."}</p></div><b className={`publish-state ${module.published ? "published" : "draft"}`}>{module.published ? "Published" : "Draft"}</b><button className="profile-button" onClick={() => setSelectedModule(selectedModule === module.id ? null : module.id)}>{selectedModule === module.id ? "Close" : "Manage"}</button></div>
+          {selectedModule === module.id && <div className="module-editor">
+            <div className="module-resources"><h4>Current content</h4>{module.materials.map((material) => <a key={material.id} href={material.resourceUrl} target="_blank" rel="noreferrer">{material.title} <small>{material.materialType}</small></a>)}{module.assignments.map((assignment) => <div key={assignment.id}><b>{assignment.title}</b><small>Due {new Date(assignment.dueAt).toLocaleString()}</small></div>)}</div>
+            <form onSubmit={(event) => addMaterial(event, module.id)}><h4>Add learning material</h4><label>Title<input name="title" required /></label><label>Type<select name="materialType"><option value="link">Resource link</option><option value="video">Video link</option></select></label><label>Resource URL<input name="resourceUrl" type="url" placeholder="https://…" /></label><label>Or upload a file<input name="file" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.zip" /></label><small>Maximum file size: 10 MB</small><button className="button light-border">Add material</button></form>
+            <form onSubmit={(event) => addAssignment(event, module.id)}><h4>Create assignment</h4><label>Title<input name="title" required /></label><label>Instructions<textarea name="instructions" rows="4" required /></label><label>Deadline<input name="dueAt" type="datetime-local" required /></label><label>Maximum score<input name="maxScore" type="number" min="1" max="1000" defaultValue="100" required /></label><button className="button light-border">Create assignment</button></form>
+            <button className="button primary full" onClick={() => togglePublished(module)}>{module.published ? "Return module to draft" : "Publish module to students"}</button>
+          </div>}
+        </article>)}</div>
+      </div>}
+      {view === "submissions" && <div className="submission-review-list">{submissions.length === 0 ? <div className="empty">No assignment submissions yet.</div> : submissions.map((submission) => <article key={submission.id}><div className="submission-heading"><div><span>{submission.assignmentTitle}</span><h3>{submission.studentName}</h3><p>{submission.email} · Submitted {new Date(submission.submittedAt).toLocaleString()}</p></div><div><b className={`work-status ${submission.status}`}>{submissionLabel(submission.status)}</b>{submission.isLate ? <b className="late-flag">Late</b> : null}</div></div><a href={submission.submissionUrl} target="_blank" rel="noreferrer">Open submitted project ↗</a>{submission.note && <p className="student-note">“{submission.note}”</p>}<form onSubmit={(event) => reviewSubmission(event, submission.id)}><label>Result<select name="status" defaultValue={submission.status === "completed" ? "completed" : "needs_correction"}><option value="needs_correction">Needs correction</option><option value="completed">Completed</option></select></label><label>Score<input name="score" type="number" min="0" max="1000" defaultValue={submission.score ?? ""} /></label><label className="review-feedback">Mentor feedback<textarea name="feedback" rows="3" defaultValue={submission.feedback || ""} required /></label><button className="button primary">Save review</button></form></article>)}</div>}
+    </section>
+  );
+  return (
+    <section className="learning-center student-learning"><div className="learning-head"><div><p className="eyebrow">DevOps programme</p><h2>Learning workspace</h2><p>Open your lessons, complete assignments and track mentor feedback.</p></div><div className="course-progress"><strong>{progress.percentage}%</strong><span>{progress.completed} of {progress.total} assignments completed</span></div></div><div className="progress-track"><span style={{ width: `${progress.percentage}%` }} /></div><p className="form-message success">{message}</p>{modules.length === 0 ? <div className="empty">Your learning modules will appear here when they are published.</div> : <div className="student-modules">{modules.map((module) => <article key={module.id}><div className="student-module-head"><span>Week {module.weekNumber}</span><div><h3>{module.title}</h3><p>{module.summary}</p></div></div>{module.materials.length > 0 && <div className="student-materials"><h4>Learning materials</h4>{module.materials.map((material) => <a key={material.id} href={material.resourceUrl} target="_blank" rel="noreferrer"><b>{material.materialType === "video" ? "▶" : "↗"}</b><span>{material.title}<small>{material.originalName || material.materialType}</small></span></a>)}</div>}{module.assignments.map((assignment) => <section className="student-assignment" key={assignment.id}><div className="assignment-title"><div><span>Assignment</span><h4>{assignment.title}</h4></div><b className={`work-status ${assignment.submissionStatus || "not-started"}`}>{submissionLabel(assignment.submissionStatus)}</b></div><p>{assignment.instructions}</p><small>Due {new Date(assignment.dueAt).toLocaleString()} · {assignment.maxScore} points</small>{assignment.isLate ? <b className="late-flag">Submitted late</b> : null}{assignment.feedback && <div className="mentor-feedback"><b>Mentor feedback</b><p>{assignment.feedback}</p>{assignment.score != null && <strong>Score: {assignment.score}/{assignment.maxScore}</strong>}</div>}<form onSubmit={(event) => submitAssignment(event, assignment.id)}><label>GitHub or project link<input name="submissionUrl" type="url" defaultValue={assignment.submissionUrl || ""} placeholder="https://github.com/…" required /></label><label>Note to your mentor<textarea name="note" rows="2" defaultValue={assignment.submissionNote || ""} /></label><button className="button primary">{assignment.submissionId ? "Resubmit assignment" : "Submit assignment"}</button></form></section>)}</article>)}</div>}</section>
+  );
+}
+
 function StudentDashboard({ user, logout }) {
   const [active, setActive] = useState("Overview");
+  const [learningProgress, setLearningProgress] = useState({ completed: 0, total: 0, percentage: 0 });
+  useEffect(() => {
+    api("/student/learning").then((data) => setLearningProgress(data.progress)).catch(() => {});
+  }, []);
   return (
     <main className="dashboard">
       <Sidebar
@@ -1247,10 +1349,9 @@ function StudentDashboard({ user, logout }) {
               </article>
               <article>
                 <span>Completion path</span>
-                <h3>Assignments + Capstone</h3>
+                <h3>{learningProgress.percentage}% complete</h3>
                 <p>
-                  Maintain GitHub evidence and complete the final end-to-end
-                  project.
+                  {learningProgress.completed} of {learningProgress.total} assignments completed.
                 </p>
               </article>
             </div>
@@ -1283,6 +1384,7 @@ function StudentDashboard({ user, logout }) {
           </section>
         )}
         {active === "Attendance" && <AttendanceCenter mode="student" />}
+        {active === "Learning" && <LearningCenter mode="student" />}
         {active === "Live quiz" && <QuizCenter mode="student" />}
       </section>
     </main>
@@ -1948,6 +2050,7 @@ function AdminDashboard({ user, logout }) {
         {active === "Attendance" && (
           <AttendanceCenter mode="staff" demo={user.demo} />
         )}{" "}
+        {active === "Learning" && <LearningCenter mode="staff" demo={user.demo} />}
         {active === "Live quiz" && <QuizCenter mode="admin" demo={user.demo} />}
       </section>
     </main>
@@ -2030,6 +2133,7 @@ function MentorDashboard({ user, logout }) {
           </div>
         )}
         {active === "Attendance" && <AttendanceCenter mode="staff" />}
+        {active === "Learning" && <LearningCenter mode="staff" />}
         {active === "Live quiz" && <QuizCenter mode="admin" />}
       </section>
     </main>

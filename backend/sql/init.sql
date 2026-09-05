@@ -89,6 +89,62 @@ CREATE TABLE IF NOT EXISTS attendance (
   FOREIGN KEY (marked_by) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS learning_modules (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  week_number INT NOT NULL UNIQUE,
+  title VARCHAR(180) NOT NULL,
+  summary TEXT,
+  published BOOLEAN NOT NULL DEFAULT FALSE,
+  created_by INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS learning_materials (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  module_id INT NOT NULL,
+  title VARCHAR(180) NOT NULL,
+  material_type ENUM('file','link','video') NOT NULL,
+  resource_url VARCHAR(1000) NOT NULL,
+  original_name VARCHAR(255),
+  uploaded_by INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (module_id) REFERENCES learning_modules(id) ON DELETE CASCADE,
+  FOREIGN KEY (uploaded_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS assignments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  module_id INT NOT NULL,
+  title VARCHAR(180) NOT NULL,
+  instructions TEXT NOT NULL,
+  due_at DATETIME NOT NULL,
+  max_score INT NOT NULL DEFAULT 100,
+  created_by INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (module_id) REFERENCES learning_modules(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS assignment_submissions (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  assignment_id INT NOT NULL,
+  student_id INT NOT NULL,
+  submission_url VARCHAR(1000) NOT NULL,
+  note TEXT,
+  status ENUM('submitted','needs_correction','completed') NOT NULL DEFAULT 'submitted',
+  score INT,
+  feedback TEXT,
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  reviewed_at TIMESTAMP NULL,
+  reviewed_by INT NULL,
+  UNIQUE KEY one_submission_per_assignment (assignment_id, student_id),
+  FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (reviewed_by) REFERENCES users(id)
+);
+
 INSERT INTO courses (title, description, duration, level) VALUES
   ('DevOps Engineering Bootcamp', 'A complete practical journey through Linux, Git, AWS, automation, Docker, Kubernetes, CI/CD and monitoring.', '12 weeks', 'Beginner–Intermediate'),
   ('Cloud & Infrastructure Automation', 'Build AWS environments and automate infrastructure with Ansible and Terraform.', 'Included', 'Practical track'),
