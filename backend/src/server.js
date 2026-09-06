@@ -13,6 +13,7 @@ import { sendApplicationDecision, sendApplicationEmails, sendPasswordReset } fro
 import { ensureLearningSchema, registerLearningRoutes } from './learning.js';
 import { ensureAnnouncementSchema, registerAnnouncementRoutes } from './announcements.js';
 import { registerAnalyticsRoutes } from './analytics.js';
+import { registerLearnerProfileRoutes } from './learner-profile.js';
 import { ensureNotificationSchema, notifyUser, registerNotificationRoutes } from './notifications.js';
 
 const app = express();
@@ -436,6 +437,7 @@ registerQuizRoutes(app, pool, requireAuth, requireStaff);
 registerLearningRoutes(app, pool, requireAuth, requireStaff);
 registerAnnouncementRoutes(app, pool, requireAuth, requireStaff);
 registerAnalyticsRoutes(app, pool, requireAuth, requireStaff);
+registerLearnerProfileRoutes(app, pool, requireAuth, requireStaff);
 registerNotificationRoutes(app, pool, requireAuth);
 configureQuizSockets(io, pool, verifyToken);
 

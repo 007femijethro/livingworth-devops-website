@@ -2036,7 +2036,108 @@ function QuizCenter({ mode, demo = false }) {
   );
 }
 
-function StaffAnalyticsOverview({ onNavigate, demo = false }) {
+function reportDate(value, includeTime = false) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("en-GB", includeTime
+    ? { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }
+    : { day: "numeric", month: "short", year: "numeric" });
+}
+
+function readableStatus(value) {
+  return value ? value.replaceAll("_", " ") : "Not started";
+}
+
+function LearnerProfilePanel({ studentId, onClose }) {
+  const [report, setReport] = useState(null);
+  const [message, setMessage] = useState("Loading learner report…");
+  useEffect(() => {
+    api(`/staff/students/${studentId}/profile`)
+      .then((data) => { setReport(data); setMessage(""); })
+      .catch((error) => setMessage(error.message));
+  }, [studentId]);
+
+  function downloadCsv() {
+    const escape = (value) => {
+      const text = String(value ?? "");
+      const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
+      return `"${safe.replaceAll('"', '""')}"`;
+    };
+    const rows = [
+      ["Livingworth Academy learner report"],
+      ["Learner", report.student.fullName], ["Email", report.student.email], ["Overall standing", report.standing.label],
+      ["Attendance", `${report.attendance.summary.percentage}%`], ["Materials completed", `${report.materials.summary.done}/${report.materials.summary.total}`],
+      ["Quiz average", `${report.quizzes.summary.average}%`], ["Overdue assignments", report.assignments.summary.overdue], [],
+      ["Registration details"], ["Phone", report.student.phone], ["Location", [report.student.stateCity, report.student.country].filter(Boolean).join(", ")],
+      ["Employment/Study", report.student.employmentStatus], ["Education", report.student.educationalLevel], ["Learning mode", report.student.learningMode],
+      ["Tech experience", report.student.techExperience], ["Registered", reportDate(report.student.createdAt)], [],
+      ["Learning materials"], ["Week", "Module", "Material", "Type", "Progress", "Last updated"],
+      ...report.materials.items.map((item) => [item.weekNumber, item.moduleTitle, item.title, item.materialType, readableStatus(item.status), reportDate(item.updatedAt, true)]), [],
+      ["Attendance records"], ["Date", "Status", "Note"],
+      ...report.attendance.records.map((item) => [reportDate(item.sessionDate), readableStatus(item.status), item.note]), [],
+      ["Quiz attempts"], ["Quiz", "Attempt", "Score", "Completed"],
+      ...report.quizzes.attempts.map((item) => [item.title, item.attemptNo, `${item.percentage}%`, reportDate(item.completedAt, true)]), [],
+      ["Assignments"], ["Week", "Assignment", "Status", "Score", "Due", "Feedback"],
+      ...report.assignments.items.map((item) => [item.weekNumber, item.title, item.overdue ? "Overdue" : readableStatus(item.status), item.score == null ? "" : `${item.score}/${item.maxScore}`, reportDate(item.dueAt, true), item.feedback])
+    ];
+    const blob = new Blob([rows.map((row) => row.map(escape).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${report.student.fullName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-learner-report.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return <div className="learner-report-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="learner-report" role="dialog" aria-modal="true" aria-labelledby="learner-report-name">
+      {!report ? <div className="progress-loading">{message}</div> : <>
+        <header className="learner-report-head">
+          <div><p className="eyebrow">Learner performance report</p><h2 id="learner-report-name">{report.student.fullName}</h2><p>{report.student.email} · {report.student.phone || "No phone"}</p></div>
+          <div className="learner-report-actions"><button className="button light-border" onClick={downloadCsv}>Download CSV</button><button className="button primary" onClick={() => window.print()}>Print / Save PDF</button><button className="learner-report-close" aria-label="Close learner report" onClick={onClose}>×</button></div>
+        </header>
+        <div className={`learner-standing ${report.standing.tone}`}><div><span>Overall standing</span><strong>{report.standing.label}</strong></div><p>{report.standing.reasons.join(" · ")}</p></div>
+        <div className="learner-report-metrics">
+          <article><span>Attendance</span><strong>{report.attendance.summary.percentage}%</strong><small>{report.attendance.summary.attended} of {report.attendance.summary.counted} attended</small></article>
+          <article><span>Material progress</span><strong>{report.materials.summary.percentage}%</strong><small>{report.materials.summary.done} of {report.materials.summary.total} done</small></article>
+          <article><span>Quiz average</span><strong>{report.quizzes.summary.average}%</strong><small>{report.quizzes.summary.attempts} completed attempt{report.quizzes.summary.attempts === 1 ? "" : "s"}</small></article>
+          <article><span>Overdue work</span><strong>{report.assignments.summary.overdue}</strong><small>{report.assignments.summary.completed} of {report.assignments.summary.total} completed</small></article>
+        </div>
+
+        <section className="learner-report-section"><h3>Registration details</h3><div className="learner-detail-grid">{[
+          ["Full name", report.student.fullName], ["Email", report.student.email], ["Phone", report.student.phone], ["Gender", report.student.gender],
+          ["Location", [report.student.stateCity, report.student.country].filter(Boolean).join(", ")], ["Employment/Study", report.student.employmentStatus],
+          ["Education", report.student.educationalLevel], ["Course", report.student.courseChoice], ["Learning mode", report.student.learningMode],
+          ["Tech experience", report.student.techExperience], ["Registered", reportDate(report.student.createdAt)]
+        ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value || "—"}</strong></div>)}</div></section>
+
+        <section className="learner-report-section"><div className="report-section-head"><h3>Learning materials</h3><div className="report-key"><span>{report.materials.summary.done} done</span><span>{report.materials.summary.inProgress} in progress</span><span>{report.materials.summary.notStarted} not started</span></div></div>
+          {report.materials.items.length === 0 ? <p className="progress-empty">No published materials yet.</p> : <div className="learner-report-table material-report-table"><b>Material</b><b>Week</b><b>Progress</b>{report.materials.items.map((item) => <div className="report-table-row" key={item.materialId}><span><strong>{item.title}</strong><small>{item.moduleTitle} · {readableStatus(item.materialType)}</small></span><span>Week {item.weekNumber}</span><i className={`material-progress-status ${item.status}`}>{readableStatus(item.status)}</i></div>)}</div>}
+        </section>
+
+        <div className="learner-report-columns">
+          <section className="learner-report-section"><h3>Attendance</h3><div className="report-key"><span>{report.attendance.summary.present} present</span><span>{report.attendance.summary.late} late</span><span>{report.attendance.summary.absent} absent</span><span>{report.attendance.summary.excused} excused</span></div>
+            {report.attendance.records.length === 0 ? <p className="progress-empty">No attendance has been recorded.</p> : <div className="compact-report-list">{report.attendance.records.map((item) => <article key={`${item.sessionDate}-${item.markedAt}`}><div><strong>{reportDate(item.sessionDate)}</strong><small>{item.note || "No note"}</small></div><i className={`report-status ${item.status}`}>{readableStatus(item.status)}</i></article>)}</div>}
+          </section>
+          <section className="learner-report-section"><h3>Quiz performance</h3>
+            {report.quizzes.weakestTopics.length > 0 && <div className="weak-topic-list"><b>Topics to revisit</b>{report.quizzes.weakestTopics.map((topic) => <div key={topic.topic}><span>{topic.topic}</span><strong>{topic.percentage}%</strong></div>)}</div>}
+            {report.quizzes.attempts.length === 0 ? <p className="progress-empty">No completed quiz attempts.</p> : <div className="compact-report-list">{report.quizzes.attempts.map((item) => <article key={item.id}><div><strong>{item.title}</strong><small>Attempt {item.attemptNo} · {reportDate(item.completedAt)}</small></div><b>{item.percentage}%</b></article>)}</div>}
+          </section>
+        </div>
+
+        <section className="learner-report-section"><h3>Assignments and feedback</h3>
+          {report.assignments.items.length === 0 ? <p className="progress-empty">No published assignments yet.</p> : <div className="learner-report-table assignment-report-table"><b>Assignment</b><b>Status</b><b>Score</b><b>Feedback</b>{report.assignments.items.map((item) => <div className="report-table-row" key={item.assignmentId}><span><strong>{item.title}</strong><small>Week {item.weekNumber} · Due {reportDate(item.dueAt, true)}</small></span><i className={`report-status ${item.overdue ? "overdue" : item.status || "not_started"}`}>{item.overdue ? "Overdue" : readableStatus(item.status)}</i><span>{item.score == null ? "—" : `${item.score}/${item.maxScore}`}</span><span>{item.feedback || "No feedback yet"}</span></div>)}</div>}
+        </section>
+
+        <section className="learner-report-section"><h3>Recent activity and notifications</h3>
+          {report.activity.length === 0 ? <p className="progress-empty">No recent notifications.</p> : <div className="activity-report-list">{report.activity.map((item) => <article key={item.id}><b>{item.category}</b><div><strong>{item.title}</strong><p>{item.message}</p></div><time>{reportDate(item.createdAt, true)}</time></article>)}</div>}
+        </section>
+      </>}
+      {!report && <button className="learner-report-close loading-close" aria-label="Close learner report" onClick={onClose}>×</button>}
+    </section>
+  </div>;
+}
+
+function StaffAnalyticsOverview({ onNavigate, onViewLearner, demo = false }) {
   const [data, setData] = useState(null);
   const [message, setMessage] = useState(demo ? "Connect the backend to view live cohort insights." : "Loading cohort insights…");
   useEffect(() => {
@@ -2053,7 +2154,7 @@ function StaffAnalyticsOverview({ onNavigate, demo = false }) {
     </div>
     <div className="staff-overview-grid">
       <section className="learner-support-card"><div className="staff-section-title"><div><span>Learner support</span><h2>Needs attention</h2></div><button onClick={() => onNavigate("Attendance")}>View attendance</button></div>
-        {data.attention.length === 0 ? <p className="progress-empty">No learners are currently flagged.</p> : data.attention.slice(0, 6).map((learner) => <article key={learner.id}><span className="student-avatar">{learner.fullName[0]}</span><div><h3>{learner.fullName}</h3><p>{learner.reasons.join(" · ")}</p></div></article>)}
+        {data.attention.length === 0 ? <p className="progress-empty">No learners are currently flagged.</p> : data.attention.slice(0, 6).map((learner) => <article key={learner.id}><span className="student-avatar">{learner.fullName[0]}</span><div><h3>{learner.fullName}</h3><p>{learner.reasons.join(" · ")}</p></div>{onViewLearner && <button className="profile-button" onClick={() => onViewLearner(learner.id)}>Open profile</button>}</article>)}
       </section>
       <div className="staff-side-stack">
         <section><div className="staff-section-title"><div><span>Quiz insight</span><h2>Weakest topics</h2></div></div>{data.weakestTopics.length === 0 ? <p className="progress-empty">Topic insights will appear after quiz attempts.</p> : data.weakestTopics.map((topic) => <article className="topic-insight" key={topic.topic}><span>{topic.topic}</span><b>{topic.percentage}%</b></article>)}</section>
@@ -2083,6 +2184,7 @@ function AdminDashboard({ user, logout }) {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [selectedApplicant, setSelectedApplicant] = useState(null);
+  const [profileStudentId, setProfileStudentId] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [message, setMessage] = useState(
     user.demo
@@ -2279,7 +2381,7 @@ function AdminDashboard({ user, logout }) {
                 <button className="button reject-button" disabled={!rejectionReason.trim()} onClick={() => { if (window.confirm(`Reject ${selectedApplicant.fullName}'s application?`)) decide(selectedApplicant, "rejected", rejectionReason); }}>Reject application</button>
               </div>
             ) : (
-              <div className="approved-account-actions"><button className="button light-border full" onClick={() => confirmDecision(selectedApplicant, "pending")}>Return to pending review</button>{selectedApplicant.status === "approved" && <button className="button primary full" onClick={() => resetUserPassword(selectedApplicant.id, selectedApplicant.fullName)}>Set temporary password</button>}</div>
+              <div className="approved-account-actions"><button className="button light-border full" onClick={() => confirmDecision(selectedApplicant, "pending")}>Return to pending review</button>{selectedApplicant.status === "approved" && <><button className="button light-border full" disabled={user.demo} onClick={() => { setProfileStudentId(selectedApplicant.id); setSelectedApplicant(null); }}>View progress report</button><button className="button primary full" onClick={() => resetUserPassword(selectedApplicant.id, selectedApplicant.fullName)}>Set temporary password</button></>}</div>
             )}
           </section>
         </div>
@@ -2315,7 +2417,7 @@ function AdminDashboard({ user, logout }) {
           </div>
         )}
         <p className="form-message success">{message}</p>
-        {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} demo={user.demo} />}
+        {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} onViewLearner={user.demo ? null : setProfileStudentId} demo={user.demo} />}
         {active === "Applications" && applications}
         {active === "Announcements" && <AnnouncementsCenter mode="staff" demo={user.demo} />}
         {active === "Mentors" &&
@@ -2375,6 +2477,7 @@ function AdminDashboard({ user, logout }) {
         {active === "Learning" && <LearningCenter mode="staff" demo={user.demo} />}
         {active === "Live quiz" && <QuizCenter mode="admin" demo={user.demo} />}
         {active === "Security" && <SecurityCenter role="admin" demo={user.demo} />}
+        {profileStudentId && <LearnerProfilePanel studentId={profileStudentId} onClose={() => setProfileStudentId(null)} />}
       </section>
     </main>
   );
@@ -2383,7 +2486,8 @@ function AdminDashboard({ user, logout }) {
 function MentorDashboard({ user, logout }) {
   const [active, setActive] = useState(user.mustChangePassword ? "Security" : "Overview"),
     [students, setStudents] = useState([]),
-    [message, setMessage] = useState("");
+    [message, setMessage] = useState(""),
+    [profileStudentId, setProfileStudentId] = useState(null);
   useEffect(() => {
     api("/staff/students")
       .then(setStudents)
@@ -2408,7 +2512,7 @@ function MentorDashboard({ user, logout }) {
           <span className="avatar">{user.fullName[0]}</span>
         </div>
         <p className="form-message">{message}</p>
-        {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} />}
+        {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} onViewLearner={setProfileStudentId} />}
         {active === "Announcements" && <AnnouncementsCenter mode="staff" />}
         {active === "Security" && <SecurityCenter role="mentor" />}
         {active === "Learners" && (
@@ -2429,6 +2533,7 @@ function MentorDashboard({ user, logout }) {
                     </small>
                   </div>
                   <b className="status approved">approved</b>
+                  <button className="profile-button" onClick={() => setProfileStudentId(s.id)}>View progress</button>
                 </article>
               ))
             )}
@@ -2437,6 +2542,7 @@ function MentorDashboard({ user, logout }) {
         {active === "Attendance" && <AttendanceCenter mode="staff" />}
         {active === "Learning" && <LearningCenter mode="staff" />}
         {active === "Live quiz" && <QuizCenter mode="admin" />}
+        {profileStudentId && <LearnerProfilePanel studentId={profileStudentId} onClose={() => setProfileStudentId(null)} />}
       </section>
     </main>
   );
