@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 
 async function api(path, options = {}) {
@@ -1581,7 +1581,7 @@ function StudentDashboard({ user, logout }) {
 
 function QuizResults({ mode, onLive }) {
   const staff = mode === "admin";
-  const [results, setResults] = useState(staff ? { attempts: [], summary: {}, topics: [], leaderboard: [] } : []);
+  const [results, setResults] = useState(staff ? { attempts: [], summary: {}, topics: [], hardestQuestions: [], leaderboard: [] } : []);
   const [quizzes, setQuizzes] = useState([]);
   const [quizId, setQuizId] = useState("");
   const [student, setStudent] = useState("");
@@ -1622,15 +1622,17 @@ function QuizResults({ mode, onLive }) {
     <p className="form-message">{message}</p>
     {staff ? <>
       <form className="quiz-result-filters" onSubmit={(event) => { event.preventDefault(); load(); }}><label>Quiz<select value={quizId} onChange={(event) => setQuizId(event.target.value)}><option value="">All quizzes</option>{quizzes.map((quiz) => <option key={quiz.id} value={quiz.id}>{quiz.title}</option>)}</select></label><label>Student<input value={student} onChange={(event) => setStudent(event.target.value)} placeholder="Name or email" /></label><button className="button primary">Search</button></form>
-      <div className="quiz-result-metrics">{[["Attempts", results.summary.participants || 0], ["Class average", `${results.summary.average || 0}%`], ["Highest", `${results.summary.highest || 0}%`], ["Lowest", `${results.summary.lowest || 0}%`]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}</div>
+      <div className="quiz-result-metrics">{[["Students", results.summary.participants || 0], ["Attempts", results.summary.attempts || 0], ["Class average", `${results.summary.average || 0}%`], ["Pass rate", `${results.summary.passRate || 0}%`], ["Highest", `${results.summary.highest || 0}%`], ["Unanswered", results.summary.unanswered || 0]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}</div>
       {results.leaderboard?.length > 0 && <div className="leaderboard result-leaderboard"><h3>Class leaderboard</h3>{results.leaderboard.map((attempt, index) => <div key={attempt.id}><b>#{index + 1}</b><span>{attempt.studentName}</span><strong>{attempt.percentage}%</strong></div>)}</div>}
       {results.topics.length > 0 && <div className="topic-performance"><h3>Performance by topic</h3>{results.topics.map((topic) => <div key={topic.topic}><span>{topic.topic}</span><div><i style={{ width: `${topic.percentage}%` }} /></div><strong>{topic.percentage}%</strong></div>)}</div>}
-      <div className="result-table">{results.attempts.length === 0 ? <div className="empty">No completed quiz results yet.</div> : results.attempts.map((attempt) => <article key={attempt.id} className={attempt.percentage < 50 ? "support-needed" : ""}><div><h3>{attempt.studentName}</h3><p>{attempt.title} · Attempt {attempt.attemptNo}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct</span><strong>{attempt.percentage}%</strong>{attempt.percentage < 50 && <b>Needs support</b>}</article>)}</div>
+      {results.hardestQuestions?.length > 0 && <div className="hardest-questions"><h3>Hardest questions</h3><p>Unanswered responses count as incorrect.</p>{results.hardestQuestions.map((question, index) => <article key={question.id}><b>#{index + 1}</b><div><strong>{question.prompt}</strong><span>{question.topic} · {question.correct}/{question.attempts} correct · {question.unanswered} unanswered</span></div><i>{question.percentage}%</i></article>)}</div>}
+      <div className="result-table">{results.attempts.length === 0 ? <div className="empty">No completed quiz results yet.</div> : results.attempts.map((attempt) => <article key={attempt.id} className={!attempt.passed ? "support-needed" : ""}><div><h3>{attempt.studentName}</h3><p>{attempt.title} · Attempt {attempt.attemptNo}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct{attempt.unansweredCount ? ` · ${attempt.unansweredCount} unanswered` : ""}</span><strong>{attempt.percentage}%</strong>{!attempt.passed && <b>Needs support</b>}</article>)}</div>
     </> : <div className="student-result-list">{results.length === 0 ? <div className="empty">Your completed quizzes will appear here.</div> : results.map((attempt) => <article key={attempt.id}><div><h3>{attempt.title}</h3><p>Attempt {attempt.attemptNo} · {new Date(attempt.completedAt).toLocaleString()}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct</span><strong>{attempt.percentage}%</strong><button className="profile-button" onClick={() => openResult(attempt.id)}>Review answers</button></article>)}</div>}
   </section>;
 }
 
 function QuizCenter({ mode, demo = false }) {
+  const roomRef = useRef(null);
   const [socket, setSocket] = useState(null),
     [message, setMessage] = useState(""),
     [quizzes, setQuizzes] = useState([]),
@@ -1638,15 +1640,35 @@ function QuizCenter({ mode, demo = false }) {
     [presence, setPresence] = useState(0),
     [question, setQuestion] = useState(null),
     [seconds, setSeconds] = useState(30),
+    [paused, setPaused] = useState(false),
     [submitted, setSubmitted] = useState(false),
+    [selectedAnswer, setSelectedAnswer] = useState(null),
     [reveal, setReveal] = useState(null),
     [leaderboard, setLeaderboard] = useState([]),
     [view, setView] = useState("live");
   const [title, setTitle] = useState("DevOps Knowledge Check");
   const [questionTimeSeconds, setQuestionTimeSeconds] = useState(30);
+  const [editingQuizId, setEditingQuizId] = useState(null);
   const [questions, setQuestions] = useState([
     { prompt: "", topic: "General", options: ["", "", "", ""], correctIndex: 0 },
   ]);
+  function applyJoinedQuiz(result, restored = false) {
+    setRoom(result.quiz);
+    roomRef.current = result.quiz;
+    sessionStorage.setItem("lw_live_quiz_code", result.quiz.joinCode);
+    if (result.liveState?.question) {
+      setQuestion(result.liveState.question);
+      setSelectedAnswer(result.liveState.selectedAnswer);
+      setSubmitted(result.liveState.selectedAnswer !== null);
+      setReveal(result.liveState.correctIndex);
+      setPaused(result.liveState.phase === "paused");
+      setSeconds(result.liveState.phase === "paused" ? Math.ceil(result.liveState.remainingMs / 1000) : Math.max(0, Math.ceil((result.liveState.question.endsAt - Date.now()) / 1000)));
+      setMessage(restored ? "Reconnected to the live quiz." : `Joined ${result.quiz.title}.`);
+    } else {
+      setQuestion(null);
+      setMessage(`${restored ? "Reconnected to" : "Joined"} ${result.quiz.title}. Waiting for the quiz to start.`);
+    }
+  }
   const load = () =>
     api(mode === "admin" ? "/admin/quizzes" : "/quizzes/active")
       .then(setQuizzes)
@@ -1662,28 +1684,57 @@ function QuizCenter({ mode, demo = false }) {
       autoConnect: true,
     });
     setSocket(s);
+    s.on("connect", () => {
+      const savedCode = sessionStorage.getItem("lw_live_quiz_code");
+      if (!savedCode || roomRef.current) return;
+      s.emit("quiz:join", { joinCode: savedCode }, (result) => {
+        if (result.ok) applyJoinedQuiz(result, true);
+        else sessionStorage.removeItem("lw_live_quiz_code");
+      });
+    });
     s.on("connect_error", () => setMessage("Live quiz server is unavailable."));
     s.on("quiz:presence", (d) => setPresence(d.count));
     s.on("quiz:started", () => setMessage("Quiz started."));
     s.on("quiz:question", (q) => {
       setQuestion(q);
+      setPaused(false);
       setReveal(null);
       setSubmitted(false);
+      setSelectedAnswer(null);
       setSeconds(Math.max(0, Math.ceil((q.endsAt - Date.now()) / 1000)));
     });
     s.on("quiz:reveal", (d) => {
+      setPaused(false);
+      setSeconds(0);
       setReveal(d.correctIndex);
       setLeaderboard(d.leaderboard);
     });
+    s.on("quiz:paused", (d) => {
+      setPaused(true);
+      setSeconds(Math.max(0, Math.ceil(d.remainingMs / 1000)));
+      setMessage("Quiz paused by the mentor.");
+    });
+    s.on("quiz:resumed", (d) => {
+      setPaused(false);
+      setQuestion(current => current ? { ...current, endsAt: d.endsAt } : current);
+      setMessage("Quiz resumed.");
+    });
+    s.on("quiz:restarted", () => {
+      setPaused(false);
+      setLeaderboard([]);
+      setMessage("Quiz restarted from question one.");
+    });
     s.on("quiz:completed", (d) => {
       setQuestion(null);
+      roomRef.current = null;
+      sessionStorage.removeItem("lw_live_quiz_code");
       setLeaderboard(d.leaderboard);
       setMessage("Quiz completed. Final leaderboard is ready.");
     });
     return () => s.disconnect();
   }, [mode, demo]);
   useEffect(() => {
-    if (!question || reveal !== null) return;
+    if (!question || reveal !== null || paused) return;
     const timer = setInterval(
       () =>
         setSeconds(
@@ -1692,14 +1743,11 @@ function QuizCenter({ mode, demo = false }) {
       250,
     );
     return () => clearInterval(timer);
-  }, [question, reveal]);
+  }, [question, reveal, paused]);
   function join(joinCode) {
     socket?.emit("quiz:join", { joinCode }, (result) => {
       if (result.ok) {
-        setRoom(result.quiz);
-        setMessage(
-          `Joined ${result.quiz.title}. Waiting for the quiz to start.`,
-        );
+        applyJoinedQuiz(result);
       } else setMessage(result.message);
     });
   }
@@ -1708,6 +1756,28 @@ function QuizCenter({ mode, demo = false }) {
       setMessage(result.ok ? "Starting now…" : result.message),
     );
   }
+  function togglePause() {
+    socket?.emit("quiz:pause", { quizId: room.id }, (result) => {
+      if (!result.ok) setMessage(result.message);
+    });
+  }
+  function revealNow() {
+    socket?.emit("quiz:reveal-now", { quizId: room.id }, (result) => {
+      if (!result.ok) setMessage(result.message);
+    });
+  }
+  function nextQuestion() {
+    socket?.emit("quiz:next", { quizId: room.id }, (result) => {
+      if (!result.ok) setMessage(result.message);
+      else if (result.completed) setMessage("Quiz completed. Final leaderboard is ready.");
+    });
+  }
+  function restartQuiz() {
+    if (!window.confirm("Restart this live quiz from question one? All unfinished attempts and answers from this run will be cleared.")) return;
+    socket?.emit("quiz:restart", { quizId: room.id }, (result) => {
+      if (!result.ok) setMessage(result.message);
+    });
+  }
   function answer(answerIndex) {
     if (submitted || seconds <= 0) return;
     socket.emit(
@@ -1715,6 +1785,7 @@ function QuizCenter({ mode, demo = false }) {
       { quizId: room.id, questionId: question.id, answerIndex },
       (result) => {
         setSubmitted(result.ok);
+        if (result.ok) setSelectedAnswer(answerIndex);
         setMessage(result.ok ? "Answer locked in." : result.message);
       },
     );
@@ -1736,15 +1807,42 @@ function QuizCenter({ mode, demo = false }) {
   async function createManual(e) {
     e.preventDefault();
     try {
-      const quiz = await api("/admin/quizzes", {
-        method: "POST",
+      const quiz = await api(editingQuizId ? `/admin/quizzes/${editingQuizId}` : "/admin/quizzes", {
+        method: editingQuizId ? "PUT" : "POST",
         body: JSON.stringify({ title, questions, questionTimeSeconds }),
       });
-      setMessage(`Quiz created. Join code: ${quiz.joinCode}`);
+      setMessage(editingQuizId ? quiz.message : `Quiz created. Join code: ${quiz.joinCode}`);
+      cancelQuizEdit();
       load();
     } catch (err) {
       setMessage(err.message);
     }
+  }
+  function cancelQuizEdit() {
+    setEditingQuizId(null);
+    setTitle("DevOps Knowledge Check");
+    setQuestionTimeSeconds(30);
+    setQuestions([{ prompt: "", topic: "General", options: ["", "", "", ""], correctIndex: 0 }]);
+  }
+  async function editQuiz(quiz) {
+    try {
+      const detail = await api(`/admin/quizzes/${quiz.id}`);
+      setEditingQuizId(quiz.id);
+      setTitle(detail.title);
+      setQuestionTimeSeconds(Number(detail.questionTimeSeconds));
+      setQuestions(detail.questions.map(question => ({ prompt: question.prompt, topic: question.topic, options: question.options, correctIndex: Number(question.correctIndex) })));
+      setMessage(`Editing ${detail.title}.`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) { setMessage(error.message); }
+  }
+  async function deleteQuiz(quiz) {
+    if (!window.confirm(`Permanently delete “${quiz.title}”? Its questions and all saved student results will also be deleted.`)) return;
+    try {
+      const result = await api(`/admin/quizzes/${quiz.id}`, { method: "DELETE" });
+      if (editingQuizId === quiz.id) cancelQuizEdit();
+      setMessage(result.message);
+      load();
+    } catch (error) { setMessage(error.message); }
   }
   async function importCsv(file) {
     if (!file) return;
@@ -1843,6 +1941,7 @@ function QuizCenter({ mode, demo = false }) {
       {!room && mode === "admin" && (
         <div className="quiz-admin-grid">
           <form className="quiz-builder" onSubmit={createManual}>
+            {editingQuizId && <div className="quiz-edit-banner"><b>Editing saved quiz</b><span>Update the title, timing, questions or correct answers below.</span></div>}
             <label>
               Quiz title
               <input
@@ -1867,6 +1966,7 @@ function QuizCenter({ mode, demo = false }) {
             {questions.map((q, qi) => (
               <fieldset key={qi}>
                 <legend>Question {qi + 1}</legend>
+                <button type="button" className="remove-question" disabled={questions.length === 1} onClick={() => setQuestions(questions.filter((_, index) => index !== qi))}>Remove question</button>
                 <input
                   placeholder="Question"
                   value={q.prompt}
@@ -1912,7 +2012,7 @@ function QuizCenter({ mode, demo = false }) {
               >
                 + Add question
               </button>
-              <button className="button primary">Save quiz</button>
+              <div className="quiz-save-actions">{editingQuizId && <button type="button" className="button light-border" onClick={cancelQuizEdit}>Cancel edit</button>}<button className="button primary">{editingQuizId ? "Save changes" : "Save quiz"}</button></div>
             </div>
           </form>
           <div className="csv-import">
@@ -1963,6 +2063,7 @@ function QuizCenter({ mode, demo = false }) {
               >
                 {q.status === "completed" ? "Reopen quiz" : "Open lobby"}
               </button>
+              <div className="quiz-manage-actions"><button type="button" onClick={() => editQuiz(q)} disabled={q.status === "live"}>Edit</button><button type="button" className="delete-quiz" onClick={() => deleteQuiz(q)} disabled={q.status === "live"}>Delete</button></div>
               <label className="retake-toggle">
                 <input type="checkbox" checked={Boolean(q.allowRetakes)} onChange={() => toggleRetakes(q)} />
                 Allow retakes
@@ -1991,6 +2092,7 @@ function QuizCenter({ mode, demo = false }) {
       )}
       {room && question && (
         <div className="question-stage">
+          <div className="quiz-time-progress" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, (seconds / (room.questionTimeSeconds || questionTimeSeconds)) * 100))}%` }} /></div>
           <div className={`countdown ${seconds <= 5 ? "danger" : ""}`}>
             {seconds}
           </div>
@@ -2002,8 +2104,10 @@ function QuizCenter({ mode, demo = false }) {
             {question.options.map((o, i) => (
               <button
                 key={i}
-                disabled={submitted || seconds <= 0}
-                className={`${submitted ? "locked" : ""} ${reveal === i ? "correct" : ""}`}
+                type="button"
+                disabled={mode !== "student" || paused || submitted || seconds <= 0}
+                aria-pressed={selectedAnswer === i}
+                className={`${submitted ? "locked" : ""} ${selectedAnswer === i && reveal === null ? "selected" : ""} ${reveal === i ? "correct" : ""} ${reveal !== null && selectedAnswer === i && reveal !== i ? "incorrect" : ""}`}
                 onClick={() => answer(i)}
               >
                 <b>{String.fromCharCode(65 + i)}</b>
@@ -2011,12 +2115,19 @@ function QuizCenter({ mode, demo = false }) {
               </button>
             ))}
           </div>
+          {mode === "admin" && <div className="mentor-quiz-controls"><button type="button" onClick={togglePause} disabled={reveal !== null}>{paused ? "▶ Resume timer" : "Ⅱ Pause timer"}</button><button type="button" onClick={revealNow} disabled={reveal !== null}>Reveal answer</button><button type="button" className="next-question" onClick={nextQuestion} disabled={reveal === null}>{question.index + 1 === question.total ? "Finish quiz" : "Next question →"}</button><button type="button" className="restart-quiz" onClick={restartQuiz}>Restart quiz</button></div>}
           <p>
-            {submitted
-              ? "Answer submitted."
-              : seconds === 0
-                ? "Time is up."
-                : "Choose one answer."}
+            {mode !== "student"
+              ? reveal !== null ? `Correct answer: ${String.fromCharCode(65 + reveal)}. Move on when the class is ready.` : paused ? "Timer paused. Student answers are temporarily locked." : "Students are answering now."
+              : reveal !== null
+                ? selectedAnswer === null ? `Time is up. The correct answer is ${String.fromCharCode(65 + reveal)}.` : selectedAnswer === reveal ? "Correct — well done!" : `Incorrect. The correct answer is ${String.fromCharCode(65 + reveal)}.`
+                : paused
+                  ? "The mentor has paused this question."
+                : submitted
+                  ? `Answer ${String.fromCharCode(65 + selectedAnswer)} selected and locked in.`
+                  : seconds === 0
+                    ? "Time is up."
+                    : "Choose one answer."}
           </p>
         </div>
       )}
