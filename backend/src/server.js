@@ -249,6 +249,22 @@ app.patch('/api/admin/students/:id/status', requireAuth, requireAdmin, async (re
   } catch (error) { next(error); }
 });
 
+app.delete('/api/admin/students/:id', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const studentId = Number.parseInt(req.params.id, 10);
+    if (!studentId) return res.status(400).json({ message: 'Choose a valid student.' });
+
+    const [students] = await pool.execute(
+      "SELECT full_name AS fullName FROM users WHERE id = ? AND role = 'student'",
+      [studentId]
+    );
+    if (!students.length) return res.status(404).json({ message: 'Student not found.' });
+
+    await pool.execute("DELETE FROM users WHERE id = ? AND role = 'student'", [studentId]);
+    res.json({ message: `${students[0].fullName} and all linked student records were deleted.` });
+  } catch (error) { next(error); }
+});
+
 app.get('/api/staff/students', requireAuth, requireStaff, async (_req, res, next) => {
   try {
     const [rows] = await pool.query("SELECT id, full_name AS fullName, email, phone, experience_level AS experienceLevel, learning_goal AS learningGoal, status, created_at AS createdAt FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name");

@@ -2047,9 +2047,10 @@ function readableStatus(value) {
   return value ? value.replaceAll("_", " ") : "Not started";
 }
 
-function LearnerProfilePanel({ studentId, onClose }) {
+function LearnerProfilePanel({ studentId, onClose, onDeleted }) {
   const [report, setReport] = useState(null);
   const [message, setMessage] = useState("Loading learner report…");
+  const [deleting, setDeleting] = useState(false);
   useEffect(() => {
     api(`/staff/students/${studentId}/profile`)
       .then((data) => { setReport(data); setMessage(""); })
@@ -2086,6 +2087,24 @@ function LearnerProfilePanel({ studentId, onClose }) {
     link.download = `${report.student.fullName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-learner-report.csv`;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function deleteStudent() {
+    const studentName = report.student.fullName;
+    const confirmed = window.confirm(
+      `Permanently delete ${studentName}? This will also delete their attendance, quiz attempts, submissions and learning progress. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setMessage("");
+    try {
+      const result = await api(`/admin/students/${studentId}`, { method: "DELETE" });
+      onDeleted(result.message);
+    } catch (error) {
+      setMessage(error.message);
+      setDeleting(false);
+    }
   }
 
   return <div className="learner-report-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -2131,6 +2150,7 @@ function LearnerProfilePanel({ studentId, onClose }) {
         <section className="learner-report-section"><h3>Recent activity and notifications</h3>
           {report.activity.length === 0 ? <p className="progress-empty">No recent notifications.</p> : <div className="activity-report-list">{report.activity.map((item) => <article key={item.id}><b>{item.category}</b><div><strong>{item.title}</strong><p>{item.message}</p></div><time>{reportDate(item.createdAt, true)}</time></article>)}</div>}
         </section>
+        {onDeleted && <section className="learner-delete-zone"><div><h3>Delete student account</h3><p>Permanently remove this student and all of their attendance, quizzes, submissions and progress records.</p>{message && <p className="learner-delete-error">{message}</p>}</div><button className="button learner-delete-button" disabled={deleting} onClick={deleteStudent}>{deleting ? "Deleting…" : "Delete student"}</button></section>}
       </>}
       {!report && <button className="learner-report-close loading-close" aria-label="Close learner report" onClick={onClose}>×</button>}
     </section>
@@ -2477,7 +2497,7 @@ function AdminDashboard({ user, logout }) {
         {active === "Learning" && <LearningCenter mode="staff" demo={user.demo} />}
         {active === "Live quiz" && <QuizCenter mode="admin" demo={user.demo} />}
         {active === "Security" && <SecurityCenter role="admin" demo={user.demo} />}
-        {profileStudentId && <LearnerProfilePanel studentId={profileStudentId} onClose={() => setProfileStudentId(null)} />}
+        {profileStudentId && <LearnerProfilePanel studentId={profileStudentId} onClose={() => setProfileStudentId(null)} onDeleted={(notice) => { setProfileStudentId(null); setMessage(notice); loadApplications(); }} />}
       </section>
     </main>
   );
