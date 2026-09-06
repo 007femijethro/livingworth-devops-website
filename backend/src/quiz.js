@@ -1,6 +1,7 @@
 const rooms = new Map();
 const MIN_QUESTION_SECONDS = 5;
 const MAX_QUESTION_SECONDS = 300;
+const AUTO_REVIEW_MS = 4_000;
 
 function validQuestionTime(value, fallback = 30) {
   if (value === undefined || value === null || value === '') return fallback;
@@ -11,6 +12,25 @@ function validQuestionTime(value, fallback = 30) {
   return seconds;
 }
 
+function validNavigationMode(value, fallback = 'manual') {
+  const mode = value || fallback;
+  if (!['manual', 'automatic'].includes(mode)) throw new Error('Choose manual or automatic quiz navigation.');
+  return mode;
+}
+
+function validRankingVisibility(value, fallback = 'full') {
+  const visibility = value || fallback;
+  if (!['full', 'initials', 'private'].includes(visibility)) throw new Error('Choose full names, initials or private ranking.');
+  return visibility;
+}
+
+function validSchedule(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error('Choose a valid quiz date and time.');
+  return date.toISOString();
+}
+
 function joinCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
@@ -18,12 +38,18 @@ function joinCode() {
 function validateQuestions(title, questions) {
   if (!title?.trim() || !Array.isArray(questions) || !questions.length) throw new Error('A title and at least one question are required.');
   return questions.map((question, index) => {
-    const options = Array.isArray(question.options) ? question.options.map(option => String(option || '').trim()) : [];
+    const type = question.questionType || 'single_choice';
+    if (!['single_choice', 'true_false', 'multiple_selection', 'typed'].includes(type)) throw new Error(`Question ${index + 1} has an invalid type.`);
+    const options = type === 'true_false' ? ['True', 'False'] : Array.isArray(question.options) ? question.options.map(option => String(option || '').trim()) : [];
     const correctIndex = Number(question.correctIndex);
-    if (!question.prompt?.trim() || options.length !== 4 || options.some(option => !option) || !Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex > 3) {
+    const correctAnswers = [...new Set((question.correctAnswers || []).map(Number))].sort((a, b) => a - b);
+    const correctText = String(question.correctText || '').trim();
+    const invalidChoice = ['single_choice', 'true_false'].includes(type) && (!Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex >= options.length);
+    const invalidMultiple = type === 'multiple_selection' && (!correctAnswers.length || correctAnswers.some(answer => !Number.isInteger(answer) || answer < 0 || answer >= options.length));
+    if (!question.prompt?.trim() || (type !== 'typed' && (options.length < 2 || options.some(option => !option))) || invalidChoice || invalidMultiple || (type === 'typed' && !correctText)) {
       throw new Error(`Question ${index + 1} is incomplete.`);
     }
-    return { prompt: question.prompt.trim(), topic: String(question.topic || 'General').trim() || 'General', options, correctIndex };
+    return { prompt: question.prompt.trim(), topic: String(question.topic || 'General').trim() || 'General', type, options, correctIndex: type === 'typed' ? 0 : correctIndex, correctAnswers, correctText };
   });
 }
 
@@ -50,47 +76,54 @@ function parseCsv(text) {
   });
 }
 
-async function createQuiz(pool, adminId, title, questions, requestedQuestionTime) {
+async function createQuiz(pool, adminId, title, questions, requestedQuestionTime, requestedNavigationMode, settings = {}) {
   const validQuestions = validateQuestions(title, questions);
   const questionTimeSeconds = validQuestionTime(requestedQuestionTime);
+  const navigationMode = validNavigationMode(requestedNavigationMode);
+  const speedScoring = settings.speedScoring !== false;
+  const scheduledAt = validSchedule(settings.scheduledAt);
+  const rankingVisibility = validRankingVisibility(settings.rankingVisibility);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
     const code = joinCode();
-    const [result] = await connection.execute('INSERT INTO quizzes (title, join_code, question_time_seconds, created_by) VALUES (?, ?, ?, ?)', [title.trim(), code, questionTimeSeconds, adminId]);
+    const [result] = await connection.execute('INSERT INTO quizzes (title, join_code, question_time_seconds, navigation_mode, speed_scoring, scheduled_at, ranking_visibility, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [title.trim(), code, questionTimeSeconds, navigationMode, speedScoring, scheduledAt, rankingVisibility, adminId]);
     for (let i = 0; i < validQuestions.length; i += 1) {
       const q = validQuestions[i];
-      await connection.execute('INSERT INTO quiz_questions (quiz_id, prompt, topic, options_json, correct_index, sequence_no) VALUES (?, ?, ?, ?, ?, ?)', [result.insertId, q.prompt, q.topic, JSON.stringify(q.options), q.correctIndex, i + 1]);
+      await connection.execute('INSERT INTO quiz_questions (quiz_id, prompt, topic, options_json, correct_index, question_type, correct_answers_json, correct_text, sequence_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [result.insertId, q.prompt, q.topic, JSON.stringify(q.options), q.correctIndex, q.type, JSON.stringify(q.correctAnswers), q.correctText || null, i + 1]);
     }
     await connection.commit();
-    return { id: result.insertId, title: title.trim(), joinCode: code, status: 'draft', questionCount: validQuestions.length, questionTimeSeconds };
+    return { id: result.insertId, title: title.trim(), joinCode: code, status: 'draft', questionCount: validQuestions.length, questionTimeSeconds, navigationMode, speedScoring, scheduledAt, rankingVisibility };
   } catch (error) { await connection.rollback(); throw error; }
   finally { connection.release(); }
 }
 
 export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
+  const openScheduled = () => pool.query("UPDATE quizzes SET status='lobby' WHERE status='draft' AND scheduled_at IS NOT NULL AND scheduled_at <= CURRENT_TIMESTAMP");
+  setInterval(() => openScheduled().catch(() => {}), 30_000).unref();
   app.get('/api/admin/quizzes', requireAuth, requireStaff, async (_req, res, next) => {
-    try { const [rows] = await pool.query('SELECT q.id, q.title, q.join_code AS joinCode, q.status, q.allow_retakes AS allowRetakes, q.question_time_seconds AS questionTimeSeconds, COUNT(qq.id) AS questionCount FROM quizzes q LEFT JOIN quiz_questions qq ON qq.quiz_id=q.id GROUP BY q.id ORDER BY q.created_at DESC'); res.json(rows); } catch (e) { next(e); }
+    try { await openScheduled(); const [rows] = await pool.query('SELECT q.id, q.title, q.join_code AS joinCode, q.status, q.allow_retakes AS allowRetakes, q.question_time_seconds AS questionTimeSeconds, q.navigation_mode AS navigationMode, q.speed_scoring AS speedScoring, q.scheduled_at AS scheduledAt, q.ranking_visibility AS rankingVisibility, COUNT(qq.id) AS questionCount FROM quizzes q LEFT JOIN quiz_questions qq ON qq.quiz_id=q.id GROUP BY q.id ORDER BY q.created_at DESC'); res.json(rows); } catch (e) { next(e); }
   });
   app.get('/api/admin/quizzes/:id', requireAuth, requireStaff, async (req, res, next) => {
     try {
-      const [quizzes] = await pool.execute('SELECT id, title, status, question_time_seconds AS questionTimeSeconds FROM quizzes WHERE id = ?', [req.params.id]);
+      const [quizzes] = await pool.execute('SELECT id, title, status, question_time_seconds AS questionTimeSeconds, navigation_mode AS navigationMode, speed_scoring AS speedScoring, scheduled_at AS scheduledAt, ranking_visibility AS rankingVisibility FROM quizzes WHERE id = ?', [req.params.id]);
       if (!quizzes.length) return res.status(404).json({ message: 'Quiz not found.' });
-      const [questions] = await pool.execute('SELECT id, prompt, topic, options_json AS options, correct_index AS correctIndex, sequence_no AS sequenceNo FROM quiz_questions WHERE quiz_id = ? ORDER BY sequence_no', [req.params.id]);
-      res.json({ ...quizzes[0], questions: questions.map(question => ({ ...question, options: typeof question.options === 'string' ? JSON.parse(question.options) : question.options })) });
+      const [questions] = await pool.execute('SELECT id, prompt, topic, options_json AS options, correct_index AS correctIndex, question_type AS questionType, correct_answers_json AS correctAnswers, correct_text AS correctText, sequence_no AS sequenceNo FROM quiz_questions WHERE quiz_id = ? ORDER BY sequence_no', [req.params.id]);
+      res.json({ ...quizzes[0], questions: questions.map(question => ({ ...question, options: typeof question.options === 'string' ? JSON.parse(question.options) : question.options, correctAnswers: typeof question.correctAnswers === 'string' ? JSON.parse(question.correctAnswers) : (question.correctAnswers || []) })) });
     } catch (error) { next(error); }
   });
   app.post('/api/admin/quizzes', requireAuth, requireStaff, async (req, res, next) => {
-    try { res.status(201).json(await createQuiz(pool, req.user.id, req.body.title, req.body.questions, req.body.questionTimeSeconds)); } catch (e) { if (e.message.includes('required') || e.message.includes('incomplete') || e.message.includes('Question time')) return res.status(400).json({message:e.message}); next(e); }
+    try { res.status(201).json(await createQuiz(pool, req.user.id, req.body.title, req.body.questions, req.body.questionTimeSeconds, req.body.navigationMode, req.body)); } catch (e) { if (e.message.includes('required') || e.message.includes('incomplete') || e.message.includes('Question time') || e.message.includes('navigation') || e.message.includes('ranking') || e.message.includes('date')) return res.status(400).json({message:e.message}); next(e); }
   });
   app.post('/api/admin/quizzes/import', requireAuth, requireStaff, async (req, res, next) => {
-    try { res.status(201).json(await createQuiz(pool, req.user.id, req.query.title || 'Imported DevOps Quiz', parseCsv(req.body), req.query.questionTimeSeconds)); } catch (e) { return res.status(400).json({message:e.message}); }
+    try { res.status(201).json(await createQuiz(pool, req.user.id, req.query.title || 'Imported DevOps Quiz', parseCsv(req.body), req.query.questionTimeSeconds, req.query.navigationMode)); } catch (e) { return res.status(400).json({message:e.message}); }
   });
   app.put('/api/admin/quizzes/:id', requireAuth, requireStaff, async (req, res, next) => {
     const connection = await pool.getConnection();
     try {
       const questions = validateQuestions(req.body.title, req.body.questions);
       const questionTimeSeconds = validQuestionTime(req.body.questionTimeSeconds);
+      const navigationMode = validNavigationMode(req.body.navigationMode), speedScoring = req.body.speedScoring !== false, scheduledAt = validSchedule(req.body.scheduledAt), rankingVisibility = validRankingVisibility(req.body.rankingVisibility);
       await connection.beginTransaction();
       const [quizzes] = await connection.execute(`SELECT q.status, COUNT(qa.id) AS attempts FROM quizzes q
         LEFT JOIN quiz_attempts qa ON qa.quiz_id = q.id WHERE q.id = ? GROUP BY q.id`, [req.params.id]);
@@ -99,17 +132,17 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
         await connection.rollback();
         return res.status(400).json({ message: 'A live or previously attempted quiz cannot be edited because that would change saved results.' });
       }
-      await connection.execute('UPDATE quizzes SET title = ?, question_time_seconds = ? WHERE id = ?', [req.body.title.trim(), questionTimeSeconds, req.params.id]);
+      await connection.execute('UPDATE quizzes SET title = ?, question_time_seconds = ?, navigation_mode = ?, speed_scoring = ?, scheduled_at = ?, ranking_visibility = ? WHERE id = ?', [req.body.title.trim(), questionTimeSeconds, navigationMode, speedScoring, scheduledAt, rankingVisibility, req.params.id]);
       await connection.execute('DELETE FROM quiz_questions WHERE quiz_id = ?', [req.params.id]);
       for (let index = 0; index < questions.length; index += 1) {
         const question = questions[index];
-        await connection.execute('INSERT INTO quiz_questions (quiz_id, prompt, topic, options_json, correct_index, sequence_no) VALUES (?, ?, ?, ?, ?, ?)', [req.params.id, question.prompt, question.topic, JSON.stringify(question.options), question.correctIndex, index + 1]);
+        await connection.execute('INSERT INTO quiz_questions (quiz_id, prompt, topic, options_json, correct_index, question_type, correct_answers_json, correct_text, sequence_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [req.params.id, question.prompt, question.topic, JSON.stringify(question.options), question.correctIndex, question.type, JSON.stringify(question.correctAnswers), question.correctText || null, index + 1]);
       }
       await connection.commit();
       res.json({ message: 'Quiz and questions updated.' });
     } catch (error) {
       await connection.rollback();
-      if (error.message.includes('required') || error.message.includes('incomplete') || error.message.includes('Question time')) return res.status(400).json({ message: error.message });
+      if (error.message.includes('required') || error.message.includes('incomplete') || error.message.includes('Question time') || error.message.includes('navigation')) return res.status(400).json({ message: error.message });
       next(error);
     } finally { connection.release(); }
   });
@@ -123,23 +156,25 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
     } catch (error) { next(error); }
   });
   app.get('/api/quizzes/active', requireAuth, async (_req, res, next) => {
-    try { const [rows] = await pool.query("SELECT id, title, join_code AS joinCode, status, question_time_seconds AS questionTimeSeconds FROM quizzes WHERE status IN ('lobby','live') ORDER BY id DESC"); res.json(rows); } catch (e) { next(e); }
+    try { await openScheduled(); const [rows] = await pool.query("SELECT id, title, join_code AS joinCode, status, question_time_seconds AS questionTimeSeconds, navigation_mode AS navigationMode FROM quizzes WHERE status IN ('lobby','live') ORDER BY id DESC"); res.json(rows); } catch (e) { next(e); }
   });
   app.patch('/api/admin/quizzes/:id/settings', requireAuth, requireStaff, async (req, res, next) => {
     try {
       const allowRetakes = req.body.allowRetakes === undefined ? null : Boolean(req.body.allowRetakes);
       const questionTimeSeconds = req.body.questionTimeSeconds === undefined ? null : validQuestionTime(req.body.questionTimeSeconds);
-      if (allowRetakes === null && questionTimeSeconds === null) return res.status(400).json({ message: 'Choose a quiz setting to update.' });
-      if (questionTimeSeconds !== null) {
+      const navigationMode = req.body.navigationMode === undefined ? null : validNavigationMode(req.body.navigationMode);
+      if (allowRetakes === null && questionTimeSeconds === null && navigationMode === null) return res.status(400).json({ message: 'Choose a quiz setting to update.' });
+      if (questionTimeSeconds !== null || navigationMode !== null) {
         const [quizzes] = await pool.execute('SELECT status FROM quizzes WHERE id = ?', [req.params.id]);
         if (!quizzes.length) return res.status(404).json({ message: 'Quiz not found.' });
-        if (quizzes[0].status === 'live') return res.status(400).json({ message: 'Quiz time cannot be changed while the quiz is live.' });
+        if (quizzes[0].status === 'live') return res.status(400).json({ message: 'Quiz timing and navigation cannot be changed while the quiz is live.' });
       }
-      const [result] = await pool.execute('UPDATE quizzes SET allow_retakes = COALESCE(?, allow_retakes), question_time_seconds = COALESCE(?, question_time_seconds) WHERE id = ?', [allowRetakes, questionTimeSeconds, req.params.id]);
+      const [result] = await pool.execute('UPDATE quizzes SET allow_retakes = COALESCE(?, allow_retakes), question_time_seconds = COALESCE(?, question_time_seconds), navigation_mode = COALESCE(?, navigation_mode) WHERE id = ?', [allowRetakes, questionTimeSeconds, navigationMode, req.params.id]);
       if (!result.affectedRows) return res.status(404).json({ message: 'Quiz not found.' });
-      res.json({ message: questionTimeSeconds !== null ? `Quiz time changed to ${questionTimeSeconds} seconds per question.` : allowRetakes ? 'Retakes enabled.' : 'Retakes disabled.' });
+      const message = navigationMode !== null ? `Quiz navigation changed to ${navigationMode}.` : questionTimeSeconds !== null ? `Quiz time changed to ${questionTimeSeconds} seconds per question.` : allowRetakes ? 'Retakes enabled.' : 'Retakes disabled.';
+      res.json({ message });
     } catch (error) {
-      if (error.message.includes('Question time')) return res.status(400).json({ message: error.message });
+      if (error.message.includes('Question time') || error.message.includes('navigation')) return res.status(400).json({ message: error.message });
       next(error);
     }
   });
@@ -256,7 +291,7 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
 
 async function leaderboard(pool, quizId, answers) {
   const scores = {};
-  for (const answer of answers.values()) scores[answer.studentId] = (scores[answer.studentId] || 0) + (answer.correct ? 1000 + Math.max(0, 300 - Math.floor(answer.responseMs / 100)) : 0);
+  for (const answer of answers.values()) scores[answer.studentId] = (scores[answer.studentId] || 0) + (answer.points || 0);
   const ids = Object.keys(scores); if (!ids.length) return [];
   const [users] = await pool.query(`SELECT id, full_name AS fullName FROM users WHERE id IN (${ids.map(()=>'?').join(',')})`, ids);
   return users.map(u=>({studentId:u.id,fullName:u.fullName,score:scores[u.id]||0})).sort((a,b)=>b.score-a.score).slice(0,20);
@@ -276,7 +311,7 @@ async function finalizeAttempts(pool, state) {
   for (const [studentId, attemptId] of state.attempts.entries()) {
     const answers = [...state.answers.values()].filter(answer => answer.studentId === studentId);
     const correct = answers.filter(answer => answer.correct).length;
-    const score = answers.reduce((total, answer) => total + (answer.correct ? 1000 + Math.max(0, 300 - Math.floor(answer.responseMs / 100)) : 0), 0);
+    const score = answers.reduce((total, answer) => total + (answer.points || 0), 0);
     const averageResponseMs = answers.length ? Math.round(answers.reduce((total, answer) => total + answer.responseMs, 0) / answers.length) : 0;
     await pool.execute("UPDATE quiz_attempts SET status = 'completed', score = ?, correct_count = ?, total_questions = ?, average_response_ms = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?", [score, correct, state.questions.length, averageResponseMs, attemptId]);
   }
@@ -289,7 +324,31 @@ export function configureQuizSockets(io, pool, verifyToken) {
     const question = state.questions[state.index];
     if (!question) return null;
     const endsAt = state.phase === 'paused' ? Date.now() + state.remainingMs : state.startedAt + state.questionMs;
-    return { id: question.id, index: state.index, total: state.questions.length, prompt: question.prompt, options: question.options, endsAt };
+    return { id: question.id, index: state.index, total: state.questions.length, prompt: question.prompt, options: question.options, questionType: question.questionType, endsAt };
+  };
+
+  const studentSockets = async quizId => (await io.in(`quiz:${quizId}`).fetchSockets()).filter(client => client.user?.role === 'student');
+  const emitParticipation = async quizId => {
+    const students = await studentSockets(quizId);
+    const studentIds = new Set(students.map(client => client.user.id));
+    const state = rooms.get(Number(quizId));
+    const answeredIds = new Set([...(state?.questionAnswers || [])].map(key => Number(String(key).split(':')[1])).filter(id => studentIds.has(id)));
+    io.to(`quiz:${quizId}`).emit('quiz:presence', { count: studentIds.size });
+    io.to(`quiz:${quizId}`).emit('quiz:answer-count', { answered: answeredIds.size, total: studentIds.size, remaining: Math.max(0, studentIds.size - answeredIds.size) });
+  };
+  const initials = name => String(name || '').split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 3).toUpperCase();
+  const emitRanked = async (quizId, event, extra = {}) => {
+    const state = rooms.get(Number(quizId));
+    const rankings = await leaderboard(pool, quizId, state?.answers || new Map());
+    for (const client of await io.in(`quiz:${quizId}`).fetchSockets()) {
+      let visible = rankings;
+      if (client.user?.role === 'student' && state?.rankingVisibility === 'initials') visible = rankings.map((entry, index) => ({ ...entry, fullName: initials(entry.fullName), position: index + 1 }));
+      if (client.user?.role === 'student' && state?.rankingVisibility === 'private') {
+        const index = rankings.findIndex(entry => Number(entry.studentId) === Number(client.user.id));
+        visible = index < 0 ? [] : [{ ...rankings[index], fullName: 'You', position: index + 1 }];
+      }
+      client.emit(event, { ...extra, leaderboard: visible });
+    }
   };
 
   const liveStateFor = (state, userId) => {
@@ -300,7 +359,10 @@ export function configureQuizSockets(io, pool, verifyToken) {
     return {
       question: questionPayload(state),
       selectedAnswer: answer?.answerIndex ?? null,
-      correctIndex: state.phase === 'reveal' ? question.correctIndex : null,
+      selectedAnswers: answer?.answerIndexes || [],
+      typedAnswer: answer?.answerText || '',
+      submitted: Boolean(answer),
+      correctIndex: state.phase === 'reveal' ? (question.questionType === 'typed' ? { correctText: question.correctText } : question.questionType === 'multiple_selection' ? question.correctAnswers : question.correctIndex) : null,
       phase: state.phase,
       remainingMs: state.phase === 'paused' ? state.remainingMs : Math.max(0, state.startedAt + state.questionMs - Date.now())
     };
@@ -314,7 +376,13 @@ export function configureQuizSockets(io, pool, verifyToken) {
     state.timer = null;
     state.phase = 'reveal';
     state.remainingMs = 0;
-    io.to(`quiz:${quizId}`).emit('quiz:reveal', { correctIndex: question.correctIndex, leaderboard: await leaderboard(pool, quizId, state.answers) });
+    await emitRanked(quizId, 'quiz:reveal', { correctIndex: question.correctIndex, correctAnswers: question.correctAnswers, correctText: question.correctText });
+    if (state.navigationMode === 'automatic') {
+      state.timer = setTimeout(() => {
+        state.index += 1;
+        sendQuestion(Number(quizId));
+      }, AUTO_REVIEW_MS);
+    }
   };
 
   const sendQuestion = async (quizId) => {
@@ -323,7 +391,7 @@ export function configureQuizSockets(io, pool, verifyToken) {
     if (state.index >= state.questions.length) {
       await finalizeAttempts(pool, state);
       await pool.execute("UPDATE quizzes SET status='completed' WHERE id=?", [quizId]);
-      io.to(`quiz:${quizId}`).emit('quiz:completed', { leaderboard: await leaderboard(pool, quizId, state.answers) });
+      await emitRanked(quizId, 'quiz:completed');
       rooms.delete(quizId);
       return;
     }
@@ -333,6 +401,7 @@ export function configureQuizSockets(io, pool, verifyToken) {
     state.remainingMs = state.questionMs;
     state.questionAnswers = new Set();
     io.to(`quiz:${quizId}`).emit('quiz:question', questionPayload(state));
+    await emitParticipation(quizId);
     state.timer = setTimeout(() => revealQuestion(quizId), state.questionMs);
   };
 
@@ -340,9 +409,10 @@ export function configureQuizSockets(io, pool, verifyToken) {
     socket.on('quiz:join', async ({ joinCode: requestedCode }, ack = () => {}) => {
       try {
         const code = String(requestedCode || '').trim().toUpperCase();
-        const [rows] = await pool.execute("SELECT id,title,join_code AS joinCode,status,allow_retakes AS allowRetakes,question_time_seconds AS questionTimeSeconds FROM quizzes WHERE join_code=? AND status IN ('draft','lobby','live')", [code]);
+        const [rows] = await pool.execute("SELECT id,title,join_code AS joinCode,status,allow_retakes AS allowRetakes,question_time_seconds AS questionTimeSeconds,navigation_mode AS navigationMode,speed_scoring AS speedScoring,scheduled_at AS scheduledAt,ranking_visibility AS rankingVisibility FROM quizzes WHERE join_code=? AND status IN ('draft','lobby','live')", [code]);
         if (!rows.length) throw new Error('Quiz room not found.');
         const quiz = rows[0];
+        if (socket.user.role === 'student' && quiz.status === 'draft' && quiz.scheduledAt && new Date(quiz.scheduledAt) > new Date()) throw new Error(`This quiz opens ${new Date(quiz.scheduledAt).toLocaleString()}.`);
         if (socket.user.role === 'student' && !quiz.allowRetakes) {
           const [done] = await pool.execute("SELECT id FROM quiz_attempts WHERE quiz_id=? AND student_id=? AND status='completed' LIMIT 1", [quiz.id, socket.user.id]);
           if (done.length) throw new Error('You have already completed this quiz.');
@@ -354,12 +424,12 @@ export function configureQuizSockets(io, pool, verifyToken) {
         }
         socket.join(`quiz:${quiz.id}`);
         socket.data.quizId = quiz.id;
-        if (quiz.status === 'draft') await pool.execute("UPDATE quizzes SET status='lobby' WHERE id=?", [quiz.id]);
+        if (quiz.status === 'draft' && (!quiz.scheduledAt || new Date(quiz.scheduledAt) <= new Date())) await pool.execute("UPDATE quizzes SET status='lobby' WHERE id=?", [quiz.id]);
         state = rooms.get(Number(quiz.id));
         const liveState = liveStateFor(state, socket.user.id);
-        if (liveState && liveState.selectedAnswer !== null) state.questionAnswers.add(`${liveState.question.id}:${socket.user.id}`);
-        ack({ ok: true, quiz: { id: quiz.id, title: quiz.title, joinCode: quiz.joinCode, questionTimeSeconds: quiz.questionTimeSeconds, status: quiz.status === 'draft' ? 'lobby' : quiz.status }, liveState });
-        io.to(`quiz:${quiz.id}`).emit('quiz:presence', { count: (await io.in(`quiz:${quiz.id}`).fetchSockets()).length });
+        if (liveState?.submitted) state.questionAnswers.add(`${liveState.question.id}:${socket.user.id}`);
+        ack({ ok: true, quiz: { id: quiz.id, title: quiz.title, joinCode: quiz.joinCode, questionTimeSeconds: quiz.questionTimeSeconds, navigationMode: quiz.navigationMode, status: quiz.status === 'draft' ? 'lobby' : quiz.status }, liveState });
+        await emitParticipation(quiz.id);
       } catch (error) { ack({ ok: false, message: error.message }); }
     });
 
@@ -367,13 +437,13 @@ export function configureQuizSockets(io, pool, verifyToken) {
       try {
         if (!['admin', 'mentor'].includes(socket.user.role)) throw new Error('Staff access required.');
         if (rooms.has(Number(quizId))) throw new Error('This quiz is already running.');
-        const [quizRows] = await pool.execute('SELECT question_time_seconds AS questionTimeSeconds FROM quizzes WHERE id=?', [quizId]);
+        const [quizRows] = await pool.execute('SELECT question_time_seconds AS questionTimeSeconds, navigation_mode AS navigationMode, speed_scoring AS speedScoring, ranking_visibility AS rankingVisibility FROM quizzes WHERE id=?', [quizId]);
         if (!quizRows.length) throw new Error('Quiz not found.');
-        const [rows] = await pool.execute('SELECT id,prompt,topic,options_json AS options,correct_index AS correctIndex FROM quiz_questions WHERE quiz_id=? ORDER BY sequence_no', [quizId]);
-        const questions = rows.map(question => ({ ...question, options: typeof question.options === 'string' ? JSON.parse(question.options) : question.options }));
+        const [rows] = await pool.execute('SELECT id,prompt,topic,options_json AS options,correct_index AS correctIndex,question_type AS questionType,correct_answers_json AS correctAnswers,correct_text AS correctText FROM quiz_questions WHERE quiz_id=? ORDER BY sequence_no', [quizId]);
+        const questions = rows.map(question => ({ ...question, options: typeof question.options === 'string' ? JSON.parse(question.options) : question.options, correctAnswers: typeof question.correctAnswers === 'string' ? JSON.parse(question.correctAnswers) : (question.correctAnswers || []) }));
         if (!questions.length) throw new Error('This quiz has no questions.');
         await pool.execute("UPDATE quizzes SET status='live' WHERE id=?", [quizId]);
-        const state = { questions, index: 0, answers: new Map(), questionAnswers: new Set(), attempts: new Map(), startedAt: 0, timer: null, phase: 'answering', remainingMs: 0, questionMs: validQuestionTime(quizRows[0].questionTimeSeconds) * 1000 };
+        const state = { questions, index: 0, answers: new Map(), questionAnswers: new Set(), attempts: new Map(), startedAt: 0, timer: null, phase: 'answering', remainingMs: 0, questionMs: validQuestionTime(quizRows[0].questionTimeSeconds) * 1000, navigationMode: validNavigationMode(quizRows[0].navigationMode), speedScoring: quizRows[0].speedScoring !== false, rankingVisibility: validRankingVisibility(quizRows[0].rankingVisibility) };
         rooms.set(Number(quizId), state);
         io.to(`quiz:${quizId}`).emit('quiz:started', { questionCount: questions.length, questionTimeSeconds: state.questionMs / 1000 });
         sendQuestion(Number(quizId));
@@ -381,21 +451,31 @@ export function configureQuizSockets(io, pool, verifyToken) {
       } catch (error) { ack({ ok: false, message: error.message }); }
     });
 
-    socket.on('quiz:answer', async ({ quizId, questionId, answerIndex }, ack = () => {}) => {
+    socket.on('quiz:answer', async ({ quizId, questionId, answerIndex, answerIndexes, answerText }, ack = () => {}) => {
       try {
         if (socket.user.role !== 'student' || socket.user.status !== 'approved') throw new Error('Approved student access required.');
         const state = rooms.get(Number(quizId));
         const question = state?.questions[state.index];
         if (!state || !question || state.phase !== 'answering' || question.id !== questionId || Date.now() > state.startedAt + state.questionMs) throw new Error('This question is closed.');
         const selectedIndex = Number(answerIndex);
-        if (!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex >= question.options.length) throw new Error('Choose a valid answer.');
+        const selectedIndexes = [...new Set((answerIndexes || []).map(Number))].sort((a, b) => a - b);
+        const selectedText = String(answerText || '').trim();
+        if (question.questionType === 'typed' && !selectedText) throw new Error('Enter an answer.');
+        if (question.questionType === 'multiple_selection' && (!selectedIndexes.length || selectedIndexes.some(index => !Number.isInteger(index) || index < 0 || index >= question.options.length))) throw new Error('Choose one or more valid answers.');
+        if (!['typed', 'multiple_selection'].includes(question.questionType) && (!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex >= question.options.length)) throw new Error('Choose a valid answer.');
         const key = `${questionId}:${socket.user.id}`;
         if (state.questionAnswers.has(key)) throw new Error('Answer already submitted.');
         state.questionAnswers.add(key);
-        const responseMs = Date.now() - state.startedAt, correct = selectedIndex === question.correctIndex;
-        state.answers.set(key, { studentId: socket.user.id, answerIndex: selectedIndex, correct, responseMs });
+        const responseMs = Date.now() - state.startedAt;
+        const normalized = value => String(value || '').trim().toLocaleLowerCase().replace(/\s+/g, ' ');
+        const correct = question.questionType === 'typed' ? normalized(selectedText) === normalized(question.correctText) : question.questionType === 'multiple_selection' ? JSON.stringify(selectedIndexes) === JSON.stringify(question.correctAnswers) : selectedIndex === question.correctIndex;
+        const points = correct ? 1000 + (state.speedScoring ? Math.max(0, 300 - Math.floor(responseMs / 100)) : 0) : 0;
+        const savedIndex = ['typed', 'multiple_selection'].includes(question.questionType) ? null : selectedIndex;
+        const savedAnswer = question.questionType === 'typed' ? { text: selectedText } : question.questionType === 'multiple_selection' ? { indexes: selectedIndexes } : { index: selectedIndex };
+        state.answers.set(key, { studentId: socket.user.id, answerIndex: savedIndex, answerIndexes: selectedIndexes, answerText: selectedText, correct, responseMs, points });
         const attemptId = await ensureAttempt(pool, state, quizId, socket.user.id);
-        await pool.execute('INSERT INTO quiz_attempt_answers (attempt_id,question_id,answer_index,is_correct,response_ms) VALUES (?,?,?,?,?) ON CONFLICT (attempt_id, question_id) DO UPDATE SET answer_index=EXCLUDED.answer_index,is_correct=EXCLUDED.is_correct,response_ms=EXCLUDED.response_ms', [attemptId, questionId, selectedIndex, correct, responseMs]);
+        await pool.execute('INSERT INTO quiz_attempt_answers (attempt_id,question_id,answer_index,answer_json,is_correct,response_ms) VALUES (?,?,?,?,?,?) ON CONFLICT (attempt_id, question_id) DO UPDATE SET answer_index=EXCLUDED.answer_index,answer_json=EXCLUDED.answer_json,is_correct=EXCLUDED.is_correct,response_ms=EXCLUDED.response_ms', [attemptId, questionId, savedIndex, JSON.stringify(savedAnswer), correct, responseMs]);
+        await emitParticipation(quizId);
         ack({ ok: true });
       } catch (error) { ack({ ok: false, message: error.message }); }
     });
@@ -446,6 +526,8 @@ export function configureQuizSockets(io, pool, verifyToken) {
         const state = rooms.get(Number(quizId));
         if (!state) throw new Error('Live quiz not found.');
         if (state.phase !== 'reveal') throw new Error('Reveal the correct answer before moving on.');
+        clearTimeout(state.timer);
+        state.timer = null;
         state.index += 1;
         await sendQuestion(Number(quizId));
         ack({ ok: true, completed: !rooms.has(Number(quizId)) });
@@ -468,6 +550,9 @@ export function configureQuizSockets(io, pool, verifyToken) {
         await sendQuestion(Number(quizId));
         ack({ ok: true });
       } catch (error) { ack({ ok: false, message: error.message }); }
+    });
+    socket.on('disconnect', () => {
+      if (socket.data.quizId) emitParticipation(socket.data.quizId).catch(() => {});
     });
   });
 }

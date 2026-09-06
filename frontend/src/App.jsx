@@ -1633,11 +1633,13 @@ function QuizResults({ mode, onLive }) {
 
 function QuizCenter({ mode, demo = false }) {
   const roomRef = useRef(null);
+  const soundEnabledRef = useRef(localStorage.getItem("lw_quiz_sounds") === "on");
   const [socket, setSocket] = useState(null),
     [message, setMessage] = useState(""),
     [quizzes, setQuizzes] = useState([]),
     [room, setRoom] = useState(null),
     [presence, setPresence] = useState(0),
+    [answerCount, setAnswerCount] = useState({ answered: 0, total: 0, remaining: 0 }),
     [question, setQuestion] = useState(null),
     [seconds, setSeconds] = useState(30),
     [paused, setPaused] = useState(false),
@@ -1645,13 +1647,33 @@ function QuizCenter({ mode, demo = false }) {
     [selectedAnswer, setSelectedAnswer] = useState(null),
     [reveal, setReveal] = useState(null),
     [leaderboard, setLeaderboard] = useState([]),
+    [multiAnswer, setMultiAnswer] = useState([]),
+    [typedAnswer, setTypedAnswer] = useState(""),
+    [soundEnabled, setSoundEnabled] = useState(soundEnabledRef.current),
     [view, setView] = useState("live");
   const [title, setTitle] = useState("DevOps Knowledge Check");
   const [questionTimeSeconds, setQuestionTimeSeconds] = useState(30);
+  const [navigationMode, setNavigationMode] = useState("manual");
+  const [speedScoring, setSpeedScoring] = useState(true);
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [rankingVisibility, setRankingVisibility] = useState("full");
   const [editingQuizId, setEditingQuizId] = useState(null);
   const [questions, setQuestions] = useState([
-    { prompt: "", topic: "General", options: ["", "", "", ""], correctIndex: 0 },
+    { prompt: "", topic: "General", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "" },
   ]);
+  function playSound(kind) {
+    if (!soundEnabledRef.current) return;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const context = new AudioContext(), oscillator = context.createOscillator(), gain = context.createGain();
+    oscillator.frequency.value = kind === "reveal" ? 720 : kind === "locked" ? 520 : 320;
+    gain.gain.setValueAtTime(.08, context.currentTime); gain.gain.exponentialRampToValueAtTime(.001, context.currentTime + .16);
+    oscillator.connect(gain); gain.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + .16);
+  }
+  function toggleSound() {
+    const next = !soundEnabled; setSoundEnabled(next); soundEnabledRef.current = next;
+    localStorage.setItem("lw_quiz_sounds", next ? "on" : "off"); if (next) playSound("locked");
+  }
   function applyJoinedQuiz(result, restored = false) {
     setRoom(result.quiz);
     roomRef.current = result.quiz;
@@ -1659,7 +1681,9 @@ function QuizCenter({ mode, demo = false }) {
     if (result.liveState?.question) {
       setQuestion(result.liveState.question);
       setSelectedAnswer(result.liveState.selectedAnswer);
-      setSubmitted(result.liveState.selectedAnswer !== null);
+      setMultiAnswer(result.liveState.selectedAnswers || []);
+      setTypedAnswer(result.liveState.typedAnswer || "");
+      setSubmitted(Boolean(result.liveState.submitted));
       setReveal(result.liveState.correctIndex);
       setPaused(result.liveState.phase === "paused");
       setSeconds(result.liveState.phase === "paused" ? Math.ceil(result.liveState.remainingMs / 1000) : Math.max(0, Math.ceil((result.liveState.question.endsAt - Date.now()) / 1000)));
@@ -1694,6 +1718,7 @@ function QuizCenter({ mode, demo = false }) {
     });
     s.on("connect_error", () => setMessage("Live quiz server is unavailable."));
     s.on("quiz:presence", (d) => setPresence(d.count));
+    s.on("quiz:answer-count", setAnswerCount);
     s.on("quiz:started", () => setMessage("Quiz started."));
     s.on("quiz:question", (q) => {
       setQuestion(q);
@@ -1701,13 +1726,16 @@ function QuizCenter({ mode, demo = false }) {
       setReveal(null);
       setSubmitted(false);
       setSelectedAnswer(null);
+      setMultiAnswer([]); setTypedAnswer("");
       setSeconds(Math.max(0, Math.ceil((q.endsAt - Date.now()) / 1000)));
+      playSound("question");
     });
     s.on("quiz:reveal", (d) => {
       setPaused(false);
       setSeconds(0);
-      setReveal(d.correctIndex);
+      setReveal(d.correctText ? { correctText: d.correctText } : d.correctAnswers?.length ? d.correctAnswers : d.correctIndex);
       setLeaderboard(d.leaderboard);
+      playSound("reveal");
     });
     s.on("quiz:paused", (d) => {
       setPaused(true);
@@ -1778,14 +1806,14 @@ function QuizCenter({ mode, demo = false }) {
       if (!result.ok) setMessage(result.message);
     });
   }
-  function answer(answerIndex) {
+  function answer(answerIndex = null) {
     if (submitted || seconds <= 0) return;
     socket.emit(
       "quiz:answer",
-      { quizId: room.id, questionId: question.id, answerIndex },
+      { quizId: room.id, questionId: question.id, answerIndex, answerIndexes: multiAnswer, answerText: typedAnswer },
       (result) => {
         setSubmitted(result.ok);
-        if (result.ok) setSelectedAnswer(answerIndex);
+        if (result.ok) { setSelectedAnswer(answerIndex); playSound("locked"); }
         setMessage(result.ok ? "Answer locked in." : result.message);
       },
     );
@@ -1809,7 +1837,7 @@ function QuizCenter({ mode, demo = false }) {
     try {
       const quiz = await api(editingQuizId ? `/admin/quizzes/${editingQuizId}` : "/admin/quizzes", {
         method: editingQuizId ? "PUT" : "POST",
-        body: JSON.stringify({ title, questions, questionTimeSeconds }),
+        body: JSON.stringify({ title, questions, questionTimeSeconds, navigationMode, speedScoring, scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null, rankingVisibility }),
       });
       setMessage(editingQuizId ? quiz.message : `Quiz created. Join code: ${quiz.joinCode}`);
       cancelQuizEdit();
@@ -1822,7 +1850,9 @@ function QuizCenter({ mode, demo = false }) {
     setEditingQuizId(null);
     setTitle("DevOps Knowledge Check");
     setQuestionTimeSeconds(30);
-    setQuestions([{ prompt: "", topic: "General", options: ["", "", "", ""], correctIndex: 0 }]);
+    setNavigationMode("manual");
+    setSpeedScoring(true); setScheduledAt(""); setRankingVisibility("full");
+    setQuestions([{ prompt: "", topic: "General", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "" }]);
   }
   async function editQuiz(quiz) {
     try {
@@ -1830,7 +1860,9 @@ function QuizCenter({ mode, demo = false }) {
       setEditingQuizId(quiz.id);
       setTitle(detail.title);
       setQuestionTimeSeconds(Number(detail.questionTimeSeconds));
-      setQuestions(detail.questions.map(question => ({ prompt: question.prompt, topic: question.topic, options: question.options, correctIndex: Number(question.correctIndex) })));
+      setNavigationMode(detail.navigationMode || "manual");
+      setSpeedScoring(detail.speedScoring !== false); setScheduledAt(detail.scheduledAt ? new Date(detail.scheduledAt).toISOString().slice(0, 16) : ""); setRankingVisibility(detail.rankingVisibility || "full");
+      setQuestions(detail.questions.map(question => ({ prompt: question.prompt, topic: question.topic, questionType: question.questionType || "single_choice", options: question.options, correctIndex: Number(question.correctIndex), correctAnswers: question.correctAnswers || [], correctText: question.correctText || "" })));
       setMessage(`Editing ${detail.title}.`);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) { setMessage(error.message); }
@@ -1849,7 +1881,7 @@ function QuizCenter({ mode, demo = false }) {
     try {
       const text = await file.text();
       const quiz = await api(
-        `/admin/quizzes/import?title=${encodeURIComponent(title)}&questionTimeSeconds=${questionTimeSeconds}`,
+        `/admin/quizzes/import?title=${encodeURIComponent(title)}&questionTimeSeconds=${questionTimeSeconds}&navigationMode=${navigationMode}`,
         { method: "POST", headers: { "Content-Type": "text/csv" }, body: text },
       );
       setMessage(`CSV imported. Join code: ${quiz.joinCode}`);
@@ -1876,6 +1908,17 @@ function QuizCenter({ mode, demo = false }) {
       const data = await api(`/admin/quizzes/${quiz.id}/settings`, {
         method: "PATCH",
         body: JSON.stringify({ questionTimeSeconds: seconds }),
+      });
+      setMessage(data.message);
+      load();
+    } catch (error) { setMessage(error.message); load(); }
+  }
+  async function updateNavigationMode(quiz, value) {
+    if (value === quiz.navigationMode) return;
+    try {
+      const data = await api(`/admin/quizzes/${quiz.id}/settings`, {
+        method: "PATCH",
+        body: JSON.stringify({ navigationMode: value }),
       });
       setMessage(data.message);
       load();
@@ -1915,6 +1958,7 @@ function QuizCenter({ mode, demo = false }) {
         <span className="timer-badge">
           {room?.questionTimeSeconds || questionTimeSeconds} sec / question
         </span>
+        <button type="button" className="quiz-sound-toggle" onClick={toggleSound}>{soundEnabled ? "🔊 Sound on" : "🔇 Sound off"}</button>
       </div>
       <p className="form-message">{message}</p>
       {!room && mode === "student" && (
@@ -1963,6 +2007,26 @@ function QuizCenter({ mode, demo = false }) {
               />
               <small>Choose between 5 seconds and 5 minutes.</small>
             </label>
+            <label>
+              Quiz navigation
+              <select value={navigationMode} onChange={(event) => setNavigationMode(event.target.value)}>
+                <option value="manual">Manual — mentor controls the next question</option>
+                <option value="automatic">Automatic — moves on after answer reveal</option>
+              </select>
+              <small>Automatic mode gives the class 4 seconds to review the correct answer.</small>
+            </label>
+            <label className="quiz-check-setting"><input type="checkbox" checked={speedScoring} onChange={(event) => setSpeedScoring(event.target.checked)} /> Add a speed bonus to correct answers</label>
+            <label>
+              Schedule opening (optional)
+              <input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} />
+              <small>Students cannot join before this date and time.</small>
+            </label>
+            <label>
+              Student leaderboard privacy
+              <select value={rankingVisibility} onChange={(event) => setRankingVisibility(event.target.value)}>
+                <option value="full">Show full names</option><option value="initials">Show initials only</option><option value="private">Only show each student their position</option>
+              </select>
+            </label>
             {questions.map((q, qi) => (
               <fieldset key={qi}>
                 <legend>Question {qi + 1}</legend>
@@ -1979,13 +2043,17 @@ function QuizCenter({ mode, demo = false }) {
                   onChange={(e) => updateQuestion(qi, "topic", e.target.value)}
                   required
                 />
-                {q.options.map((o, oi) => (
+                <label>Answer type<select value={q.questionType || "single_choice"} onChange={(event) => {
+                  const questionType = event.target.value;
+                  setQuestions(prev => prev.map((item, index) => index === qi ? { ...item, questionType, options: questionType === "true_false" ? ["True", "False"] : questionType === "typed" ? [] : item.options.length >= 2 ? item.options : ["", "", "", ""] } : item));
+                }}><option value="single_choice">One correct option</option><option value="true_false">True or false</option><option value="multiple_selection">Multiple correct options</option><option value="typed">Typed answer</option></select></label>
+                {q.questionType === "typed" ? <input placeholder="Accepted answer" value={q.correctText || ""} onChange={(event) => updateQuestion(qi, "correctText", event.target.value)} required /> : q.options.map((o, oi) => (
                   <label className="option-edit" key={oi}>
                     <input
-                      type="radio"
+                      type={q.questionType === "multiple_selection" ? "checkbox" : "radio"}
                       name={`correct-${qi}`}
-                      checked={q.correctIndex === oi}
-                      onChange={() => updateQuestion(qi, "correctIndex", oi)}
+                      checked={q.questionType === "multiple_selection" ? (q.correctAnswers || []).includes(oi) : q.correctIndex === oi}
+                      onChange={() => q.questionType === "multiple_selection" ? updateQuestion(qi, "correctAnswers", (q.correctAnswers || []).includes(oi) ? q.correctAnswers.filter(index => index !== oi) : [...(q.correctAnswers || []), oi]) : updateQuestion(qi, "correctIndex", oi)}
                     />
                     <input
                       placeholder={`Option ${oi + 1}`}
@@ -2006,7 +2074,7 @@ function QuizCenter({ mode, demo = false }) {
                 onClick={() =>
                   setQuestions([
                     ...questions,
-                    { prompt: "", topic: "General", options: ["", "", "", ""], correctIndex: 0 },
+                    { prompt: "", topic: "General", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "" },
                   ])
                 }
               >
@@ -2041,8 +2109,9 @@ function QuizCenter({ mode, demo = false }) {
               <div>
                 <b>{q.title}</b>
                 <span>
-                  {q.questionCount} questions · {q.questionTimeSeconds} sec each · Code {q.joinCode}
+                  {q.questionCount} questions · {q.questionTimeSeconds} sec each · {q.navigationMode === "automatic" ? "Automatic" : "Manual"} · Code {q.joinCode}
                 </span>
+                <small>{q.speedScoring ? "Speed scoring" : "Equal scoring"} · {q.rankingVisibility === "private" ? "Private ranking" : q.rankingVisibility === "initials" ? "Initials only" : "Full-name ranking"}{q.scheduledAt ? ` · Opens ${new Date(q.scheduledAt).toLocaleString()}` : ""}</small>
               </div>
               <label className="quiz-time-setting">
                 Seconds
@@ -2056,6 +2125,13 @@ function QuizCenter({ mode, demo = false }) {
                   aria-label={`Seconds per question for ${q.title}`}
                   onBlur={(e) => updateQuizTime(q, e.target.value)}
                 />
+              </label>
+              <label className="quiz-navigation-setting">
+                Navigation
+                <select defaultValue={q.navigationMode || "manual"} disabled={q.status === "live"} onChange={(event) => updateNavigationMode(q, event.target.value)}>
+                  <option value="manual">Manual</option>
+                  <option value="automatic">Automatic</option>
+                </select>
               </label>
               <button
                 className="button primary"
@@ -2080,7 +2156,7 @@ function QuizCenter({ mode, demo = false }) {
           <p>
             {presence} connected participant{presence === 1 ? "" : "s"}
           </p>
-          <p>{room.questionTimeSeconds} seconds per question</p>
+          <p>{room.questionTimeSeconds} seconds per question · {room.navigationMode === "automatic" ? "Automatic navigation" : "Mentor-controlled navigation"}</p>
           {mode === "admin" ? (
             <button className="button gold" onClick={start}>
               Start quiz for everyone
@@ -2099,28 +2175,29 @@ function QuizCenter({ mode, demo = false }) {
           <p>
             Question {question.index + 1} of {question.total}
           </p>
+          {mode === "admin" && <p className="live-answer-count"><b>{answerCount.answered}</b> of {answerCount.total} students answered · {answerCount.remaining} remaining</p>}
           <h3>{question.prompt}</h3>
-          <div className="answer-grid">
+          {question.questionType === "typed" ? <div className="typed-answer"><input value={typedAnswer} disabled={mode !== "student" || submitted || paused || seconds <= 0} onChange={(event) => setTypedAnswer(event.target.value)} placeholder="Type your answer" /><button type="button" className="button primary" disabled={!typedAnswer.trim() || submitted || paused || seconds <= 0} onClick={() => answer(null)}>Lock answer</button>{reveal !== null && <strong>Accepted answer: {reveal.correctText}</strong>}</div> : <div className="answer-grid">
             {question.options.map((o, i) => (
               <button
                 key={i}
                 type="button"
                 disabled={mode !== "student" || paused || submitted || seconds <= 0}
-                aria-pressed={selectedAnswer === i}
-                className={`${submitted ? "locked" : ""} ${selectedAnswer === i && reveal === null ? "selected" : ""} ${reveal === i ? "correct" : ""} ${reveal !== null && selectedAnswer === i && reveal !== i ? "incorrect" : ""}`}
-                onClick={() => answer(i)}
+                aria-pressed={question.questionType === "multiple_selection" ? multiAnswer.includes(i) : selectedAnswer === i}
+                className={`${submitted ? "locked" : ""} ${(question.questionType === "multiple_selection" ? multiAnswer.includes(i) : selectedAnswer === i) && reveal === null ? "selected" : ""} ${(Array.isArray(reveal) ? reveal.includes(i) : reveal === i) ? "correct" : ""} ${reveal !== null && (question.questionType === "multiple_selection" ? multiAnswer.includes(i) && !reveal.includes(i) : selectedAnswer === i && reveal !== i) ? "incorrect" : ""}`}
+                onClick={() => question.questionType === "multiple_selection" ? setMultiAnswer(current => current.includes(i) ? current.filter(value => value !== i) : [...current, i]) : answer(i)}
               >
                 <b>{String.fromCharCode(65 + i)}</b>
                 {o}
               </button>
             ))}
-          </div>
-          {mode === "admin" && <div className="mentor-quiz-controls"><button type="button" onClick={togglePause} disabled={reveal !== null}>{paused ? "▶ Resume timer" : "Ⅱ Pause timer"}</button><button type="button" onClick={revealNow} disabled={reveal !== null}>Reveal answer</button><button type="button" className="next-question" onClick={nextQuestion} disabled={reveal === null}>{question.index + 1 === question.total ? "Finish quiz" : "Next question →"}</button><button type="button" className="restart-quiz" onClick={restartQuiz}>Restart quiz</button></div>}
+          {question.questionType === "multiple_selection" && <button type="button" className="button primary multi-lock" disabled={!multiAnswer.length || submitted || paused || seconds <= 0} onClick={() => answer(null)}>Lock selected answers</button>}</div>}
+          {mode === "admin" && <div className="mentor-quiz-controls"><span className="navigation-mode-label">{room.navigationMode === "automatic" ? "Automatic navigation" : "Manual navigation"}</span><button type="button" onClick={togglePause} disabled={reveal !== null}>{paused ? "▶ Resume timer" : "Ⅱ Pause timer"}</button><button type="button" onClick={revealNow} disabled={reveal !== null}>Reveal answer</button><button type="button" className="next-question" onClick={nextQuestion} disabled={reveal === null}>{question.index + 1 === question.total ? "Finish quiz" : "Next question →"}</button><button type="button" className="restart-quiz" onClick={restartQuiz}>Restart quiz</button></div>}
           <p>
             {mode !== "student"
-              ? reveal !== null ? `Correct answer: ${String.fromCharCode(65 + reveal)}. Move on when the class is ready.` : paused ? "Timer paused. Student answers are temporarily locked." : "Students are answering now."
+              ? reveal !== null ? `Correct answer revealed. ${room.navigationMode === "automatic" ? "The next question will open automatically." : "Move on when the class is ready."}` : paused ? "Timer paused. Student answers are temporarily locked." : "Students are answering now."
               : reveal !== null
-                ? selectedAnswer === null ? `Time is up. The correct answer is ${String.fromCharCode(65 + reveal)}.` : selectedAnswer === reveal ? "Correct — well done!" : `Incorrect. The correct answer is ${String.fromCharCode(65 + reveal)}.`
+                ? question.questionType === "typed" ? `Accepted answer: ${reveal.correctText}.` : question.questionType === "multiple_selection" ? "The correct selections are highlighted in green." : selectedAnswer === null ? `Time is up. The correct answer is ${String.fromCharCode(65 + reveal)}.` : selectedAnswer === reveal ? "Correct — well done!" : `Incorrect. The correct answer is ${String.fromCharCode(65 + reveal)}.`
                 : paused
                   ? "The mentor has paused this question."
                 : submitted
@@ -2136,7 +2213,7 @@ function QuizCenter({ mode, demo = false }) {
           <h3>Leaderboard</h3>
           {leaderboard.map((p, i) => (
             <div key={p.studentId}>
-              <b>#{i + 1}</b>
+              <b>#{p.position || i + 1}</b>
               <span>{p.fullName}</span>
               <strong>{p.score}</strong>
             </div>

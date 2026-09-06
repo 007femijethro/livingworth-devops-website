@@ -82,6 +82,7 @@
   font-weight: 600;
 }
 .quiz-builder input,
+.quiz-builder select,
 .csv-import input {
   padding: 11px;
   border: 1px solid #bdccd5;
@@ -175,6 +176,8 @@
   padding: 8px;
   border: 1px solid #bdccd5;
 }
+.quiz-navigation-setting { display: grid; gap: 4px; color: #5f7380; font-size: .78rem; font-weight: 800; }
+.quiz-navigation-setting select { padding: 8px; border: 1px solid #bdccd5; background: #fff; }
 .quiz-lobby {
   text-align: center;
   padding: 50px 20px;
@@ -305,6 +308,16 @@
   color: #fff;
 }
 .mentor-quiz-controls { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 18px; padding: 13px; background: #061f48; border: 1px solid #315b89; }
+.navigation-mode-label { display: flex; align-items: center; padding: 0 5px; color: #8be6e8; font-size: .75rem; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; }
+.quiz-sound-toggle { padding: 9px 12px; border: 1px solid #b8cbd4; background: #fff; color: #082d65; font-weight: 800; cursor: pointer; }
+.quiz-check-setting { display: flex !important; grid-column: 1 / -1; align-items: center; gap: 9px !important; padding: 12px; background: #f2f8fa; }
+.quiz-check-setting input { width: auto; }
+.quiz-list article > div small { display: block; margin-top: 5px; color: #647985; }
+.live-answer-count { width: max-content; margin: 10px auto !important; padding: 8px 13px; background: #e8f7f4; color: #076b59 !important; font-weight: 700; }
+.typed-answer { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin: 22px 0; }
+.typed-answer input { min-width: 0; padding: 14px; border: 2px solid #b8ccd5; font: inherit; }
+.typed-answer strong { grid-column: 1 / -1; padding: 12px; background: #dff7e8; color: #087451; }
+.answer-grid .multi-lock { grid-column: 1 / -1; }
 .mentor-quiz-controls button { padding: 10px 13px; border: 1px solid #70a2c9; background: #fff; color: #082d65; font-weight: 800; cursor: pointer; }
 .mentor-quiz-controls button:disabled { cursor: not-allowed; opacity: .4; }
 .mentor-quiz-controls .next-question { background: #e0ae40; border-color: #e0ae40; }
