@@ -155,6 +155,20 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
     } catch (error) { next(error); }
   });
 
+  app.delete('/api/staff/learning/materials/:id', requireAuth, requireStaff, async (req, res, next) => {
+    try {
+      const [materials] = await pool.execute('SELECT resource_url AS resourceUrl, material_type AS materialType FROM learning_materials WHERE id = ?', [req.params.id]);
+      if (!materials.length) return res.status(404).json({ message: 'Learning material not found.' });
+      await pool.execute('DELETE FROM learning_materials WHERE id = ?', [req.params.id]);
+      const material = materials[0];
+      if (material.materialType === 'file' && material.resourceUrl.startsWith('/uploads/')) {
+        const filename = path.basename(material.resourceUrl);
+        await fs.promises.unlink(path.join(uploadDirectory, filename)).catch(() => {});
+      }
+      res.json({ message: 'Learning material deleted.' });
+    } catch (error) { next(error); }
+  });
+
   app.patch('/api/staff/learning/assignments/:id', requireAuth, requireStaff, async (req, res, next) => {
     try {
       const title = String(req.body.title || '').trim();
@@ -190,16 +204,39 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
   });
 
   app.post('/api/staff/learning/modules/:id/materials', requireAuth, requireStaff, upload.single('file'), async (req, res, next) => {
+    const connection = await pool.getConnection();
     try {
-      const title = String(req.body.title || '').trim();
-      const requestedType = req.body.materialType === 'note' ? 'note' : req.body.materialType === 'video' ? 'video' : 'link';
-      const resourceUrl = req.file ? `/uploads/${req.file.filename}` : String(req.body.resourceUrl || '').trim();
+      const noteTitle = String(req.body.noteTitle || '').trim();
       const lessonContent = String(req.body.lessonContent || '').trim();
-      const materialType = req.file ? 'file' : requestedType;
-      if (!title || (materialType === 'note' ? !lessonContent : !resourceUrl)) return res.status(400).json({ message: materialType === 'note' ? 'Add a title and lesson note.' : 'Add a title and either a file or resource link.' });
-      await pool.execute('INSERT INTO learning_materials (module_id, title, material_type, resource_url, lesson_content, original_name, uploaded_by, display_order) SELECT ?, ?, ?, ?, ?, ?, ?, COALESCE(MAX(display_order), 0) + 1 FROM learning_materials WHERE module_id = ?', [req.params.id, title, materialType, materialType === 'note' ? '' : resourceUrl, materialType === 'note' ? lessonContent : null, req.file?.originalname || null, req.user.id, req.params.id]);
-      res.status(201).json({ message: 'Learning material added.' });
-    } catch (error) { next(error); }
+      const videoTitle = String(req.body.videoTitle || '').trim();
+      const videoUrl = String(req.body.videoUrl || '').trim();
+      const resourceTitle = String(req.body.resourceTitle || '').trim();
+      const resourceUrl = String(req.body.resourceUrl || '').trim();
+      const items = [];
+      if (noteTitle || lessonContent) {
+        if (!noteTitle || !lessonContent) return res.status(400).json({ message: 'Add both a lesson-note title and its content.' });
+        items.push({ title: noteTitle, type: 'note', url: '', content: lessonContent, originalName: null });
+      }
+      if (videoTitle || videoUrl) {
+        if (!videoTitle || !/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(videoUrl)) return res.status(400).json({ message: 'Add a video title and a complete YouTube URL.' });
+        items.push({ title: videoTitle, type: 'video', url: videoUrl, content: null, originalName: null });
+      }
+      if (resourceTitle || resourceUrl) {
+        if (!resourceTitle || !/^https?:\/\//i.test(resourceUrl)) return res.status(400).json({ message: 'Add a resource title and complete URL.' });
+        items.push({ title: resourceTitle, type: 'link', url: resourceUrl, content: null, originalName: null });
+      }
+      if (req.file) items.push({ title: String(req.body.fileTitle || req.file.originalname).trim(), type: 'file', url: `/uploads/${req.file.filename}`, content: null, originalName: req.file.originalname });
+      if (!items.length) return res.status(400).json({ message: 'Add a lesson note, YouTube video, resource link or file.' });
+      await connection.beginTransaction();
+      const [[order]] = await connection.execute('SELECT COALESCE(MAX(display_order), 0) AS lastOrder FROM learning_materials WHERE module_id = ?', [req.params.id]);
+      for (let index = 0; index < items.length; index += 1) {
+        const item = items[index];
+        await connection.execute('INSERT INTO learning_materials (module_id, title, material_type, resource_url, lesson_content, original_name, uploaded_by, display_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [req.params.id, item.title, item.type, item.url, item.content, item.originalName, req.user.id, Number(order.lastOrder) + index + 1]);
+      }
+      await connection.commit();
+      res.status(201).json({ message: `${items.length} learning item${items.length === 1 ? '' : 's'} added to this week.` });
+    } catch (error) { await connection.rollback(); next(error); }
+    finally { connection.release(); }
   });
 
   app.post('/api/staff/learning/modules/:id/assignments', requireAuth, requireStaff, async (req, res, next) => {
