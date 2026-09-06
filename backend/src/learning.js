@@ -27,7 +27,8 @@ export async function ensureLearningSchema(pool) {
   )`);
   await pool.query(`CREATE TABLE IF NOT EXISTS learning_materials (
     id INT AUTO_INCREMENT PRIMARY KEY, module_id INT NOT NULL, title VARCHAR(180) NOT NULL,
-    material_type ENUM('file','link','video') NOT NULL, resource_url VARCHAR(1000) NOT NULL,
+    material_type ENUM('file','link','video','note') NOT NULL, resource_url VARCHAR(1000) NOT NULL,
+    lesson_content LONGTEXT NULL,
     original_name VARCHAR(255), uploaded_by INT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (module_id) REFERENCES learning_modules(id) ON DELETE CASCADE,
     FOREIGN KEY (uploaded_by) REFERENCES users(id)
@@ -56,13 +57,16 @@ export async function ensureLearningSchema(pool) {
       await pool.query(`ALTER TABLE ${table} ADD COLUMN display_order INT NOT NULL DEFAULT 0`);
     }
   }
+  const [materialColumns] = await pool.query('SHOW COLUMNS FROM learning_materials');
+  if (!materialColumns.some(column => column.Field === 'lesson_content')) await pool.query('ALTER TABLE learning_materials ADD COLUMN lesson_content LONGTEXT NULL');
+  await pool.query("ALTER TABLE learning_materials MODIFY material_type ENUM('file','link','video','note') NOT NULL");
   await pool.query('UPDATE learning_modules SET display_order = week_number WHERE display_order = 0');
 }
 
 async function modulesFor(pool, studentId = null, staff = false) {
   const [modules] = await pool.query(`SELECT id, week_number AS weekNumber, title, summary, published FROM learning_modules ${staff ? '' : 'WHERE published = TRUE'} ORDER BY display_order, week_number`);
   for (const module of modules) {
-    const [materials] = await pool.execute('SELECT id, title, material_type AS materialType, resource_url AS resourceUrl, original_name AS originalName FROM learning_materials WHERE module_id = ? ORDER BY display_order, created_at, id', [module.id]);
+    const [materials] = await pool.execute('SELECT id, title, material_type AS materialType, resource_url AS resourceUrl, lesson_content AS lessonContent, original_name AS originalName FROM learning_materials WHERE module_id = ? ORDER BY display_order, created_at, id', [module.id]);
     const [assignments] = studentId
       ? await pool.execute(
           `SELECT a.id, a.title, a.instructions, a.due_at AS dueAt, a.max_score AS maxScore,
@@ -141,10 +145,11 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
   app.patch('/api/staff/learning/materials/:id', requireAuth, requireStaff, async (req, res, next) => {
     try {
       const title = String(req.body.title || '').trim();
-      const materialType = ['link', 'video', 'file'].includes(req.body.materialType) ? req.body.materialType : '';
+      const materialType = ['link', 'video', 'file', 'note'].includes(req.body.materialType) ? req.body.materialType : '';
       const resourceUrl = String(req.body.resourceUrl || '').trim();
-      if (!title || !materialType || !resourceUrl) return res.status(400).json({ message: 'Add a title, type and resource.' });
-      const [result] = await pool.execute('UPDATE learning_materials SET title = ?, material_type = ?, resource_url = ? WHERE id = ?', [title, materialType, resourceUrl, req.params.id]);
+      const lessonContent = String(req.body.lessonContent || '').trim();
+      if (!title || !materialType || (materialType === 'note' ? !lessonContent : !resourceUrl)) return res.status(400).json({ message: 'Complete the learning material before saving.' });
+      const [result] = await pool.execute('UPDATE learning_materials SET title = ?, material_type = ?, resource_url = ?, lesson_content = ? WHERE id = ?', [title, materialType, materialType === 'note' ? '' : resourceUrl, materialType === 'note' ? lessonContent : null, req.params.id]);
       if (!result.affectedRows) return res.status(404).json({ message: 'Learning material not found.' });
       res.json({ message: 'Learning material updated.' });
     } catch (error) { next(error); }
@@ -187,10 +192,12 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
   app.post('/api/staff/learning/modules/:id/materials', requireAuth, requireStaff, upload.single('file'), async (req, res, next) => {
     try {
       const title = String(req.body.title || '').trim();
+      const requestedType = req.body.materialType === 'note' ? 'note' : req.body.materialType === 'video' ? 'video' : 'link';
       const resourceUrl = req.file ? `/uploads/${req.file.filename}` : String(req.body.resourceUrl || '').trim();
-      const materialType = req.file ? 'file' : (req.body.materialType === 'video' ? 'video' : 'link');
-      if (!title || !resourceUrl) return res.status(400).json({ message: 'Add a title and either a file or resource link.' });
-      await pool.execute('INSERT INTO learning_materials (module_id, title, material_type, resource_url, original_name, uploaded_by, display_order) SELECT ?, ?, ?, ?, ?, ?, COALESCE(MAX(display_order), 0) + 1 FROM learning_materials WHERE module_id = ?', [req.params.id, title, materialType, resourceUrl, req.file?.originalname || null, req.user.id, req.params.id]);
+      const lessonContent = String(req.body.lessonContent || '').trim();
+      const materialType = req.file ? 'file' : requestedType;
+      if (!title || (materialType === 'note' ? !lessonContent : !resourceUrl)) return res.status(400).json({ message: materialType === 'note' ? 'Add a title and lesson note.' : 'Add a title and either a file or resource link.' });
+      await pool.execute('INSERT INTO learning_materials (module_id, title, material_type, resource_url, lesson_content, original_name, uploaded_by, display_order) SELECT ?, ?, ?, ?, ?, ?, ?, COALESCE(MAX(display_order), 0) + 1 FROM learning_materials WHERE module_id = ?', [req.params.id, title, materialType, materialType === 'note' ? '' : resourceUrl, materialType === 'note' ? lessonContent : null, req.file?.originalname || null, req.user.id, req.params.id]);
       res.status(201).json({ message: 'Learning material added.' });
     } catch (error) { next(error); }
   });
