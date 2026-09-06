@@ -32,8 +32,23 @@ jobs:
             sudo docker compose ps
 
             echo "Testing application..."
-            sleep 10
-            curl -f http://localhost || exit 1
-            curl -f http://localhost/api/health || exit 1
+            ready=false
+            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if curl -fsS --max-time 10 http://localhost/api/health; then
+                ready=true
+                break
+              fi
+              echo "Backend is not ready yet (attempt ${attempt}/12)..."
+              sleep 5
+            done
+
+            if [ "$ready" != "true" ]; then
+              echo "Backend did not become healthy. Recent logs:"
+              sudo docker compose ps
+              sudo docker compose logs --tail 150 backend nginx
+              exit 1
+            fi
+
+            curl -fsS --max-time 10 http://localhost > /dev/null
 
             echo "Deployment completed successfully"
