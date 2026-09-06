@@ -1252,6 +1252,10 @@ function LearningCenter({ mode, demo = false }) {
   const [selectedModule, setSelectedModule] = useState(null);
   const [editing, setEditing] = useState("");
   const [view, setView] = useState("modules");
+  const [progressMaterial, setProgressMaterial] = useState("");
+  const [progressWeek, setProgressWeek] = useState("");
+  const [progressStatus, setProgressStatus] = useState("");
+  const [progressSearch, setProgressSearch] = useState("");
   async function load() {
     if (demo) { setMessage("Connect the backend to manage learning content."); return; }
     try {
@@ -1345,6 +1349,19 @@ function LearningCenter({ mode, demo = false }) {
       setMessage(data.message); load();
     } catch (error) { setMessage(error.message); }
   }
+  const progressMaterials = [...new Map(materialProgress.map((item) => [item.materialId, item])).values()]
+    .sort((left, right) => Number(left.weekNumber) - Number(right.weekNumber) || left.materialTitle.localeCompare(right.materialTitle));
+  const progressWeeks = [...new Set(materialProgress.map((item) => Number(item.weekNumber)))].sort((a, b) => a - b);
+  const progressTerm = progressSearch.trim().toLowerCase();
+  const filteredMaterialProgress = materialProgress.filter((item) =>
+    (!progressMaterial || String(item.materialId) === progressMaterial)
+    && (!progressWeek || String(item.weekNumber) === progressWeek)
+    && (!progressStatus || item.status === progressStatus)
+    && (!progressTerm || `${item.studentName} ${item.email}`.toLowerCase().includes(progressTerm))
+  );
+  function clearProgressFilters() {
+    setProgressMaterial(""); setProgressWeek(""); setProgressStatus(""); setProgressSearch("");
+  }
   if (staff) return (
     <section className="learning-center">
       <div className="learning-head"><div><p className="eyebrow">Course workspace</p><h2>Learning & assignments</h2><p>Build the weekly programme, publish resources and review student work.</p></div><div className="learning-tabs"><button className={view === "modules" ? "active" : ""} onClick={() => setView("modules")}>Modules</button><button className={view === "progress" ? "active" : ""} onClick={() => setView("progress")}>Material progress</button><button className={view === "submissions" ? "active" : ""} onClick={() => setView("submissions")}>Submissions ({submissions.filter((item) => item.status === "submitted").length})</button></div></div>
@@ -1364,7 +1381,7 @@ function LearningCenter({ mode, demo = false }) {
         </article>)}</div>
       </div>}
       {view === "submissions" && <div className="submission-review-list">{submissions.length === 0 ? <div className="empty">No assignment submissions yet.</div> : submissions.map((submission) => <article key={submission.id}><div className="submission-heading"><div><span>{submission.assignmentTitle}</span><h3>{submission.studentName}</h3><p>{submission.email} · Submitted {new Date(submission.submittedAt).toLocaleString()}</p></div><div><b className={`work-status ${submission.status}`}>{submissionLabel(submission.status)}</b>{submission.isLate ? <b className="late-flag">Late</b> : null}</div></div><a href={submission.submissionUrl} target="_blank" rel="noreferrer">Open submitted project ↗</a>{submission.note && <p className="student-note">“{submission.note}”</p>}<form onSubmit={(event) => reviewSubmission(event, submission.id)}><label>Result<select name="status" defaultValue={submission.status === "completed" ? "completed" : "needs_correction"}><option value="needs_correction">Needs correction</option><option value="completed">Completed</option></select></label><label>Score<input name="score" type="number" min="0" max="1000" defaultValue={submission.score ?? ""} /></label><label className="review-feedback">Mentor feedback<textarea name="feedback" rows="3" defaultValue={submission.feedback || ""} required /></label><button className="button primary">Save review</button></form></article>)}</div>}
-      {view === "progress" && <div className="material-progress-monitor"><div className="progress-status-summary">{["done", "in_progress", "not_started"].map((status) => <article key={status}><span>{submissionLabel(status)}</span><strong>{materialProgress.filter((item) => item.status === status).length}</strong></article>)}</div>{materialProgress.length === 0 ? <div className="empty">Progress will appear when approved students and learning materials are available.</div> : <div className="progress-table"><div className="progress-table-head"><b>Learner</b><b>Material</b><b>Week</b><b>Status</b></div>{materialProgress.map((item) => <article key={`${item.studentId}-${item.materialId}`}><span><b>{item.studentName}</b><small>{item.email}</small></span><span><b>{item.materialTitle}</b><small>{item.materialType}</small></span><span>Week {item.weekNumber}</span><b className={`material-progress-status ${item.status}`}>{submissionLabel(item.status)}</b></article>)}</div>}</div>}
+      {view === "progress" && <div className="material-progress-monitor"><div className="progress-status-summary">{["done", "in_progress", "not_started"].map((status) => <article key={status}><span>{submissionLabel(status)}</span><strong>{materialProgress.filter((item) => item.status === status).length}</strong></article>)}</div>{materialProgress.length === 0 ? <div className="empty">Progress will appear when approved students and learning materials are available.</div> : <><div className="material-progress-filters"><label>Learning material<select value={progressMaterial} onChange={(event) => setProgressMaterial(event.target.value)}><option value="">All materials</option>{progressMaterials.map((item) => <option key={item.materialId} value={item.materialId}>Week {item.weekNumber} · {item.materialTitle} ({item.materialType})</option>)}</select></label><label>Week<select value={progressWeek} onChange={(event) => setProgressWeek(event.target.value)}><option value="">All weeks</option>{progressWeeks.map((week) => <option key={week} value={week}>Week {week}</option>)}</select></label><label>Status<select value={progressStatus} onChange={(event) => setProgressStatus(event.target.value)}><option value="">All statuses</option><option value="done">Done</option><option value="in_progress">In progress</option><option value="not_started">Not started</option></select></label><label>Find learner<input type="search" value={progressSearch} onChange={(event) => setProgressSearch(event.target.value)} placeholder="Name or email" /></label><button type="button" className="button light-border" onClick={clearProgressFilters} disabled={!progressMaterial && !progressWeek && !progressStatus && !progressSearch}>Clear filters</button></div><div className="progress-filter-result" role="status"><b>{filteredMaterialProgress.length}</b> of {materialProgress.length} learner-material records shown</div>{filteredMaterialProgress.length === 0 ? <div className="empty">No students match these filters.</div> : <div className="progress-table"><div className="progress-table-head"><b>Learner</b><b>Material</b><b>Week</b><b>Status</b></div>{filteredMaterialProgress.map((item) => <article key={`${item.studentId}-${item.materialId}`}><span><b>{item.studentName}</b><small>{item.email}</small></span><span><b>{item.materialTitle}</b><small>{item.materialType}</small></span><span>Week {item.weekNumber}</span><b className={`material-progress-status ${item.status}`}>{submissionLabel(item.status)}</b></article>)}</div>}</>}</div>}
     </section>
   );
   return (
