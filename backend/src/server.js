@@ -12,6 +12,7 @@ import { configureQuizSockets, ensureQuizSchema, registerQuizRoutes } from './qu
 import { sendApplicationDecision, sendApplicationEmails, sendPasswordReset } from './mailer.js';
 import { ensureLearningSchema, registerLearningRoutes } from './learning.js';
 import { ensureAnnouncementSchema, registerAnnouncementRoutes } from './announcements.js';
+import { registerAnalyticsRoutes } from './analytics.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -430,6 +431,7 @@ app.get('/api/staff/attendance/export', requireAuth, requireStaff, async (req, r
 registerQuizRoutes(app, pool, requireAuth, requireStaff);
 registerLearningRoutes(app, pool, requireAuth, requireStaff);
 registerAnnouncementRoutes(app, pool, requireAuth, requireStaff);
+registerAnalyticsRoutes(app, pool, requireAuth, requireStaff);
 configureQuizSockets(io, pool, verifyToken);
 
 app.post('/api/enquiries', async (req, res, next) => {

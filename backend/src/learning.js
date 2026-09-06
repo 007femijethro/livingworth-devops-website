@@ -50,12 +50,19 @@ export async function ensureLearningSchema(pool) {
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (reviewed_by) REFERENCES users(id)
   )`);
+  for (const table of ['learning_modules', 'learning_materials', 'assignments']) {
+    const [columns] = await pool.query(`SHOW COLUMNS FROM ${table}`);
+    if (!columns.some(column => column.Field === 'display_order')) {
+      await pool.query(`ALTER TABLE ${table} ADD COLUMN display_order INT NOT NULL DEFAULT 0`);
+    }
+  }
+  await pool.query('UPDATE learning_modules SET display_order = week_number WHERE display_order = 0');
 }
 
 async function modulesFor(pool, studentId = null, staff = false) {
-  const [modules] = await pool.query(`SELECT id, week_number AS weekNumber, title, summary, published FROM learning_modules ${staff ? '' : 'WHERE published = TRUE'} ORDER BY week_number`);
+  const [modules] = await pool.query(`SELECT id, week_number AS weekNumber, title, summary, published FROM learning_modules ${staff ? '' : 'WHERE published = TRUE'} ORDER BY display_order, week_number`);
   for (const module of modules) {
-    const [materials] = await pool.execute('SELECT id, title, material_type AS materialType, resource_url AS resourceUrl, original_name AS originalName FROM learning_materials WHERE module_id = ? ORDER BY created_at', [module.id]);
+    const [materials] = await pool.execute('SELECT id, title, material_type AS materialType, resource_url AS resourceUrl, original_name AS originalName FROM learning_materials WHERE module_id = ? ORDER BY display_order, created_at, id', [module.id]);
     const [assignments] = studentId
       ? await pool.execute(
           `SELECT a.id, a.title, a.instructions, a.due_at AS dueAt, a.max_score AS maxScore,
@@ -63,10 +70,10 @@ async function modulesFor(pool, studentId = null, staff = false) {
             s.status AS submissionStatus, s.score, s.feedback, s.submitted_at AS submittedAt,
             CASE WHEN s.id IS NOT NULL AND s.submitted_at > a.due_at THEN TRUE ELSE FALSE END AS isLate
            FROM assignments a LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.student_id = ?
-           WHERE a.module_id = ? ORDER BY a.due_at`, [studentId, module.id]
+           WHERE a.module_id = ? ORDER BY a.display_order, a.due_at, a.id`, [studentId, module.id]
         )
       : await pool.execute(
-          'SELECT id, title, instructions, due_at AS dueAt, max_score AS maxScore FROM assignments WHERE module_id = ? ORDER BY due_at',
+          'SELECT id, title, instructions, due_at AS dueAt, max_score AS maxScore FROM assignments WHERE module_id = ? ORDER BY display_order, due_at, id',
           [module.id]
         );
     module.materials = materials;
@@ -104,7 +111,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const weekNumber = Number.parseInt(req.body.weekNumber, 10);
       const title = String(req.body.title || '').trim();
       if (!weekNumber || weekNumber < 1 || weekNumber > 52 || !title) return res.status(400).json({ message: 'Add a valid week number and module title.' });
-      await pool.execute('INSERT INTO learning_modules (week_number, title, summary, published, created_by) VALUES (?, ?, ?, ?, ?)', [weekNumber, title, String(req.body.summary || '').trim(), Boolean(req.body.published), req.user.id]);
+      await pool.execute('INSERT INTO learning_modules (week_number, title, summary, published, created_by, display_order) SELECT ?, ?, ?, ?, ?, COALESCE(MAX(display_order), 0) + 1 FROM learning_modules', [weekNumber, title, String(req.body.summary || '').trim(), Boolean(req.body.published), req.user.id]);
       res.status(201).json({ message: `Week ${weekNumber} module created.` });
     } catch (error) {
       if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'A module already exists for that week.' });
@@ -114,10 +121,67 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
 
   app.patch('/api/staff/learning/modules/:id', requireAuth, requireStaff, async (req, res, next) => {
     try {
-      const [result] = await pool.execute('UPDATE learning_modules SET published = ? WHERE id = ?', [Boolean(req.body.published), req.params.id]);
+      const [rows] = await pool.execute('SELECT * FROM learning_modules WHERE id = ?', [req.params.id]);
+      if (!rows.length) return res.status(404).json({ message: 'Module not found.' });
+      const current = rows[0];
+      const weekNumber = req.body.weekNumber == null ? current.week_number : Number.parseInt(req.body.weekNumber, 10);
+      const title = req.body.title == null ? current.title : String(req.body.title).trim();
+      const summary = req.body.summary == null ? current.summary : String(req.body.summary).trim();
+      const published = req.body.published == null ? current.published : Boolean(req.body.published);
+      if (!weekNumber || weekNumber < 1 || weekNumber > 52 || !title) return res.status(400).json({ message: 'Add a valid week number and module title.' });
+      const [result] = await pool.execute('UPDATE learning_modules SET week_number = ?, title = ?, summary = ?, published = ? WHERE id = ?', [weekNumber, title, summary, published, req.params.id]);
       if (!result.affectedRows) return res.status(404).json({ message: 'Module not found.' });
-      res.json({ message: req.body.published ? 'Module published.' : 'Module returned to draft.' });
+      res.json({ message: req.body.title == null ? (published ? 'Module published.' : 'Module returned to draft.') : 'Module updated.' });
+    } catch (error) {
+      if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'A module already exists for that week.' });
+      next(error);
+    }
+  });
+
+  app.patch('/api/staff/learning/materials/:id', requireAuth, requireStaff, async (req, res, next) => {
+    try {
+      const title = String(req.body.title || '').trim();
+      const materialType = ['link', 'video', 'file'].includes(req.body.materialType) ? req.body.materialType : '';
+      const resourceUrl = String(req.body.resourceUrl || '').trim();
+      if (!title || !materialType || !resourceUrl) return res.status(400).json({ message: 'Add a title, type and resource.' });
+      const [result] = await pool.execute('UPDATE learning_materials SET title = ?, material_type = ?, resource_url = ? WHERE id = ?', [title, materialType, resourceUrl, req.params.id]);
+      if (!result.affectedRows) return res.status(404).json({ message: 'Learning material not found.' });
+      res.json({ message: 'Learning material updated.' });
     } catch (error) { next(error); }
+  });
+
+  app.patch('/api/staff/learning/assignments/:id', requireAuth, requireStaff, async (req, res, next) => {
+    try {
+      const title = String(req.body.title || '').trim();
+      const instructions = String(req.body.instructions || '').trim();
+      const dueAt = String(req.body.dueAt || '');
+      const maxScore = Number.parseInt(req.body.maxScore, 10);
+      if (!title || !instructions || !dueAt || !maxScore || maxScore < 1 || maxScore > 1000) return res.status(400).json({ message: 'Add a valid title, instructions, deadline and score.' });
+      const [result] = await pool.execute('UPDATE assignments SET title = ?, instructions = ?, due_at = ?, max_score = ? WHERE id = ?', [title, instructions, dueAt, maxScore, req.params.id]);
+      if (!result.affectedRows) return res.status(404).json({ message: 'Assignment not found.' });
+      res.json({ message: 'Assignment updated.' });
+    } catch (error) { next(error); }
+  });
+
+  app.patch('/api/staff/learning/order', requireAuth, requireStaff, async (req, res, next) => {
+    const tables = { modules: 'learning_modules', materials: 'learning_materials', assignments: 'assignments' };
+    const table = tables[req.body.entity];
+    const ids = Array.isArray(req.body.ids) ? req.body.ids.map(Number) : [];
+    if (!table || !ids.length || ids.some(id => !Number.isInteger(id) || id < 1) || new Set(ids).size !== ids.length) return res.status(400).json({ message: 'Choose valid content to rearrange.' });
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const placeholders = ids.map(() => '?').join(',');
+      const [rows] = await connection.execute(`SELECT id${table === 'learning_modules' ? '' : ', module_id AS moduleId'} FROM ${table} WHERE id IN (${placeholders})`, ids);
+      if (rows.length !== ids.length || (table !== 'learning_modules' && new Set(rows.map(row => row.moduleId)).size !== 1)) throw new Error('Content order does not match one module.');
+      for (let index = 0; index < ids.length; index += 1) await connection.execute(`UPDATE ${table} SET display_order = ? WHERE id = ?`, [index + 1, ids[index]]);
+      await connection.commit();
+      res.json({ message: 'Content order updated.' });
+    } catch (error) {
+      await connection.rollback();
+      if (error.message.includes('Content order')) return res.status(400).json({ message: error.message });
+      next(error);
+    } finally { connection.release(); }
   });
 
   app.post('/api/staff/learning/modules/:id/materials', requireAuth, requireStaff, upload.single('file'), async (req, res, next) => {
@@ -126,7 +190,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const resourceUrl = req.file ? `/uploads/${req.file.filename}` : String(req.body.resourceUrl || '').trim();
       const materialType = req.file ? 'file' : (req.body.materialType === 'video' ? 'video' : 'link');
       if (!title || !resourceUrl) return res.status(400).json({ message: 'Add a title and either a file or resource link.' });
-      await pool.execute('INSERT INTO learning_materials (module_id, title, material_type, resource_url, original_name, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)', [req.params.id, title, materialType, resourceUrl, req.file?.originalname || null, req.user.id]);
+      await pool.execute('INSERT INTO learning_materials (module_id, title, material_type, resource_url, original_name, uploaded_by, display_order) SELECT ?, ?, ?, ?, ?, ?, COALESCE(MAX(display_order), 0) + 1 FROM learning_materials WHERE module_id = ?', [req.params.id, title, materialType, resourceUrl, req.file?.originalname || null, req.user.id, req.params.id]);
       res.status(201).json({ message: 'Learning material added.' });
     } catch (error) { next(error); }
   });
@@ -138,7 +202,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const dueAt = String(req.body.dueAt || '');
       const maxScore = Math.min(1000, Math.max(1, Number.parseInt(req.body.maxScore, 10) || 100));
       if (!title || !instructions || !dueAt) return res.status(400).json({ message: 'Add a title, instructions and deadline.' });
-      await pool.execute('INSERT INTO assignments (module_id, title, instructions, due_at, max_score, created_by) VALUES (?, ?, ?, ?, ?, ?)', [req.params.id, title, instructions, dueAt, maxScore, req.user.id]);
+      await pool.execute('INSERT INTO assignments (module_id, title, instructions, due_at, max_score, created_by, display_order) SELECT ?, ?, ?, ?, ?, ?, COALESCE(MAX(display_order), 0) + 1 FROM assignments WHERE module_id = ?', [req.params.id, title, instructions, dueAt, maxScore, req.user.id, req.params.id]);
       res.status(201).json({ message: 'Assignment created.' });
     } catch (error) { next(error); }
   });
