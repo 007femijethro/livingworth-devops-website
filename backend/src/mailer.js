@@ -38,6 +38,20 @@ async function send(message) {
   }
 }
 
+export async function verifyEmailConnection() {
+  if (!transporter) return { configured: false, connected: false };
+  try { await transporter.verify(); return { configured: true, connected: true }; }
+  catch (error) { return { configured: true, connected: false, error: error.message }; }
+}
+
+export function sendTestEmail(account) {
+  return send({
+    to: account.email,
+    subject: 'Livingworth Academy email is connected',
+    html: `<h2>Email setup successful</h2><p>Hello ${escapeHtml(account.fullName)},</p><p>Your Livingworth Academy notification service is connected and ready.</p><p>Livingworth Academy</p>`
+  });
+}
+
 export function sendApplicationEmails(applicant) {
   const name = escapeHtml(applicant.fullName);
   const email = escapeHtml(applicant.email);
@@ -57,7 +71,7 @@ export function sendApplicationEmails(applicant) {
   return Promise.allSettled([confirmation, adminAlert]);
 }
 
-export function sendApplicationDecision(applicant, status) {
+export function sendApplicationDecision(applicant, status, rejectionReason = '') {
   const approved = status === 'approved';
   return send({
     to: applicant.email,
@@ -66,7 +80,7 @@ export function sendApplicationDecision(applicant, status) {
       : 'Update on your Livingworth Academy application',
     html: approved
       ? `<h2>Welcome to Livingworth Academy</h2><p>Hello ${escapeHtml(applicant.fullName)},</p><p>Your application has been approved. You can now sign in to the student portal using the email address and password you provided during registration.</p><p>Livingworth Academy</p>`
-      : `<h2>Application update</h2><p>Hello ${escapeHtml(applicant.fullName)},</p><p>Thank you for your interest in Livingworth Academy. Unfortunately, your application was not approved at this time.</p><p>Livingworth Academy</p>`
+      : `<h2>Application update</h2><p>Hello ${escapeHtml(applicant.fullName)},</p><p>Thank you for your interest in Livingworth Academy. Unfortunately, your application was not approved at this time.</p>${rejectionReason ? `<p><strong>Reason:</strong> ${escapeHtml(rejectionReason)}</p>` : ''}<p>Livingworth Academy</p>`
   });
 }
 

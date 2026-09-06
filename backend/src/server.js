@@ -9,13 +9,14 @@ import { Server as SocketServer } from 'socket.io';
 import { pool } from './db.js';
 import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } from './auth.js';
 import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
-import { sendApplicationDecision, sendApplicationEmails, sendPasswordReset } from './mailer.js';
+import { sendApplicationDecision, sendApplicationEmails, sendPasswordReset, sendTestEmail, verifyEmailConnection } from './mailer.js';
 import { registerLearningRoutes } from './learning.js';
 import { registerAnnouncementRoutes } from './announcements.js';
 import { registerAnalyticsRoutes } from './analytics.js';
 import { registerLearnerProfileRoutes } from './learner-profile.js';
 import { notifyUser, registerNotificationRoutes } from './notifications.js';
 import { ensurePostgresSchema } from './schema.js';
+import { startReminderScheduler } from './reminders.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -35,6 +36,20 @@ app.get('/api/health', async (_req, res) => {
   } catch (error) {
     res.status(503).json({ status: 'error', database: 'unavailable' });
   }
+});
+
+app.get('/api/staff/email-health', requireAuth, requireStaff, async (_req, res) => {
+  const result = await verifyEmailConnection();
+  res.status(result.connected ? 200 : 503).json(result);
+});
+
+app.post('/api/staff/email-test', requireAuth, requireStaff, async (req, res, next) => {
+  try {
+    const [users] = await pool.execute('SELECT full_name AS fullName, email FROM users WHERE id = ?', [req.user.id]);
+    if (!users.length) return res.status(404).json({ message: 'Staff account not found.' });
+    const sent = await sendTestEmail(users[0]);
+    res.status(sent ? 200 : 503).json({ message: sent ? `Test email sent to ${users[0].email}.` : 'Email is not configured or the SMTP connection failed.' });
+  } catch (error) { next(error); }
 });
 
 app.get('/api/courses', async (_req, res, next) => {
@@ -244,7 +259,7 @@ app.patch('/api/admin/students/:id/status', requireAuth, requireAdmin, async (re
     );
     if (!result.affectedRows) return res.status(404).json({ message: 'Student not found.' });
     const [students] = await pool.execute("SELECT full_name AS fullName, email FROM users WHERE id = ?", [req.params.id]);
-    if (students[0] && status !== 'pending') void sendApplicationDecision(students[0], status);
+    if (students[0] && status !== 'pending') void sendApplicationDecision(students[0], status, rejectionReason);
     res.json({ message: `Student ${status}.` });
   } catch (error) { next(error); }
 });
@@ -506,6 +521,7 @@ async function start() {
       [process.env.MENTOR_NAME?.trim() || 'Livingworth Mentor', mentorEmail, passwordHash]
     );
   }
+  startReminderScheduler(pool);
   httpServer.listen(port, '0.0.0.0', () => console.log(`Livingworth API and live quiz server listening on port ${port}`));
 }
 

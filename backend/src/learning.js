@@ -200,6 +200,12 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
         await connection.execute('INSERT INTO learning_materials (module_id, title, material_type, resource_url, lesson_content, original_name, uploaded_by, display_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [req.params.id, item.title, item.type, item.url, item.content, item.originalName, req.user.id, Number(order.lastOrder) + index + 1]);
       }
       await connection.commit();
+      const [modules] = await pool.execute('SELECT week_number AS weekNumber, title, published FROM learning_modules WHERE id = ?', [req.params.id]);
+      if (modules[0]?.published) await notifyStudents(pool, {
+        title: `New learning material: ${title}`,
+        message: `${items.length} new learning item${items.length === 1 ? '' : 's'} added to Week ${modules[0].weekNumber}: ${modules[0].title}.`,
+        category: 'learning', actionTarget: 'Learning'
+      });
       res.status(201).json({ message: `${items.length} learning item${items.length === 1 ? '' : 's'} added to this week.` });
     } catch (error) { await connection.rollback(); next(error); }
     finally { connection.release(); }
