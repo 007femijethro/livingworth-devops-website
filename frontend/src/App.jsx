@@ -894,7 +894,7 @@ function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forc
       ? ["Overview", "Applications", "Mentors", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
       : role === "mentor"
         ? ["Overview", "Learners", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
-        : ["Overview", "Announcements", "Programme", "Learning", "Attendance", "Live quiz", "Security"];
+        : ["Overview", "Notifications", "Announcements", "Programme", "Learning", "Attendance", "Live quiz", "Security"];
   return (
     <aside className="sidebar">
       <Logo />
@@ -1233,10 +1233,18 @@ function MaterialFields({ initialType = "link", material = null, resourceRequire
   </>;
 }
 
+function StudentMaterial({ material, onProgress }) {
+  const content = material.materialType === "note"
+    ? <details className="student-lesson-note"><summary><span><small>Lesson note</small><b>{material.title}</b></span><strong>View lesson note</strong></summary><div>{material.lessonContent}</div></details>
+    : <a className={youtubeThumbnail(material.resourceUrl) ? "video-material" : ""} href={material.resourceUrl} target="_blank" rel="noreferrer">{youtubeThumbnail(material.resourceUrl) ? <img src={youtubeThumbnail(material.resourceUrl)} alt="" /> : <b>{material.materialType === "video" ? "▶" : "↗"}</b>}<span>{material.title}<small>{material.originalName || material.materialType}</small></span></a>;
+  return <div className={`material-with-progress ${material.progressStatus}`}>{content}<label>My progress<select value={material.progressStatus || "not_started"} onChange={(event) => onProgress(material.id, event.target.value)}><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="done">Done</option></select></label></div>;
+}
+
 function LearningCenter({ mode, demo = false }) {
   const staff = mode === "staff";
   const [modules, setModules] = useState([]);
   const [submissions, setSubmissions] = useState([]);
+  const [materialProgress, setMaterialProgress] = useState([]);
   const [progress, setProgress] = useState({ completed: 0, total: 0, percentage: 0 });
   const [message, setMessage] = useState("");
   const [selectedModule, setSelectedModule] = useState(null);
@@ -1248,6 +1256,7 @@ function LearningCenter({ mode, demo = false }) {
       const data = await api(staff ? "/staff/learning" : "/student/learning");
       setModules(data.modules || []);
       setSubmissions(data.submissions || []);
+      setMaterialProgress(data.materialProgress || []);
       if (data.progress) setProgress(data.progress);
       setMessage("");
     } catch (error) { setMessage(error.message); }
@@ -1328,9 +1337,15 @@ function LearningCenter({ mode, demo = false }) {
       setMessage(data.message); load();
     } catch (error) { setMessage(error.message); }
   }
+  async function updateMaterialProgress(materialId, status) {
+    try {
+      const data = await api(`/student/learning/materials/${materialId}/progress`, { method: "PUT", body: JSON.stringify({ status }) });
+      setMessage(data.message); load();
+    } catch (error) { setMessage(error.message); }
+  }
   if (staff) return (
     <section className="learning-center">
-      <div className="learning-head"><div><p className="eyebrow">Course workspace</p><h2>Learning & assignments</h2><p>Build the weekly programme, publish resources and review student work.</p></div><div className="learning-tabs"><button className={view === "modules" ? "active" : ""} onClick={() => setView("modules")}>Modules</button><button className={view === "submissions" ? "active" : ""} onClick={() => setView("submissions")}>Submissions ({submissions.filter((item) => item.status === "submitted").length})</button></div></div>
+      <div className="learning-head"><div><p className="eyebrow">Course workspace</p><h2>Learning & assignments</h2><p>Build the weekly programme, publish resources and review student work.</p></div><div className="learning-tabs"><button className={view === "modules" ? "active" : ""} onClick={() => setView("modules")}>Modules</button><button className={view === "progress" ? "active" : ""} onClick={() => setView("progress")}>Material progress</button><button className={view === "submissions" ? "active" : ""} onClick={() => setView("submissions")}>Submissions ({submissions.filter((item) => item.status === "submitted").length})</button></div></div>
       <p className="form-message success">{message}</p>
       {view === "modules" && <div className="learning-staff-grid">
         <form className="learning-form" onSubmit={createModule}><h3>Create weekly module</h3><label>Week number<input name="weekNumber" type="number" min="1" max="52" required /></label><label>Module title<input name="title" required /></label><label>Summary<textarea name="summary" rows="4" /></label><label className="inline-check"><input name="published" type="checkbox" /> Publish immediately</label><button className="button primary">Create module</button></form>
@@ -1347,10 +1362,11 @@ function LearningCenter({ mode, demo = false }) {
         </article>)}</div>
       </div>}
       {view === "submissions" && <div className="submission-review-list">{submissions.length === 0 ? <div className="empty">No assignment submissions yet.</div> : submissions.map((submission) => <article key={submission.id}><div className="submission-heading"><div><span>{submission.assignmentTitle}</span><h3>{submission.studentName}</h3><p>{submission.email} · Submitted {new Date(submission.submittedAt).toLocaleString()}</p></div><div><b className={`work-status ${submission.status}`}>{submissionLabel(submission.status)}</b>{submission.isLate ? <b className="late-flag">Late</b> : null}</div></div><a href={submission.submissionUrl} target="_blank" rel="noreferrer">Open submitted project ↗</a>{submission.note && <p className="student-note">“{submission.note}”</p>}<form onSubmit={(event) => reviewSubmission(event, submission.id)}><label>Result<select name="status" defaultValue={submission.status === "completed" ? "completed" : "needs_correction"}><option value="needs_correction">Needs correction</option><option value="completed">Completed</option></select></label><label>Score<input name="score" type="number" min="0" max="1000" defaultValue={submission.score ?? ""} /></label><label className="review-feedback">Mentor feedback<textarea name="feedback" rows="3" defaultValue={submission.feedback || ""} required /></label><button className="button primary">Save review</button></form></article>)}</div>}
+      {view === "progress" && <div className="material-progress-monitor"><div className="progress-status-summary">{["done", "in_progress", "not_started"].map((status) => <article key={status}><span>{submissionLabel(status)}</span><strong>{materialProgress.filter((item) => item.status === status).length}</strong></article>)}</div>{materialProgress.length === 0 ? <div className="empty">Progress will appear when approved students and learning materials are available.</div> : <div className="progress-table"><div className="progress-table-head"><b>Learner</b><b>Material</b><b>Week</b><b>Status</b></div>{materialProgress.map((item) => <article key={`${item.studentId}-${item.materialId}`}><span><b>{item.studentName}</b><small>{item.email}</small></span><span><b>{item.materialTitle}</b><small>{item.materialType}</small></span><span>Week {item.weekNumber}</span><b className={`material-progress-status ${item.status}`}>{submissionLabel(item.status)}</b></article>)}</div>}</div>}
     </section>
   );
   return (
-    <section className="learning-center student-learning"><div className="learning-head"><div><p className="eyebrow">DevOps programme</p><h2>Learning workspace</h2><p>Open your lessons, complete assignments and track mentor feedback.</p></div><div className="course-progress"><strong>{progress.percentage}%</strong><span>{progress.completed} of {progress.total} assignments completed</span></div></div><div className="progress-track"><span style={{ width: `${progress.percentage}%` }} /></div><p className="form-message success">{message}</p>{modules.length === 0 ? <div className="empty">Your learning modules will appear here when they are published.</div> : <div className="student-modules">{modules.map((module) => <article key={module.id}><div className="student-module-head"><span>Week {module.weekNumber}</span><div><h3>{module.title}</h3><p>{module.summary}</p></div></div>{module.materials.length > 0 && <div className="student-materials"><h4>Learning materials</h4>{module.materials.map((material) => material.materialType === "note" ? <details className="student-lesson-note" key={material.id}><summary><span><small>Lesson note</small><b>{material.title}</b></span><strong>View lesson note</strong></summary><div>{material.lessonContent}</div></details> : <a className={youtubeThumbnail(material.resourceUrl) ? "video-material" : ""} key={material.id} href={material.resourceUrl} target="_blank" rel="noreferrer">{youtubeThumbnail(material.resourceUrl) ? <img src={youtubeThumbnail(material.resourceUrl)} alt="" /> : <b>{material.materialType === "video" ? "▶" : "↗"}</b>}<span>{material.title}<small>{material.originalName || material.materialType}</small></span></a>)}</div>}{module.assignments.map((assignment) => <section className="student-assignment" key={assignment.id}><div className="assignment-title"><div><span>Assignment</span><h4>{assignment.title}</h4></div><b className={`work-status ${assignment.submissionStatus || "not-started"}`}>{submissionLabel(assignment.submissionStatus)}</b></div><p>{assignment.instructions}</p><small>Due {new Date(assignment.dueAt).toLocaleString()} · {assignment.maxScore} points</small>{assignment.isLate ? <b className="late-flag">Submitted late</b> : null}{assignment.feedback && <div className="mentor-feedback"><b>Mentor feedback</b><p>{assignment.feedback}</p>{assignment.score != null && <strong>Score: {assignment.score}/{assignment.maxScore}</strong>}</div>}<form onSubmit={(event) => submitAssignment(event, assignment.id)}><label>GitHub or project link<input name="submissionUrl" type="url" defaultValue={assignment.submissionUrl || ""} placeholder="https://github.com/…" required /></label><label>Note to your mentor<textarea name="note" rows="2" defaultValue={assignment.submissionNote || ""} /></label><button className="button primary">{assignment.submissionId ? "Resubmit assignment" : "Submit assignment"}</button></form></section>)}</article>)}</div>}</section>
+    <section className="learning-center student-learning"><div className="learning-head"><div><p className="eyebrow">DevOps programme</p><h2>Learning workspace</h2><p>Open your lessons, complete assignments and track mentor feedback.</p></div><div className="course-progress"><strong>{progress.percentage}%</strong><span>{progress.completed} of {progress.total} assignments completed</span></div></div><div className="progress-track"><span style={{ width: `${progress.percentage}%` }} /></div><p className="form-message success">{message}</p>{modules.length === 0 ? <div className="empty">Your learning modules will appear here when they are published.</div> : <div className="student-modules">{modules.map((module) => <article key={module.id}><div className="student-module-head"><span>Week {module.weekNumber}</span><div><h3>{module.title}</h3><p>{module.summary}</p></div></div>{module.materials.length > 0 && <div className="student-materials"><h4>Learning materials</h4>{module.materials.map((material) => <StudentMaterial key={material.id} material={material} onProgress={updateMaterialProgress} />)}</div>}{module.assignments.map((assignment) => <section className="student-assignment" key={assignment.id}><div className="assignment-title"><div><span>Assignment</span><h4>{assignment.title}</h4></div><b className={`work-status ${assignment.submissionStatus || "not-started"}`}>{submissionLabel(assignment.submissionStatus)}</b></div><p>{assignment.instructions}</p><small>Due {new Date(assignment.dueAt).toLocaleString()} · {assignment.maxScore} points</small>{assignment.isLate ? <b className="late-flag">Submitted late</b> : null}{assignment.feedback && <div className="mentor-feedback"><b>Mentor feedback</b><p>{assignment.feedback}</p>{assignment.score != null && <strong>Score: {assignment.score}/{assignment.maxScore}</strong>}</div>}<form onSubmit={(event) => submitAssignment(event, assignment.id)}><label>GitHub or project link<input name="submissionUrl" type="url" defaultValue={assignment.submissionUrl || ""} placeholder="https://github.com/…" required /></label><label>Note to your mentor<textarea name="note" rows="2" defaultValue={assignment.submissionNote || ""} /></label><button className="button primary">{assignment.submissionId ? "Resubmit assignment" : "Submit assignment"}</button></form></section>)}</article>)}</div>}</section>
   );
 }
 
@@ -1476,6 +1492,21 @@ function AnnouncementsCenter({ mode, demo = false, onUnreadChange = () => {} }) 
   </section>;
 }
 
+function NotificationsCenter({ onNavigate }) {
+  const [items, setItems] = useState([]);
+  const [message, setMessage] = useState("Loading notifications…");
+  async function load() {
+    try { const data = await api("/notifications"); setItems(data.notifications); setMessage(""); }
+    catch (error) { setMessage(error.message); }
+  }
+  useEffect(() => { load(); }, []);
+  async function open(item) {
+    if (!item.readAt) await api(`/notifications/${item.id}/read`, { method: "POST" });
+    if (item.actionTarget) onNavigate(item.actionTarget); else load();
+  }
+  return <section className="notifications-center"><div className="learning-head"><div><p className="eyebrow">My updates</p><h2>Notifications</h2><p>Learning updates, deadlines and mentor feedback.</p></div></div>{message && <p className="form-message">{message}</p>}<div className="notification-list">{!message && items.length === 0 ? <div className="empty">You have no notifications yet.</div> : items.map((item) => <button key={item.id} className={item.readAt ? "read" : "unread"} onClick={() => open(item)}><b>{item.category}</b><span><strong>{item.title}</strong><small>{item.message}</small></span><time>{new Date(item.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</time></button>)}</div></section>;
+}
+
 function SecurityCenter({ role, demo = false }) {
   const [message, setMessage] = useState(demo ? "Password changes are unavailable in offline preview." : "");
   async function submit(event) {
@@ -1511,6 +1542,7 @@ function StudentDashboard({ user, logout }) {
       />
       <section className="dash-main">
         {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} onUnreadChange={setUnreadAnnouncements} />}
+        {active === "Notifications" && <NotificationsCenter onNavigate={setActive} />}
         {active === "Announcements" && <AnnouncementsCenter mode="student" onUnreadChange={setUnreadAnnouncements} />}
         {active === "Programme" && (
           <section className="portal-path">

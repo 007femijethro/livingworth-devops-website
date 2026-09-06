@@ -77,3 +77,11 @@ export function sendPasswordReset(account, resetUrl) {
     html: `<h2>Password reset</h2><p>Hello ${escapeHtml(account.fullName)},</p><p>Use the link below to create a new password. It expires in 30 minutes and can only be used once.</p><p><a href="${escapeHtml(resetUrl)}">Reset my password</a></p><p>If you did not request this, you can ignore this email.</p><p>Livingworth Academy</p>`
   });
 }
+
+export function sendStudentNotification(account, notification) {
+  return send({
+    to: account.email,
+    subject: notification.title,
+    html: `<h2>${escapeHtml(notification.title)}</h2><p>Hello ${escapeHtml(account.fullName)},</p><p>${escapeHtml(notification.message)}</p><p>Sign in to your Livingworth Academy student portal to view the update.</p><p>Livingworth Academy</p>`
+  });
+}

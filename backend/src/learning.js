@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
+import { notifyStudents, notifyUser } from './notifications.js';
 
 const uploadDirectory = process.env.UPLOAD_DIR || path.resolve('uploads');
 fs.mkdirSync(uploadDirectory, { recursive: true });
@@ -51,6 +52,14 @@ export async function ensureLearningSchema(pool) {
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (reviewed_by) REFERENCES users(id)
   )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS material_progress (
+    material_id INT NOT NULL, student_id INT NOT NULL,
+    status ENUM('not_started','in_progress','done') NOT NULL DEFAULT 'not_started',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (material_id, student_id),
+    FOREIGN KEY (material_id) REFERENCES learning_materials(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+  )`);
   for (const table of ['learning_modules', 'learning_materials', 'assignments']) {
     const [columns] = await pool.query(`SHOW COLUMNS FROM ${table}`);
     if (!columns.some(column => column.Field === 'display_order')) {
@@ -66,7 +75,12 @@ export async function ensureLearningSchema(pool) {
 async function modulesFor(pool, studentId = null, staff = false) {
   const [modules] = await pool.query(`SELECT id, week_number AS weekNumber, title, summary, published FROM learning_modules ${staff ? '' : 'WHERE published = TRUE'} ORDER BY display_order, week_number`);
   for (const module of modules) {
-    const [materials] = await pool.execute('SELECT id, title, material_type AS materialType, resource_url AS resourceUrl, lesson_content AS lessonContent, original_name AS originalName FROM learning_materials WHERE module_id = ? ORDER BY display_order, created_at, id', [module.id]);
+    const [materials] = studentId
+      ? await pool.execute(`SELECT lm.id, lm.title, lm.material_type AS materialType, lm.resource_url AS resourceUrl,
+          lm.lesson_content AS lessonContent, lm.original_name AS originalName, COALESCE(mp.status, 'not_started') AS progressStatus
+          FROM learning_materials lm LEFT JOIN material_progress mp ON mp.material_id = lm.id AND mp.student_id = ?
+          WHERE lm.module_id = ? ORDER BY lm.display_order, lm.created_at, lm.id`, [studentId, module.id])
+      : await pool.execute('SELECT id, title, material_type AS materialType, resource_url AS resourceUrl, lesson_content AS lessonContent, original_name AS originalName FROM learning_materials WHERE module_id = ? ORDER BY display_order, created_at, id', [module.id]);
     const [assignments] = studentId
       ? await pool.execute(
           `SELECT a.id, a.title, a.instructions, a.due_at AS dueAt, a.max_score AS maxScore,
@@ -106,7 +120,15 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
         CASE WHEN s.submitted_at > a.due_at THEN TRUE ELSE FALSE END AS isLate
         FROM assignment_submissions s JOIN users u ON u.id = s.student_id JOIN assignments a ON a.id = s.assignment_id
         ORDER BY FIELD(s.status, 'submitted', 'needs_correction', 'completed'), s.submitted_at DESC`);
-      res.json({ modules, submissions });
+      const [materialProgress] = await pool.query(`SELECT u.id AS studentId, u.full_name AS studentName, u.email,
+        lm.id AS materialId, lm.title AS materialTitle, lm.material_type AS materialType,
+        m.id AS moduleId, m.week_number AS weekNumber, m.title AS moduleTitle,
+        COALESCE(mp.status, 'not_started') AS status, mp.updated_at AS updatedAt
+        FROM users u CROSS JOIN learning_materials lm JOIN learning_modules m ON m.id = lm.module_id
+        LEFT JOIN material_progress mp ON mp.student_id = u.id AND mp.material_id = lm.id
+        WHERE u.role = 'student' AND u.status = 'approved'
+        ORDER BY u.full_name, m.display_order, lm.display_order`);
+      res.json({ modules, submissions, materialProgress });
     } catch (error) { next(error); }
   });
 
@@ -135,6 +157,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       if (!weekNumber || weekNumber < 1 || weekNumber > 52 || !title) return res.status(400).json({ message: 'Add a valid week number and module title.' });
       const [result] = await pool.execute('UPDATE learning_modules SET week_number = ?, title = ?, summary = ?, published = ? WHERE id = ?', [weekNumber, title, summary, published, req.params.id]);
       if (!result.affectedRows) return res.status(404).json({ message: 'Module not found.' });
+      if (published && !current.published) await notifyStudents(pool, { title: `New learning content: ${title}`, message: `Week ${weekNumber} is now available in your learning workspace.`, category: 'learning', actionTarget: 'Learning' });
       res.json({ message: req.body.title == null ? (published ? 'Module published.' : 'Module returned to draft.') : 'Module updated.' });
     } catch (error) {
       if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'A module already exists for that week.' });
@@ -243,6 +266,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const maxScore = Math.min(1000, Math.max(1, Number.parseInt(req.body.maxScore, 10) || 100));
       if (!title || !instructions || !dueAt) return res.status(400).json({ message: 'Add a title, instructions and deadline.' });
       await pool.execute('INSERT INTO assignments (module_id, title, instructions, due_at, max_score, created_by, display_order) SELECT ?, ?, ?, ?, ?, ?, COALESCE(MAX(display_order), 0) + 1 FROM assignments WHERE module_id = ?', [req.params.id, title, instructions, dueAt, maxScore, req.user.id, req.params.id]);
+      await notifyStudents(pool, { title: `New assignment: ${title}`, message: `A new assignment is due ${new Date(dueAt).toLocaleString('en-GB')}.`, category: 'assignment', actionTarget: 'Learning' });
       res.status(201).json({ message: 'Assignment created.' });
     } catch (error) { next(error); }
   });
@@ -262,6 +286,20 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
     } catch (error) { next(error); }
   });
 
+  app.put('/api/student/learning/materials/:id/progress', requireAuth, async (req, res, next) => {
+    try {
+      if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
+      const status = ['not_started', 'in_progress', 'done'].includes(req.body.status) ? req.body.status : '';
+      if (!status) return res.status(400).json({ message: 'Choose a valid progress status.' });
+      const [materials] = await pool.execute(`SELECT lm.id FROM learning_materials lm JOIN learning_modules m ON m.id = lm.module_id
+        WHERE lm.id = ? AND m.published = TRUE`, [req.params.id]);
+      if (!materials.length) return res.status(404).json({ message: 'Learning material not found.' });
+      await pool.execute(`INSERT INTO material_progress (material_id, student_id, status) VALUES (?, ?, ?)
+        ON DUPLICATE KEY UPDATE status = VALUES(status), updated_at = CURRENT_TIMESTAMP`, [req.params.id, req.user.id, status]);
+      res.json({ message: 'Learning progress updated.' });
+    } catch (error) { next(error); }
+  });
+
   app.patch('/api/staff/submissions/:id/review', requireAuth, requireStaff, async (req, res, next) => {
     try {
       const status = ['needs_correction', 'completed'].includes(req.body.status) ? req.body.status : '';
@@ -271,6 +309,8 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       if (score !== null && (score < 0 || score > 1000)) return res.status(400).json({ message: 'Enter a valid score.' });
       const [result] = await pool.execute('UPDATE assignment_submissions SET status = ?, score = ?, feedback = ?, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ?', [status, score, feedback, req.user.id, req.params.id]);
       if (!result.affectedRows) return res.status(404).json({ message: 'Submission not found.' });
+      const [submissions] = await pool.execute('SELECT student_id AS studentId FROM assignment_submissions WHERE id = ?', [req.params.id]);
+      if (submissions.length) await notifyUser(pool, submissions[0].studentId, { title: 'Assignment reviewed', message: feedback, category: 'review', actionTarget: 'Learning' });
       res.json({ message: status === 'completed' ? 'Submission marked complete.' : 'Correction requested.' });
     } catch (error) { next(error); }
   });

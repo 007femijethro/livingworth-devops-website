@@ -13,6 +13,7 @@ import { sendApplicationDecision, sendApplicationEmails, sendPasswordReset } fro
 import { ensureLearningSchema, registerLearningRoutes } from './learning.js';
 import { ensureAnnouncementSchema, registerAnnouncementRoutes } from './announcements.js';
 import { registerAnalyticsRoutes } from './analytics.js';
+import { ensureNotificationSchema, notifyUser, registerNotificationRoutes } from './notifications.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -317,6 +318,9 @@ app.put('/api/staff/attendance', requireAuth, requireStaff, async (req, res, nex
       );
     }
     await connection.commit();
+    for (const record of records.filter(item => item.status === 'absent')) {
+      await notifyUser(pool, record.studentId, { title: 'Attendance update', message: `You were marked absent for the class on ${date}. Contact your mentor if this needs to be corrected.`, category: 'attendance', actionTarget: 'Attendance' });
+    }
     res.json({ message: `Attendance saved for ${date}.` });
   } catch (error) {
     await connection.rollback();
@@ -432,6 +436,7 @@ registerQuizRoutes(app, pool, requireAuth, requireStaff);
 registerLearningRoutes(app, pool, requireAuth, requireStaff);
 registerAnnouncementRoutes(app, pool, requireAuth, requireStaff);
 registerAnalyticsRoutes(app, pool, requireAuth, requireStaff);
+registerNotificationRoutes(app, pool, requireAuth);
 configureQuizSockets(io, pool, verifyToken);
 
 app.post('/api/enquiries', async (req, res, next) => {
@@ -495,6 +500,7 @@ async function start() {
   )`);
   await ensureLearningSchema(pool);
   await ensureAnnouncementSchema(pool);
+  await ensureNotificationSchema(pool);
   await ensureQuizSchema(pool);
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;

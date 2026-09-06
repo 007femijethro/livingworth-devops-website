@@ -217,6 +217,23 @@ CREATE TABLE IF NOT EXISTS assignment_submissions (
   FOREIGN KEY (reviewed_by) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS material_progress (
+  material_id INT NOT NULL,
+  student_id INT NOT NULL,
+  status ENUM('not_started','in_progress','done') NOT NULL DEFAULT 'not_started',
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (material_id, student_id),
+  FOREIGN KEY (material_id) REFERENCES learning_materials(id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, title VARCHAR(180) NOT NULL,
+  message VARCHAR(500) NOT NULL, category ENUM('learning','assignment','attendance','review') NOT NULL,
+  action_target VARCHAR(40) NULL, read_at TIMESTAMP NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX notification_user (user_id, created_at), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 INSERT INTO courses (title, description, duration, level) VALUES
   ('DevOps Engineering Bootcamp', 'A complete practical journey through Linux, Git, AWS, automation, Docker, Kubernetes, CI/CD and monitoring.', '12 weeks', 'Beginner–Intermediate'),
   ('Cloud & Infrastructure Automation', 'Build AWS environments and automate infrastructure with Ansible and Terraform.', 'Included', 'Practical track'),
