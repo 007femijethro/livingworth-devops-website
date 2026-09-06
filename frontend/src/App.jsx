@@ -899,8 +899,8 @@ function Register({ navigate }) {
   );
 }
 
-function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0 }) {
-  const items =
+function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forceSecurity = false }) {
+  const items = forceSecurity ? ["Security"] :
     role === "admin"
       ? ["Overview", "Applications", "Mentors", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
       : role === "mentor"
@@ -1452,13 +1452,17 @@ function SecurityCenter({ role, demo = false }) {
     try {
       const data = await api("/auth/change-password", { method: "PATCH", body: JSON.stringify(values) });
       setMessage(data.message); form.reset();
+      if (data.token) {
+        localStorage.setItem("lw_token", data.token);
+        window.location.reload();
+      }
     } catch (error) { setMessage(error.message); }
   }
   return <section className="security-center"><div><p className="eyebrow">Account security</p><h2>Change password</h2><p>{role === "student" ? "Student sessions expire after eight hours. You will be asked to sign in again." : "Your portal session remains active until you log out."}</p></div><form className="security-form" onSubmit={submit}><label>Current password<PasswordInput name="currentPassword" autoComplete="current-password" /></label><label>New password<PasswordInput name="newPassword" autoComplete="new-password" minLength="8" /></label><label>Confirm new password<PasswordInput name="confirmPassword" autoComplete="new-password" minLength="8" /></label><button className="button primary" disabled={demo}>Change password</button><p className="form-message success">{message}</p></form></section>;
 }
 
 function StudentDashboard({ user, logout }) {
-  const [active, setActive] = useState("Overview");
+  const [active, setActive] = useState(user.mustChangePassword ? "Security" : "Overview");
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   useEffect(() => { api("/announcements").then((data) => setUnreadAnnouncements(data.unreadCount)).catch(() => {}); }, []);
   return (
@@ -1469,6 +1473,7 @@ function StudentDashboard({ user, logout }) {
         onSelect={setActive}
         logout={logout}
         unreadAnnouncements={unreadAnnouncements}
+        forceSecurity={user.mustChangePassword}
       />
       <section className="dash-main">
         {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} onUnreadChange={setUnreadAnnouncements} />}
@@ -1969,7 +1974,7 @@ function AdminDashboard({ user, logout }) {
   const savedDemo = () =>
     JSON.parse(localStorage.getItem("lw_demo_students") || "null") ||
     demoStudents;
-  const [active, setActive] = useState("Overview");
+  const [active, setActive] = useState(user.mustChangePassword ? "Security" : "Overview");
   const [students, setStudents] = useState(user.demo ? savedDemo() : []);
   const [mentors, setMentors] = useState([]);
   const [applicationSummary, setApplicationSummary] = useState({
@@ -2194,6 +2199,7 @@ function AdminDashboard({ user, logout }) {
         active={active}
         onSelect={setActive}
         logout={logout}
+        forceSecurity={user.mustChangePassword}
       />
       <section className="dash-main">
         <div className="dash-title">
@@ -2305,7 +2311,7 @@ function AdminDashboard({ user, logout }) {
 }
 
 function MentorDashboard({ user, logout }) {
-  const [active, setActive] = useState("Overview"),
+  const [active, setActive] = useState(user.mustChangePassword ? "Security" : "Overview"),
     [students, setStudents] = useState([]),
     [message, setMessage] = useState("");
   useEffect(() => {
@@ -2320,6 +2326,7 @@ function MentorDashboard({ user, logout }) {
         active={active}
         onSelect={setActive}
         logout={logout}
+        forceSecurity={user.mustChangePassword}
       />
       <section className="dash-main">
         <div className="dash-title">

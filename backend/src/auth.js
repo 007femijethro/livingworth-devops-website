@@ -7,7 +7,7 @@ const secret = () => {
 };
 
 export function createToken(user) {
-  const payload = { id: user.id, role: user.role, status: user.status };
+  const payload = { id: user.id, role: user.role, status: user.status, mustChangePassword: Boolean(user.must_change_password ?? user.mustChangePassword) };
   return user.role === 'student'
     ? jwt.sign(payload, secret(), { expiresIn: '8h' })
     : jwt.sign(payload, secret());
@@ -22,6 +22,9 @@ export function requireAuth(req, res, next) {
   if (!token) return res.status(401).json({ message: 'Please log in.' });
   try {
     req.user = jwt.verify(token, secret());
+    if (req.user.mustChangePassword && !['/api/auth/me', '/api/auth/change-password'].includes(req.path)) {
+      return res.status(403).json({ message: 'Change your temporary password before using the portal.' });
+    }
     next();
   } catch (error) {
     res.status(401).json({

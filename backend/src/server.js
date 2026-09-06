@@ -96,7 +96,7 @@ app.post('/api/auth/login', async (req, res, next) => {
       return res.status(403).json({ message: user.status === 'pending' ? 'Your registration is awaiting administrator approval.' : 'Your registration was not approved.' });
     }
     await pool.execute('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?', [user.id]);
-    res.json({ token: createToken(user), user: { id: user.id, fullName: user.full_name, email: user.email, role: user.role, status: user.status } });
+    res.json({ token: createToken(user), user: { id: user.id, fullName: user.full_name, email: user.email, role: user.role, status: user.status, mustChangePassword: Boolean(user.must_change_password) } });
   } catch (error) { next(error); }
 });
 
@@ -127,7 +127,7 @@ app.post('/api/auth/reset-password', async (req, res, next) => {
       WHERE token_hash = ? AND used_at IS NULL AND expires_at > NOW() FOR UPDATE`, [tokenHash]);
     if (!tokens.length) { await connection.rollback(); return res.status(400).json({ message: 'This reset link is invalid or has expired.' }); }
     const passwordHash = await bcrypt.hash(password, 12);
-    await connection.execute('UPDATE users SET password_hash = ?, failed_login_attempts = 0, locked_until = NULL WHERE id = ?', [passwordHash, tokens[0].userId]);
+    await connection.execute('UPDATE users SET password_hash = ?, failed_login_attempts = 0, locked_until = NULL, must_change_password = FALSE WHERE id = ?', [passwordHash, tokens[0].userId]);
     await connection.execute('UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL', [tokens[0].userId]);
     await connection.commit();
     res.json({ message: 'Password changed successfully. You can now sign in.' });
@@ -142,8 +142,8 @@ app.patch('/api/auth/change-password', requireAuth, async (req, res, next) => {
     if (newPassword.length < 8) return res.status(400).json({ message: 'New password must contain at least 8 characters.' });
     const [users] = await pool.execute('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
     if (!users.length || !(await bcrypt.compare(currentPassword, users[0].password_hash))) return res.status(400).json({ message: 'Your current password is incorrect.' });
-    await pool.execute('UPDATE users SET password_hash = ? WHERE id = ?', [await bcrypt.hash(newPassword, 12), req.user.id]);
-    res.json({ message: 'Password changed successfully.' });
+    await pool.execute('UPDATE users SET password_hash = ?, must_change_password = FALSE WHERE id = ?', [await bcrypt.hash(newPassword, 12), req.user.id]);
+    res.json({ message: 'Password changed successfully.', token: createToken({ ...req.user, mustChangePassword: false }) });
   } catch (error) { next(error); }
 });
 
@@ -151,7 +151,7 @@ app.patch('/api/admin/users/:id/password', requireAuth, requireAdmin, async (req
   try {
     const password = String(req.body.password || '');
     if (password.length < 8) return res.status(400).json({ message: 'Temporary password must contain at least 8 characters.' });
-    const [result] = await pool.execute("UPDATE users SET password_hash = ?, failed_login_attempts = 0, locked_until = NULL WHERE id = ? AND role IN ('student','mentor')", [await bcrypt.hash(password, 12), req.params.id]);
+    const [result] = await pool.execute("UPDATE users SET password_hash = ?, failed_login_attempts = 0, locked_until = NULL, must_change_password = TRUE WHERE id = ? AND role IN ('student','mentor')", [await bcrypt.hash(password, 12), req.params.id]);
     if (!result.affectedRows) return res.status(404).json({ message: 'Student or mentor account not found.' });
     res.json({ message: 'Temporary password saved and account unlocked.' });
   } catch (error) { next(error); }
@@ -159,7 +159,7 @@ app.patch('/api/admin/users/:id/password', requireAuth, requireAdmin, async (req
 
 app.get('/api/auth/me', requireAuth, async (req, res, next) => {
   try {
-    const [rows] = await pool.execute('SELECT id, full_name AS fullName, email, phone, experience_level AS experienceLevel, learning_goal AS learningGoal, role, status, created_at AS createdAt FROM users WHERE id = ?', [req.user.id]);
+    const [rows] = await pool.execute('SELECT id, full_name AS fullName, email, phone, experience_level AS experienceLevel, learning_goal AS learningGoal, role, status, must_change_password AS mustChangePassword, created_at AS createdAt FROM users WHERE id = ?', [req.user.id]);
     if (!rows.length) return res.status(404).json({ message: 'Account not found.' });
     res.json(rows[0]);
   } catch (error) { next(error); }
@@ -463,10 +463,12 @@ async function start() {
     country: 'VARCHAR(80) NULL', state_city: 'VARCHAR(120) NULL', employment_status: 'VARCHAR(100) NULL',
     educational_level: 'VARCHAR(80) NULL', course_choice: 'VARCHAR(120) NULL', learning_mode: 'VARCHAR(60) NULL',
     tech_experience: 'VARCHAR(100) NULL', terms_accepted: 'BOOLEAN NOT NULL DEFAULT FALSE'
-    , rejection_reason: 'VARCHAR(500) NULL', failed_login_attempts: 'INT NOT NULL DEFAULT 0', locked_until: 'DATETIME NULL'
+    , rejection_reason: 'VARCHAR(500) NULL', failed_login_attempts: 'INT NOT NULL DEFAULT 0', locked_until: 'DATETIME NULL',
+    must_change_password: 'BOOLEAN NOT NULL DEFAULT FALSE'
   };
   const [existingColumns] = await pool.query('SHOW COLUMNS FROM users');
   const existingNames = new Set(existingColumns.map(column => column.Field));
+  const requireInitialAdminPasswordChange = !existingNames.has('must_change_password');
   for (const [column, definition] of Object.entries(registrationColumns)) {
     if (!existingNames.has(column)) await pool.query(`ALTER TABLE users ADD COLUMN ${column} ${definition}`);
   }
@@ -495,12 +497,12 @@ async function start() {
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (adminEmail && adminPassword) {
     const passwordHash = await bcrypt.hash(adminPassword, 12);
-    await pool.execute(
-      `INSERT INTO users (full_name, email, password_hash, role, status)
-       VALUES ('Livingworth Administrator', ?, ?, 'admin', 'approved')
-       ON DUPLICATE KEY UPDATE role = 'admin', status = 'approved', password_hash = VALUES(password_hash)`,
-      [adminEmail, passwordHash]
-    );
+    const updateExisting = requireInitialAdminPasswordChange
+      ? ', password_hash = VALUES(password_hash), must_change_password = TRUE'
+      : '';
+    await pool.execute(`INSERT INTO users (full_name, email, password_hash, role, status, must_change_password)
+      VALUES ('Livingworth Administrator', ?, ?, 'admin', 'approved', TRUE)
+      ON DUPLICATE KEY UPDATE role = 'admin', status = 'approved'${updateExisting}`, [adminEmail, passwordHash]);
   }
   const mentorEmail = process.env.MENTOR_EMAIL?.trim().toLowerCase();
   const mentorPassword = process.env.MENTOR_PASSWORD;
