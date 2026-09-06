@@ -13,6 +13,7 @@ import './application.css';
 import './learning.css';
 import './staff-analytics.css';
 import './learner-profile.css';
+import './accessibility.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode><App /></React.StrictMode>

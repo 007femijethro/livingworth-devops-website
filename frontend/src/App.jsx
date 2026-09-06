@@ -896,14 +896,15 @@ function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forc
         ? ["Overview", "Learners", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
         : ["Overview", "Notifications", "Announcements", "Programme", "Learning", "Attendance", "Live quiz", "Security"];
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" aria-label={`${role} portal navigation`}>
       <Logo />
       <div className="role-chip">{role} portal</div>
-      <nav>
+      <nav aria-label="Portal sections">
         {items.map((item) => (
           <button
             key={item}
             className={active === item ? "active" : ""}
+            aria-current={active === item ? "page" : undefined}
             onClick={() => onSelect(item)}
           >
             <span>{item}</span>{item === "Announcements" && unreadAnnouncements > 0 && <b className="nav-count">{unreadAnnouncements}</b>}
@@ -1650,6 +1651,7 @@ function QuizCenter({ mode, demo = false }) {
     [multiAnswer, setMultiAnswer] = useState([]),
     [typedAnswer, setTypedAnswer] = useState(""),
     [soundEnabled, setSoundEnabled] = useState(soundEnabledRef.current),
+    [deletingQuizId, setDeletingQuizId] = useState(null),
     [view, setView] = useState("live");
   const [title, setTitle] = useState("DevOps Knowledge Check");
   const [questionTimeSeconds, setQuestionTimeSeconds] = useState(30);
@@ -1868,13 +1870,17 @@ function QuizCenter({ mode, demo = false }) {
     } catch (error) { setMessage(error.message); }
   }
   async function deleteQuiz(quiz) {
-    if (!window.confirm(`Permanently delete “${quiz.title}”? Its questions and all saved student results will also be deleted.`)) return;
+    const completedText = quiz.status === "completed" ? " This quiz has completed attempts, and every saved result will be removed." : "";
+    if (!window.confirm(`Permanently delete “${quiz.title}”?${completedText} This cannot be undone.`)) return;
+    setDeletingQuizId(quiz.id);
+    setMessage(`Deleting ${quiz.title}…`);
     try {
       const result = await api(`/admin/quizzes/${quiz.id}`, { method: "DELETE" });
       if (editingQuizId === quiz.id) cancelQuizEdit();
       setMessage(result.message);
       load();
     } catch (error) { setMessage(error.message); }
+    finally { setDeletingQuizId(null); }
   }
   async function importCsv(file) {
     if (!file) return;
@@ -1960,7 +1966,7 @@ function QuizCenter({ mode, demo = false }) {
         </span>
         <button type="button" className="quiz-sound-toggle" onClick={toggleSound}>{soundEnabled ? "🔊 Sound on" : "🔇 Sound off"}</button>
       </div>
-      <p className="form-message">{message}</p>
+      <p className="form-message" role="status" aria-live="polite">{message}</p>
       {!room && mode === "student" && (
         <div className="join-room">
           <input id="quiz-code" placeholder="Enter quiz code" maxLength="8" />
@@ -2139,7 +2145,7 @@ function QuizCenter({ mode, demo = false }) {
               >
                 {q.status === "completed" ? "Reopen quiz" : "Open lobby"}
               </button>
-              <div className="quiz-manage-actions"><button type="button" onClick={() => editQuiz(q)} disabled={q.status === "live"}>Edit</button><button type="button" className="delete-quiz" onClick={() => deleteQuiz(q)} disabled={q.status === "live"}>Delete</button></div>
+              <div className="quiz-manage-actions"><button type="button" onClick={() => editQuiz(q)} disabled={q.status === "live" || deletingQuizId === q.id}>Edit</button><button type="button" className="delete-quiz" onClick={() => deleteQuiz(q)} disabled={q.status === "live" || deletingQuizId === q.id} aria-label={`Delete ${q.title}${q.status === "completed" ? " and all completed results" : ""}`}>{deletingQuizId === q.id ? "Deleting…" : q.status === "completed" ? "Delete quiz & results" : "Delete"}</button></div>
               <label className="retake-toggle">
                 <input type="checkbox" checked={Boolean(q.allowRetakes)} onChange={() => toggleRetakes(q)} />
                 Allow retakes

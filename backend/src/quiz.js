@@ -147,13 +147,23 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
     } finally { connection.release(); }
   });
   app.delete('/api/admin/quizzes/:id', requireAuth, requireStaff, async (req, res, next) => {
+    const connection = await pool.getConnection();
     try {
-      const state = rooms.get(Number(req.params.id));
+      const quizId = Number.parseInt(req.params.id, 10);
+      if (!quizId) return res.status(400).json({ message: 'Choose a valid quiz.' });
+      const state = rooms.get(quizId);
       if (state) return res.status(400).json({ message: 'End the live quiz before deleting it.' });
-      const [result] = await pool.execute("DELETE FROM quizzes WHERE id = ? AND status <> 'live'", [req.params.id]);
-      if (!result.affectedRows) return res.status(404).json({ message: 'Quiz not found or currently live.' });
-      res.json({ message: 'Quiz, questions and saved results deleted.' });
-    } catch (error) { next(error); }
+      await connection.beginTransaction();
+      const [quizzes] = await connection.execute('SELECT id, title, status FROM quizzes WHERE id = ? FOR UPDATE', [quizId]);
+      if (!quizzes.length) { await connection.rollback(); return res.status(404).json({ message: 'Quiz not found.' }); }
+      if (quizzes[0].status === 'live') { await connection.rollback(); return res.status(400).json({ message: 'End the live quiz before deleting it.' }); }
+      await connection.execute('DELETE FROM quiz_attempts WHERE quiz_id = ?', [quizId]);
+      await connection.execute('DELETE FROM quiz_questions WHERE quiz_id = ?', [quizId]);
+      await connection.execute('DELETE FROM quizzes WHERE id = ?', [quizId]);
+      await connection.commit();
+      res.json({ message: `“${quizzes[0].title}” and all completed attempts and results were deleted.` });
+    } catch (error) { await connection.rollback(); next(error); }
+    finally { connection.release(); }
   });
   app.get('/api/quizzes/active', requireAuth, async (_req, res, next) => {
     try { await openScheduled(); const [rows] = await pool.query("SELECT id, title, join_code AS joinCode, status, question_time_seconds AS questionTimeSeconds, navigation_mode AS navigationMode FROM quizzes WHERE status IN ('lobby','live') ORDER BY id DESC"); res.json(rows); } catch (e) { next(e); }

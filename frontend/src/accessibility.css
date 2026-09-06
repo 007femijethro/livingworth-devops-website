@@ -1,0 +1,60 @@
+:root { --focus-ring: #ffbf2f; }
+button, a, input, select, textarea { touch-action: manipulation; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 3px solid var(--focus-ring) !important;
+  outline-offset: 3px;
+}
+button:disabled, .button:disabled { cursor: not-allowed; opacity: .55; }
+.form-message:not(:empty) { padding: 9px 11px; border-left: 4px solid #b2473f; background: #fff1ef; }
+.form-message.success:not(:empty) { border-left-color: #087451; background: #e8f7f0; }
+.progress-loading, .loading { color: #173c68; }
+
+@media (max-width: 900px) {
+  .dashboard { display: block; }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: grid !important;
+    grid-template-columns: 1fr auto;
+    gap: 7px 12px;
+    padding: 9px 12px;
+    border: 0;
+    border-bottom: 1px solid #cad9df;
+    box-shadow: 0 4px 14px #082d6514;
+  }
+  .sidebar .brand img { width: 145px; height: 42px; }
+  .sidebar .role-chip { align-self: center; margin: 0; }
+  .sidebar nav {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 6px;
+    margin: 0;
+    padding: 2px 0 6px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+  .sidebar nav button { min-width: max-content; min-height: 44px; padding: 9px 12px; }
+  .sidebar > .logout { position: absolute; top: 13px; right: 12px; min-height: 38px; margin: 0; }
+  .dash-main { padding-top: 28px; }
+}
+
+@media (max-width: 600px) {
+  body { font-size: 16px; }
+  button, .button, input, select, textarea { min-height: 44px; }
+  .actions, .application-toolbar, .application-toolbar form, .review, .quiz-manage-actions { align-items: stretch; flex-direction: column; }
+  .button { width: 100%; text-align: center; }
+  .dash-title { align-items: flex-start; gap: 12px; }
+  .dash-title .avatar { width: 44px; height: 44px; flex: none; }
+  .auth-box, .attendance, .announcements-center, .learning-workspace, .quiz-center, .security-center, .quiz-results { max-width: 100%; overflow-x: hidden; }
+  .quiz-heading, .result-detail-head, .attendance-head, .announcement-list footer { align-items: stretch; }
+  .quiz-sound-toggle, .timer-badge { width: 100%; }
+  .student-list > article, .quiz-list > article { overflow-wrap: anywhere; }
+  .applicant-panel { padding: 24px 16px; }
+  .result-table, .attendance-list, .learning-material-list { overflow-x: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
