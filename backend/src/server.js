@@ -8,13 +8,14 @@ import { createServer } from 'node:http';
 import { Server as SocketServer } from 'socket.io';
 import { pool } from './db.js';
 import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } from './auth.js';
-import { configureQuizSockets, ensureQuizSchema, registerQuizRoutes } from './quiz.js';
+import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
 import { sendApplicationDecision, sendApplicationEmails, sendPasswordReset } from './mailer.js';
-import { ensureLearningSchema, registerLearningRoutes } from './learning.js';
-import { ensureAnnouncementSchema, registerAnnouncementRoutes } from './announcements.js';
+import { registerLearningRoutes } from './learning.js';
+import { registerAnnouncementRoutes } from './announcements.js';
 import { registerAnalyticsRoutes } from './analytics.js';
 import { registerLearnerProfileRoutes } from './learner-profile.js';
-import { ensureNotificationSchema, notifyUser, registerNotificationRoutes } from './notifications.js';
+import { notifyUser, registerNotificationRoutes } from './notifications.js';
+import { ensurePostgresSchema } from './schema.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -196,7 +197,7 @@ app.get('/api/admin/students', requireAuth, requireAdmin, async (req, res, next)
         experience_level AS experienceLevel, learning_goal AS learningGoal, status,
         rejection_reason AS rejectionReason, created_at AS createdAt, updated_at AS updatedAt
        FROM users WHERE ${where.join(' AND ')}
-       ORDER BY FIELD(status, 'pending', 'approved', 'rejected'), created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+       ORDER BY CASE status WHEN 'pending' THEN 1 WHEN 'approved' THEN 2 ELSE 3 END, created_at DESC LIMIT ${limit} OFFSET ${offset}`,
       params
     );
     const summary = { total: 0, pending: 0, approved: 0, rejected: 0 };
@@ -314,7 +315,8 @@ app.put('/api/staff/attendance', requireAuth, requireStaff, async (req, res, nex
       await connection.execute(
         `INSERT INTO attendance (student_id, session_date, status, note, marked_by)
          VALUES (?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE status = VALUES(status), note = VALUES(note), marked_by = VALUES(marked_by)`,
+         ON CONFLICT (student_id, session_date) DO UPDATE SET status = EXCLUDED.status, note = EXCLUDED.note,
+           marked_by = EXCLUDED.marked_by, marked_at = CURRENT_TIMESTAMP`,
         [record.studentId, date, record.status, String(record.note || '').trim().slice(0, 255), req.user.id]
       );
     }
@@ -465,55 +467,17 @@ app.use((error, _req, res, _next) => {
 });
 
 async function start() {
-  // Keep long-lived Docker volumes compatible with new portal releases. The
-  // init script only runs when MySQL creates a volume for the first time.
-  await pool.query("ALTER TABLE users MODIFY role ENUM('student', 'mentor', 'admin') NOT NULL DEFAULT 'student'");
-  const registrationColumns = {
-    first_name: 'VARCHAR(80) NULL', last_name: 'VARCHAR(80) NULL', gender: 'VARCHAR(30) NULL',
-    country: 'VARCHAR(80) NULL', state_city: 'VARCHAR(120) NULL', employment_status: 'VARCHAR(100) NULL',
-    educational_level: 'VARCHAR(80) NULL', course_choice: 'VARCHAR(120) NULL', learning_mode: 'VARCHAR(60) NULL',
-    tech_experience: 'VARCHAR(100) NULL', terms_accepted: 'BOOLEAN NOT NULL DEFAULT FALSE'
-    , rejection_reason: 'VARCHAR(500) NULL', failed_login_attempts: 'INT NOT NULL DEFAULT 0', locked_until: 'DATETIME NULL',
-    must_change_password: 'BOOLEAN NOT NULL DEFAULT FALSE'
-  };
-  const [existingColumns] = await pool.query('SHOW COLUMNS FROM users');
-  const existingNames = new Set(existingColumns.map(column => column.Field));
-  const requireInitialAdminPasswordChange = !existingNames.has('must_change_password');
-  for (const [column, definition] of Object.entries(registrationColumns)) {
-    if (!existingNames.has(column)) await pool.query(`ALTER TABLE users ADD COLUMN ${column} ${definition}`);
-  }
-  await pool.query(`CREATE TABLE IF NOT EXISTS attendance (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    student_id INT NOT NULL,
-    session_date DATE NOT NULL,
-    status ENUM('present', 'late', 'absent', 'excused') NOT NULL,
-    note VARCHAR(255),
-    marked_by INT NOT NULL,
-    marked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY one_attendance_per_session (student_id, session_date),
-    INDEX attendance_session_date (session_date),
-    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (marked_by) REFERENCES users(id)
-  )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, token_hash CHAR(64) NOT NULL UNIQUE,
-    expires_at DATETIME NOT NULL, used_at DATETIME NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX password_reset_user (user_id), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  )`);
-  await ensureLearningSchema(pool);
-  await ensureAnnouncementSchema(pool);
-  await ensureNotificationSchema(pool);
-  await ensureQuizSchema(pool);
+  await ensurePostgresSchema(pool);
+  await pool.execute(`INSERT INTO courses (title, description, duration, level)
+    VALUES ('DevOps Engineering', 'Practical DevOps training from foundations to production delivery.', '12 weeks', 'Beginner–Intermediate')
+    ON CONFLICT (title) DO NOTHING`);
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (adminEmail && adminPassword) {
     const passwordHash = await bcrypt.hash(adminPassword, 12);
-    const updateExisting = requireInitialAdminPasswordChange
-      ? ', password_hash = VALUES(password_hash), must_change_password = TRUE'
-      : '';
     await pool.execute(`INSERT INTO users (full_name, email, password_hash, role, status, must_change_password)
       VALUES ('Livingworth Administrator', ?, ?, 'admin', 'approved', TRUE)
-      ON DUPLICATE KEY UPDATE role = 'admin', status = 'approved'${updateExisting}`, [adminEmail, passwordHash]);
+      ON CONFLICT (email) DO UPDATE SET role = 'admin', status = 'approved'`, [adminEmail, passwordHash]);
   }
   const mentorEmail = process.env.MENTOR_EMAIL?.trim().toLowerCase();
   const mentorPassword = process.env.MENTOR_PASSWORD;
@@ -522,7 +486,7 @@ async function start() {
     await pool.execute(
       `INSERT INTO users (full_name, email, password_hash, role, status)
        VALUES (?, ?, ?, 'mentor', 'approved')
-       ON DUPLICATE KEY UPDATE role = 'mentor', status = 'approved', password_hash = VALUES(password_hash)`,
+       ON CONFLICT (email) DO UPDATE SET role = 'mentor', status = 'approved'`,
       [process.env.MENTOR_NAME?.trim() || 'Livingworth Mentor', mentorEmail, passwordHash]
     );
   }

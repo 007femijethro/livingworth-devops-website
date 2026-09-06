@@ -19,59 +19,6 @@ const upload = multer({
   }
 });
 
-export async function ensureLearningSchema(pool) {
-  await pool.query(`CREATE TABLE IF NOT EXISTS learning_modules (
-    id INT AUTO_INCREMENT PRIMARY KEY, week_number INT NOT NULL UNIQUE, title VARCHAR(180) NOT NULL,
-    summary TEXT, published BOOLEAN NOT NULL DEFAULT FALSE, created_by INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (created_by) REFERENCES users(id)
-  )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS learning_materials (
-    id INT AUTO_INCREMENT PRIMARY KEY, module_id INT NOT NULL, title VARCHAR(180) NOT NULL,
-    material_type ENUM('file','link','video','note') NOT NULL, resource_url VARCHAR(1000) NOT NULL,
-    lesson_content LONGTEXT NULL,
-    original_name VARCHAR(255), uploaded_by INT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (module_id) REFERENCES learning_modules(id) ON DELETE CASCADE,
-    FOREIGN KEY (uploaded_by) REFERENCES users(id)
-  )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS assignments (
-    id INT AUTO_INCREMENT PRIMARY KEY, module_id INT NOT NULL, title VARCHAR(180) NOT NULL,
-    instructions TEXT NOT NULL, due_at DATETIME NOT NULL, max_score INT NOT NULL DEFAULT 100,
-    created_by INT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (module_id) REFERENCES learning_modules(id) ON DELETE CASCADE,
-    FOREIGN KEY (created_by) REFERENCES users(id)
-  )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS assignment_submissions (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY, assignment_id INT NOT NULL, student_id INT NOT NULL,
-    submission_url VARCHAR(1000) NOT NULL, note TEXT,
-    status ENUM('submitted','needs_correction','completed') NOT NULL DEFAULT 'submitted',
-    score INT, feedback TEXT, submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    reviewed_at TIMESTAMP NULL, reviewed_by INT NULL,
-    UNIQUE KEY one_submission_per_assignment (assignment_id, student_id),
-    FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE,
-    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (reviewed_by) REFERENCES users(id)
-  )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS material_progress (
-    material_id INT NOT NULL, student_id INT NOT NULL,
-    status ENUM('not_started','in_progress','done') NOT NULL DEFAULT 'not_started',
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (material_id, student_id),
-    FOREIGN KEY (material_id) REFERENCES learning_materials(id) ON DELETE CASCADE,
-    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
-  )`);
-  for (const table of ['learning_modules', 'learning_materials', 'assignments']) {
-    const [columns] = await pool.query(`SHOW COLUMNS FROM ${table}`);
-    if (!columns.some(column => column.Field === 'display_order')) {
-      await pool.query(`ALTER TABLE ${table} ADD COLUMN display_order INT NOT NULL DEFAULT 0`);
-    }
-  }
-  const [materialColumns] = await pool.query('SHOW COLUMNS FROM learning_materials');
-  if (!materialColumns.some(column => column.Field === 'lesson_content')) await pool.query('ALTER TABLE learning_materials ADD COLUMN lesson_content LONGTEXT NULL');
-  await pool.query("ALTER TABLE learning_materials MODIFY material_type ENUM('file','link','video','note') NOT NULL");
-  await pool.query('UPDATE learning_modules SET display_order = week_number WHERE display_order = 0');
-}
-
 async function modulesFor(pool, studentId = null, staff = false) {
   const [modules] = await pool.query(`SELECT id, week_number AS weekNumber, title, summary, published FROM learning_modules ${staff ? '' : 'WHERE published = TRUE'} ORDER BY display_order, week_number`);
   for (const module of modules) {
@@ -119,7 +66,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
         s.feedback, s.submitted_at AS submittedAt, a.title AS assignmentTitle, a.due_at AS dueAt,
         CASE WHEN s.submitted_at > a.due_at THEN TRUE ELSE FALSE END AS isLate
         FROM assignment_submissions s JOIN users u ON u.id = s.student_id JOIN assignments a ON a.id = s.assignment_id
-        ORDER BY FIELD(s.status, 'submitted', 'needs_correction', 'completed'), s.submitted_at DESC`);
+        ORDER BY CASE s.status WHEN 'submitted' THEN 1 WHEN 'needs_correction' THEN 2 ELSE 3 END, s.submitted_at DESC`);
       const [materialProgress] = await pool.query(`SELECT u.id AS studentId, u.full_name AS studentName, u.email,
         lm.id AS materialId, lm.title AS materialTitle, lm.material_type AS materialType,
         m.id AS moduleId, m.week_number AS weekNumber, m.title AS moduleTitle,
@@ -279,7 +226,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const [assignments] = await pool.execute('SELECT id FROM assignments WHERE id = ?', [req.params.id]);
       if (!assignments.length) return res.status(404).json({ message: 'Assignment not found.' });
       await pool.execute(`INSERT INTO assignment_submissions (assignment_id, student_id, submission_url, note)
-        VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE submission_url = VALUES(submission_url), note = VALUES(note),
+        VALUES (?, ?, ?, ?) ON CONFLICT (assignment_id, student_id) DO UPDATE SET submission_url = EXCLUDED.submission_url, note = EXCLUDED.note,
         status = 'submitted', score = NULL, feedback = NULL, submitted_at = CURRENT_TIMESTAMP`,
         [req.params.id, req.user.id, submissionUrl, String(req.body.note || '').trim()]);
       res.json({ message: 'Assignment submitted successfully.' });
@@ -295,7 +242,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
         WHERE lm.id = ? AND m.published = TRUE`, [req.params.id]);
       if (!materials.length) return res.status(404).json({ message: 'Learning material not found.' });
       await pool.execute(`INSERT INTO material_progress (material_id, student_id, status) VALUES (?, ?, ?)
-        ON DUPLICATE KEY UPDATE status = VALUES(status), updated_at = CURRENT_TIMESTAMP`, [req.params.id, req.user.id, status]);
+        ON CONFLICT (material_id, student_id) DO UPDATE SET status = EXCLUDED.status, updated_at = CURRENT_TIMESTAMP`, [req.params.id, req.user.id, status]);
       res.json({ message: 'Learning progress updated.' });
     } catch (error) { next(error); }
   });

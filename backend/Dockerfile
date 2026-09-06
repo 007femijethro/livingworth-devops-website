@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev
 COPY src ./src
+COPY scripts ./scripts
 RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
 EXPOSE 5000
 USER node

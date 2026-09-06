@@ -1,12 +1,3 @@
-export async function ensureNotificationSchema(pool) {
-  await pool.query(`CREATE TABLE IF NOT EXISTS notifications (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, title VARCHAR(180) NOT NULL,
-    message VARCHAR(500) NOT NULL, category ENUM('learning','assignment','attendance','review') NOT NULL,
-    action_target VARCHAR(40) NULL, read_at TIMESTAMP NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX notification_user (user_id, created_at), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  )`);
-}
-
 export async function notifyStudents(pool, notification) {
   await pool.execute(`INSERT INTO notifications (user_id, title, message, category, action_target)
     SELECT id, ?, ?, ?, ? FROM users WHERE role = 'student' AND status = 'approved'`,

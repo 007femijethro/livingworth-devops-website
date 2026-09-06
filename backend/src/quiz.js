@@ -39,29 +39,6 @@ function parseCsv(text) {
   });
 }
 
-export async function ensureQuizSchema(pool) {
-  const [quizColumns] = await pool.query('SHOW COLUMNS FROM quizzes');
-  if (!quizColumns.some(column => column.Field === 'allow_retakes')) await pool.query('ALTER TABLE quizzes ADD COLUMN allow_retakes BOOLEAN NOT NULL DEFAULT FALSE');
-  if (!quizColumns.some(column => column.Field === 'question_time_seconds')) await pool.query('ALTER TABLE quizzes ADD COLUMN question_time_seconds INT NOT NULL DEFAULT 30');
-  const [questionColumns] = await pool.query('SHOW COLUMNS FROM quiz_questions');
-  if (!questionColumns.some(column => column.Field === 'topic')) await pool.query("ALTER TABLE quiz_questions ADD COLUMN topic VARCHAR(120) NOT NULL DEFAULT 'General'");
-  await pool.query(`CREATE TABLE IF NOT EXISTS quiz_attempts (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY, quiz_id INT NOT NULL, student_id INT NOT NULL, attempt_no INT NOT NULL DEFAULT 1,
-    status ENUM('in_progress','completed') NOT NULL DEFAULT 'in_progress', score INT NOT NULL DEFAULT 0,
-    correct_count INT NOT NULL DEFAULT 0, total_questions INT NOT NULL DEFAULT 0, average_response_ms INT NOT NULL DEFAULT 0,
-    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, completed_at TIMESTAMP NULL,
-    UNIQUE KEY one_numbered_attempt (quiz_id, student_id, attempt_no),
-    FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE, FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
-  )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS quiz_attempt_answers (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY, attempt_id BIGINT NOT NULL, question_id INT NOT NULL,
-    answer_index TINYINT NOT NULL, is_correct BOOLEAN NOT NULL, response_ms INT NOT NULL,
-    answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY one_attempt_answer (attempt_id, question_id),
-    FOREIGN KEY (attempt_id) REFERENCES quiz_attempts(id) ON DELETE CASCADE,
-    FOREIGN KEY (question_id) REFERENCES quiz_questions(id) ON DELETE CASCADE
-  )`);
-}
-
 async function createQuiz(pool, adminId, title, questions, requestedQuestionTime) {
   if (!title?.trim() || !Array.isArray(questions) || !questions.length) throw new Error('A title and at least one question are required.');
   const questionTimeSeconds = validQuestionTime(requestedQuestionTime);
@@ -232,6 +209,6 @@ export function configureQuizSockets(io, pool, verifyToken) {
   io.on('connection', socket => {
     socket.on('quiz:join', async ({joinCode}, ack=()=>{}) => { try { const [rows]=await pool.execute("SELECT id,title,join_code AS joinCode,status,allow_retakes AS allowRetakes,question_time_seconds AS questionTimeSeconds FROM quizzes WHERE join_code=? AND status IN ('draft','lobby','live')",[String(joinCode||'').toUpperCase()]);if(!rows.length)throw new Error('Quiz room not found.');const quiz=rows[0];if(socket.user.role==='student'&&!quiz.allowRetakes){const [done]=await pool.execute("SELECT id FROM quiz_attempts WHERE quiz_id=? AND student_id=? AND status='completed' LIMIT 1",[quiz.id,socket.user.id]);if(done.length)throw new Error('You have already completed this quiz.');}socket.join(`quiz:${quiz.id}`);socket.data.quizId=quiz.id;if(quiz.status==='draft')await pool.execute("UPDATE quizzes SET status='lobby' WHERE id=?",[quiz.id]);ack({ok:true,quiz:{id:quiz.id,title:quiz.title,joinCode:quiz.joinCode,questionTimeSeconds:quiz.questionTimeSeconds,status:quiz.status==='draft'?'lobby':quiz.status}});io.to(`quiz:${quiz.id}`).emit('quiz:presence',{count:(await io.in(`quiz:${quiz.id}`).fetchSockets()).length});}catch(e){ack({ok:false,message:e.message})} });
     socket.on('quiz:start', async ({quizId}, ack=()=>{}) => { try { if(!['admin','mentor'].includes(socket.user.role))throw new Error('Staff access required.');const [quizRows]=await pool.execute('SELECT question_time_seconds AS questionTimeSeconds FROM quizzes WHERE id=?',[quizId]);if(!quizRows.length)throw new Error('Quiz not found.');const [rows]=await pool.execute('SELECT id,prompt,topic,options_json AS options,correct_index AS correctIndex FROM quiz_questions WHERE quiz_id=? ORDER BY sequence_no',[quizId]);const questions=rows.map(q=>({...q,options:typeof q.options==='string'?JSON.parse(q.options):q.options}));if(!questions.length)throw new Error('This quiz has no questions.');await pool.execute("UPDATE quizzes SET status='live' WHERE id=?",[quizId]);const state={questions,index:0,answers:new Map(),questionAnswers:new Set(),attempts:new Map(),startedAt:0,timer:null,questionMs:validQuestionTime(quizRows[0].questionTimeSeconds)*1000};rooms.set(Number(quizId),state);io.to(`quiz:${quizId}`).emit('quiz:started',{questionCount:questions.length,questionTimeSeconds:state.questionMs/1000});sendQuestion(Number(quizId));ack({ok:true});}catch(e){ack({ok:false,message:e.message})} });
-    socket.on('quiz:answer', async ({quizId,questionId,answerIndex}, ack=()=>{}) => { try { if(socket.user.role!=='student'||socket.user.status!=='approved')throw new Error('Approved student access required.');const state=rooms.get(Number(quizId));const q=state?.questions[state.index];if(!state||!q||q.id!==questionId||Date.now()>state.startedAt+state.questionMs)throw new Error('This question is closed.');const key=`${questionId}:${socket.user.id}`;if(state.questionAnswers.has(key))throw new Error('Answer already submitted.');state.questionAnswers.add(key);const responseMs=Date.now()-state.startedAt,correct=Number(answerIndex)===q.correctIndex;state.answers.set(key,{studentId:socket.user.id,correct,responseMs});const attemptId=await ensureAttempt(pool,state,quizId,socket.user.id);await pool.execute('INSERT INTO quiz_attempt_answers (attempt_id,question_id,answer_index,is_correct,response_ms) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE answer_index=VALUES(answer_index),is_correct=VALUES(is_correct),response_ms=VALUES(response_ms)',[attemptId,questionId,answerIndex,correct,responseMs]);ack({ok:true});}catch(e){ack({ok:false,message:e.message})} });
+    socket.on('quiz:answer', async ({quizId,questionId,answerIndex}, ack=()=>{}) => { try { if(socket.user.role!=='student'||socket.user.status!=='approved')throw new Error('Approved student access required.');const state=rooms.get(Number(quizId));const q=state?.questions[state.index];if(!state||!q||q.id!==questionId||Date.now()>state.startedAt+state.questionMs)throw new Error('This question is closed.');const key=`${questionId}:${socket.user.id}`;if(state.questionAnswers.has(key))throw new Error('Answer already submitted.');state.questionAnswers.add(key);const responseMs=Date.now()-state.startedAt,correct=Number(answerIndex)===q.correctIndex;state.answers.set(key,{studentId:socket.user.id,correct,responseMs});const attemptId=await ensureAttempt(pool,state,quizId,socket.user.id);await pool.execute('INSERT INTO quiz_attempt_answers (attempt_id,question_id,answer_index,is_correct,response_ms) VALUES (?,?,?,?,?) ON CONFLICT (attempt_id, question_id) DO UPDATE SET answer_index=EXCLUDED.answer_index,is_correct=EXCLUDED.is_correct,response_ms=EXCLUDED.response_ms',[attemptId,questionId,answerIndex,correct,responseMs]);ack({ok:true});}catch(e){ack({ok:false,message:e.message})} });
   });
 }

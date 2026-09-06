@@ -1,21 +1,5 @@
 const categories = new Set(['general', 'class', 'quiz', 'assignment']);
 
-export async function ensureAnnouncementSchema(pool) {
-  await pool.query(`CREATE TABLE IF NOT EXISTS announcements (
-    id INT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(180) NOT NULL, message TEXT NOT NULL,
-    category ENUM('general','class','quiz','assignment') NOT NULL DEFAULT 'general',
-    meeting_link VARCHAR(1000), expires_at DATETIME NULL, created_by INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (created_by) REFERENCES users(id)
-  )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS announcement_reads (
-    announcement_id INT NOT NULL, user_id INT NOT NULL, read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (announcement_id, user_id),
-    FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  )`);
-}
-
 export function registerAnnouncementRoutes(app, pool, requireAuth, requireStaff) {
   app.get('/api/announcements', requireAuth, async (req, res, next) => {
     try {
@@ -51,7 +35,7 @@ export function registerAnnouncementRoutes(app, pool, requireAuth, requireStaff)
     try {
       const [announcements] = await pool.execute('SELECT id FROM announcements WHERE id = ? AND (expires_at IS NULL OR expires_at > NOW())', [req.params.id]);
       if (!announcements.length) return res.status(404).json({ message: 'Announcement not found.' });
-      await pool.execute('INSERT IGNORE INTO announcement_reads (announcement_id, user_id) VALUES (?, ?)', [req.params.id, req.user.id]);
+      await pool.execute('INSERT INTO announcement_reads (announcement_id, user_id) VALUES (?, ?) ON CONFLICT (announcement_id, user_id) DO NOTHING', [req.params.id, req.user.id]);
       res.json({ message: 'Marked as read.' });
     } catch (error) { next(error); }
   });

@@ -25,6 +25,21 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
+            if [ ! -f .lw-supabase-migrated ]; then
+              echo "Preparing one-time MySQL to Supabase migration..."
+              sudo docker compose up -d mysql
+              sudo docker compose build backend
+              sudo docker stop livingworth-backend || true
+              if sudo docker compose run --rm backend npm run migrate:legacy; then
+                touch .lw-supabase-migrated
+                echo "Database migration completed and verified."
+              else
+                echo "Migration failed. Restoring the existing backend."
+                sudo docker start livingworth-backend || true
+                exit 1
+              fi
+            fi
+
             echo "Building application..."
             sudo docker compose up -d --build
 
@@ -34,5 +49,6 @@ jobs:
             echo "Testing application..."
             sleep 10
             curl -f http://localhost || exit 1
+            curl -f http://localhost/api/health || exit 1
 
             echo "Deployment completed successfully"
