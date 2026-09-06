@@ -206,26 +206,22 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
   app.post('/api/staff/learning/modules/:id/materials', requireAuth, requireStaff, upload.single('file'), async (req, res, next) => {
     const connection = await pool.getConnection();
     try {
-      const noteTitle = String(req.body.noteTitle || '').trim();
+      const title = String(req.body.title || '').trim();
       const lessonContent = String(req.body.lessonContent || '').trim();
-      const videoTitle = String(req.body.videoTitle || '').trim();
       const videoUrl = String(req.body.videoUrl || '').trim();
-      const resourceTitle = String(req.body.resourceTitle || '').trim();
       const resourceUrl = String(req.body.resourceUrl || '').trim();
       const items = [];
-      if (noteTitle || lessonContent) {
-        if (!noteTitle || !lessonContent) return res.status(400).json({ message: 'Add both a lesson-note title and its content.' });
-        items.push({ title: noteTitle, type: 'note', url: '', content: lessonContent, originalName: null });
+      if (!title) return res.status(400).json({ message: 'Add the topic or title for this learning content.' });
+      if (lessonContent) items.push({ title, type: 'note', url: '', content: lessonContent, originalName: null });
+      if (videoUrl) {
+        if (!/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(videoUrl)) return res.status(400).json({ message: 'Add a complete YouTube URL.' });
+        items.push({ title, type: 'video', url: videoUrl, content: null, originalName: null });
       }
-      if (videoTitle || videoUrl) {
-        if (!videoTitle || !/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(videoUrl)) return res.status(400).json({ message: 'Add a video title and a complete YouTube URL.' });
-        items.push({ title: videoTitle, type: 'video', url: videoUrl, content: null, originalName: null });
+      if (resourceUrl) {
+        if (!/^https?:\/\//i.test(resourceUrl)) return res.status(400).json({ message: 'Add a complete resource URL.' });
+        items.push({ title, type: 'link', url: resourceUrl, content: null, originalName: null });
       }
-      if (resourceTitle || resourceUrl) {
-        if (!resourceTitle || !/^https?:\/\//i.test(resourceUrl)) return res.status(400).json({ message: 'Add a resource title and complete URL.' });
-        items.push({ title: resourceTitle, type: 'link', url: resourceUrl, content: null, originalName: null });
-      }
-      if (req.file) items.push({ title: String(req.body.fileTitle || req.file.originalname).trim(), type: 'file', url: `/uploads/${req.file.filename}`, content: null, originalName: req.file.originalname });
+      if (req.file) items.push({ title, type: 'file', url: `/uploads/${req.file.filename}`, content: null, originalName: req.file.originalname });
       if (!items.length) return res.status(400).json({ message: 'Add a lesson note, YouTube video, resource link or file.' });
       await connection.beginTransaction();
       const [[order]] = await connection.execute('SELECT COALESCE(MAX(display_order), 0) AS lastOrder FROM learning_materials WHERE module_id = ?', [req.params.id]);
