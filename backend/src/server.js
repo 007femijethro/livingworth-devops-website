@@ -90,8 +90,9 @@ app.post('/api/auth/login', async (req, res, next) => {
         locked_until = CASE WHEN failed_login_attempts + 1 >= 5 THEN DATE_ADD(NOW(), INTERVAL 15 MINUTE) ELSE locked_until END WHERE id = ?`, [user.id]);
       return res.status(401).json({ message: 'Incorrect email or password.' });
     }
-    if (!['student', 'mentor', 'admin'].includes(portal)) return res.status(400).json({ message: 'Choose a valid portal.' });
-    if (portal !== user.role) return res.status(403).json({ message: `This account belongs in the ${user.role} portal.` });
+    if (!['student', 'staff'].includes(portal)) return res.status(400).json({ message: 'Choose Student or Staff login.' });
+    const correctPortal = portal === 'student' ? user.role === 'student' : ['mentor', 'admin'].includes(user.role);
+    if (!correctPortal) return res.status(403).json({ message: `This account belongs in the ${user.role === 'student' ? 'Student' : 'Staff'} login.` });
     if (user.role === 'student' && user.status !== 'approved') {
       return res.status(403).json({ message: user.status === 'pending' ? 'Your registration is awaiting administrator approval.' : 'Your registration was not approved.' });
     }

@@ -31,27 +31,27 @@ async function api(path, options = {}) {
 const demoStudents = [
   {
     id: 101,
-    fullName: "Amara Okafor",
-    email: "amara@example.com",
-    phone: "+234 800 000 0001",
+    fullName: "Demo Student One",
+    email: "student1@example.invalid",
+    phone: "Not provided",
     experienceLevel: "Beginner",
     learningGoal: "Build cloud deployment and automation skills.",
     status: "pending",
   },
   {
     id: 102,
-    fullName: "Daniel Adeyemi",
-    email: "daniel@example.com",
-    phone: "+234 800 000 0002",
+    fullName: "Demo Student Two",
+    email: "student2@example.invalid",
+    phone: "Not provided",
     experienceLevel: "Intermediate",
     learningGoal: "Move into a DevOps engineering role.",
     status: "pending",
   },
   {
     id: 103,
-    fullName: "Zainab Bello",
-    email: "zainab@example.com",
-    phone: "+234 800 000 0003",
+    fullName: "Demo Student Three",
+    email: "student3@example.invalid",
+    phone: "Not provided",
     experienceLevel: "Beginner",
     learningGoal: "Learn Linux, AWS and CI/CD through practical projects.",
     status: "approved",
@@ -441,10 +441,7 @@ function Home({ navigate }) {
           <button onClick={() => navigate("student-login")}>
             Student portal
           </button>
-          <button onClick={() => navigate("mentor-login")}>
-            Mentor portal
-          </button>
-          <button onClick={() => navigate("admin-login")}>Admin portal</button>
+          <button onClick={() => navigate("staff-login")}>Staff portal</button>
         </div>
         <p>© {new Date().getFullYear()} Livingworth Academy.</p>
       </footer>
@@ -514,18 +511,16 @@ function Login({ portal, navigate, onLogin, notice = "" }) {
       onLogin(data.user);
     } catch (err) {
       setMessage(
-        `${err.message} ${portal === "admin" ? "You can still open the offline admin preview below." : ""}`,
+        `${err.message} ${portal === "staff" ? "You can still open the offline admin preview below." : ""}`,
       );
     }
   }
   const titles = {
-    admin: "Administrator login",
-    mentor: "Mentor login",
+    staff: "Staff login",
     student: "Welcome back",
   };
   const subtitles = {
-    admin: "Manage learners, mentors and academy access.",
-    mentor: "Guide learners, review the cohort and host live quizzes.",
+    staff: "For mentors and administrators. We will open the correct portal automatically.",
     student: "Continue your Livingworth learning journey.",
   };
   return (
@@ -542,16 +537,10 @@ function Login({ portal, navigate, onLogin, notice = "" }) {
           Student
         </button>
         <button
-          className={portal === "mentor" ? "active" : ""}
-          onClick={() => navigate("mentor-login")}
+          className={portal === "staff" ? "active" : ""}
+          onClick={() => navigate("staff-login")}
         >
-          Mentor
-        </button>
-        <button
-          className={portal === "admin" ? "active" : ""}
-          onClick={() => navigate("admin-login")}
-        >
-          Admin
+          Staff
         </button>
       </div>
       <form className="form" onSubmit={submit}>
@@ -569,7 +558,7 @@ function Login({ portal, navigate, onLogin, notice = "" }) {
         </button>
         <p className="form-message">{message}</p>
       </form>
-      {portal === "admin" && (
+      {portal === "staff" && (
         <div className="offline-box">
           <b>Backend unavailable?</b>
           <p>
@@ -2455,10 +2444,8 @@ export default function App() {
   if (page === "reset-password") return <ResetPassword navigate={navigate} token={resetToken} />;
   if (page === "student-login")
     return <Login portal="student" navigate={navigate} onLogin={onLogin} notice={authNotice} />;
-  if (page === "mentor-login")
-    return <Login portal="mentor" navigate={navigate} onLogin={onLogin} />;
-  if (page === "admin-login")
-    return <Login portal="admin" navigate={navigate} onLogin={onLogin} />;
+  if (["staff-login", "mentor-login", "admin-login"].includes(page))
+    return <Login portal="staff" navigate={navigate} onLogin={onLogin} />;
   if (page === "dashboard" && user) {
     if (user.role === "admin")
       return <AdminDashboard user={user} logout={logout} />;
