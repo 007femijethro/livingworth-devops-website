@@ -1,9 +1,16 @@
 import jwt from 'jsonwebtoken';
 
-const secret = () => process.env.JWT_SECRET || 'development-only-secret';
+const secret = () => {
+  const value = process.env.JWT_SECRET?.trim();
+  if (!value) throw new Error('JWT_SECRET must be configured.');
+  return value;
+};
 
 export function createToken(user) {
-  return jwt.sign({ id: user.id, role: user.role, status: user.status }, secret(), { expiresIn: '8h' });
+  const payload = { id: user.id, role: user.role, status: user.status };
+  return user.role === 'student'
+    ? jwt.sign(payload, secret(), { expiresIn: '8h' })
+    : jwt.sign(payload, secret());
 }
 
 export function verifyToken(token) {
@@ -16,8 +23,12 @@ export function requireAuth(req, res, next) {
   try {
     req.user = jwt.verify(token, secret());
     next();
-  } catch {
-    res.status(401).json({ message: 'Your session has expired. Please log in again.' });
+  } catch (error) {
+    res.status(401).json({
+      message: error?.name === 'TokenExpiredError'
+        ? 'Your student session has expired. Please log in again.'
+        : 'Please log in again.'
+    });
   }
 }
 

@@ -36,8 +36,21 @@ CREATE TABLE IF NOT EXISTS users (
   role ENUM('student', 'mentor', 'admin') NOT NULL DEFAULT 'student',
   status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
   rejection_reason VARCHAR(500),
+  failed_login_attempts INT NOT NULL DEFAULT 0,
+  locked_until DATETIME NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  token_hash CHAR(64) NOT NULL UNIQUE,
+  expires_at DATETIME NOT NULL,
+  used_at DATETIME NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX password_reset_user (user_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS quizzes (

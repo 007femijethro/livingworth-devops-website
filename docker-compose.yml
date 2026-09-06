@@ -42,6 +42,7 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       ADMIN_NOTIFICATION_EMAIL: ${ADMIN_NOTIFICATION_EMAIL:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
       UPLOAD_DIR: /app/uploads
     volumes:
       - learning_uploads:/app/uploads

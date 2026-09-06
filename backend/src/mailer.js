@@ -69,3 +69,11 @@ export function sendApplicationDecision(applicant, status) {
       : `<h2>Application update</h2><p>Hello ${escapeHtml(applicant.fullName)},</p><p>Thank you for your interest in Livingworth Academy. Unfortunately, your application was not approved at this time.</p><p>Livingworth Academy</p>`
   });
 }
+
+export function sendPasswordReset(account, resetUrl) {
+  return send({
+    to: account.email,
+    subject: 'Reset your Livingworth Academy password',
+    html: `<h2>Password reset</h2><p>Hello ${escapeHtml(account.fullName)},</p><p>Use the link below to create a new password. It expires in 30 minutes and can only be used once.</p><p><a href="${escapeHtml(resetUrl)}">Reset my password</a></p><p>If you did not request this, you can ignore this email.</p><p>Livingworth Academy</p>`
+  });
+}

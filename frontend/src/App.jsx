@@ -18,7 +18,13 @@ async function api(path, options = {}) {
   } catch {
     data = {};
   }
-  if (!response.ok) throw new Error(data.message || "Something went wrong.");
+  if (!response.ok) {
+    if (response.status === 401 && data.message?.startsWith("Your student session has expired")) {
+      localStorage.removeItem("lw_token");
+      window.dispatchEvent(new CustomEvent("lw-session-expired", { detail: data.message }));
+    }
+    throw new Error(data.message || "Something went wrong.");
+  }
   return data;
 }
 
@@ -474,8 +480,13 @@ function AuthLayout({ title, subtitle, children, navigate }) {
   );
 }
 
-function Login({ portal, navigate, onLogin }) {
-  const [message, setMessage] = useState("");
+function PasswordInput({ name, autoComplete, minLength, required = true, placeholder = "" }) {
+  const [visible, setVisible] = useState(false);
+  return <span className="password-input"><input name={name} type={visible ? "text" : "password"} autoComplete={autoComplete} minLength={minLength} required={required} placeholder={placeholder} /><button type="button" onClick={() => setVisible(!visible)} aria-label={visible ? "Hide password" : "Show password"}>{visible ? "Hide" : "Show"}</button></span>;
+}
+
+function Login({ portal, navigate, onLogin, notice = "" }) {
+  const [message, setMessage] = useState(notice);
   function openOfflineDemo() {
     const user = {
       id: "demo-admin",
@@ -550,13 +561,9 @@ function Login({ portal, navigate, onLogin }) {
         </label>
         <label>
           Password
-          <input
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-          />
+          <PasswordInput name="password" autoComplete="current-password" />
         </label>
+        <button type="button" className="forgot-link" onClick={() => navigate("forgot-password")}>Forgot password?</button>
         <button className="button primary full">
           Sign in to {portal} portal
         </button>
@@ -584,6 +591,28 @@ function Login({ portal, navigate, onLogin }) {
       </div>
     </AuthLayout>
   );
+}
+
+function ForgotPassword({ navigate }) {
+  const [message, setMessage] = useState("");
+  async function submit(event) {
+    event.preventDefault(); setMessage("Sending reset link…");
+    try { const data = await api("/auth/forgot-password", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) }); setMessage(data.message); event.currentTarget.reset(); }
+    catch (error) { setMessage(error.message); }
+  }
+  return <AuthLayout navigate={navigate} title="Reset your password" subtitle="We will email you a secure link that expires after 30 minutes."><form className="form" onSubmit={submit}><label>Email address<input name="email" type="email" autoComplete="email" required /></label><button className="button primary full">Send reset link</button><p className="form-message success">{message}</p></form><p className="switch"><button onClick={() => navigate("student-login")}>Return to sign in</button></p></AuthLayout>;
+}
+
+function ResetPassword({ navigate, token }) {
+  const [message, setMessage] = useState("");
+  const [done, setDone] = useState(false);
+  async function submit(event) {
+    event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget));
+    if (values.password !== values.confirmPassword) { setMessage("Passwords do not match."); return; }
+    try { const data = await api("/auth/reset-password", { method: "POST", body: JSON.stringify({ token, password: values.password }) }); setMessage(data.message); setDone(true); }
+    catch (error) { setMessage(error.message); }
+  }
+  return <AuthLayout navigate={navigate} title="Create a new password" subtitle="Choose a password containing at least eight characters."><form className="form" onSubmit={submit}><label>New password<PasswordInput name="password" autoComplete="new-password" minLength="8" /></label><label>Confirm new password<PasswordInput name="confirmPassword" autoComplete="new-password" minLength="8" /></label><button className="button primary full" disabled={done}>{done ? "Password changed" : "Save new password"}</button><p className={`form-message ${done ? "success" : ""}`}>{message}</p></form>{done && <p className="switch"><button onClick={() => navigate("student-login")}>Continue to sign in</button></p>}</AuthLayout>;
 }
 
 function Register({ navigate }) {
@@ -834,23 +863,11 @@ function Register({ navigate }) {
         </div>
         <label>
           Password <b>*</b>
-          <input
-            name="password"
-            type="password"
-            minLength="8"
-            autoComplete="new-password"
-            required
-          />
+          <PasswordInput name="password" minLength="8" autoComplete="new-password" />
         </label>
         <label>
           Confirm Password <b>*</b>
-          <input
-            name="confirmPassword"
-            type="password"
-            minLength="8"
-            autoComplete="new-password"
-            required
-          />
+          <PasswordInput name="confirmPassword" minLength="8" autoComplete="new-password" />
         </label>
         <label className="wide terms-check">
           <input name="termsAccepted" type="checkbox" required />
@@ -885,10 +902,10 @@ function Register({ navigate }) {
 function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0 }) {
   const items =
     role === "admin"
-      ? ["Overview", "Applications", "Mentors", "Announcements", "Learning", "Attendance", "Live quiz"]
+      ? ["Overview", "Applications", "Mentors", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
       : role === "mentor"
-        ? ["Overview", "Learners", "Announcements", "Learning", "Attendance", "Live quiz"]
-        : ["Overview", "Announcements", "Programme", "Learning", "Attendance", "Live quiz"];
+        ? ["Overview", "Learners", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
+        : ["Overview", "Announcements", "Programme", "Learning", "Attendance", "Live quiz", "Security"];
   return (
     <aside className="sidebar">
       <Logo />
@@ -1425,6 +1442,21 @@ function AnnouncementsCenter({ mode, demo = false, onUnreadChange = () => {} }) 
   </section>;
 }
 
+function SecurityCenter({ role, demo = false }) {
+  const [message, setMessage] = useState(demo ? "Password changes are unavailable in offline preview." : "");
+  async function submit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = Object.fromEntries(new FormData(form));
+    if (values.newPassword !== values.confirmPassword) { setMessage("New passwords do not match."); return; }
+    try {
+      const data = await api("/auth/change-password", { method: "PATCH", body: JSON.stringify(values) });
+      setMessage(data.message); form.reset();
+    } catch (error) { setMessage(error.message); }
+  }
+  return <section className="security-center"><div><p className="eyebrow">Account security</p><h2>Change password</h2><p>{role === "student" ? "Student sessions expire after eight hours. You will be asked to sign in again." : "Your portal session remains active until you log out."}</p></div><form className="security-form" onSubmit={submit}><label>Current password<PasswordInput name="currentPassword" autoComplete="current-password" /></label><label>New password<PasswordInput name="newPassword" autoComplete="new-password" minLength="8" /></label><label>Confirm new password<PasswordInput name="confirmPassword" autoComplete="new-password" minLength="8" /></label><button className="button primary" disabled={demo}>Change password</button><p className="form-message success">{message}</p></form></section>;
+}
+
 function StudentDashboard({ user, logout }) {
   const [active, setActive] = useState("Overview");
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
@@ -1470,6 +1502,7 @@ function StudentDashboard({ user, logout }) {
         {active === "Attendance" && <AttendanceCenter mode="student" />}
         {active === "Learning" && <LearningCenter mode="student" />}
         {active === "Live quiz" && <QuizCenter mode="student" />}
+        {active === "Security" && <SecurityCenter role="student" />}
       </section>
     </main>
   );
@@ -2053,6 +2086,14 @@ function AdminDashboard({ user, logout }) {
       setMessage(err.message);
     }
   }
+  async function resetUserPassword(userId, fullName) {
+    const password = window.prompt(`Enter a temporary password for ${fullName}. It must contain at least 8 characters.`);
+    if (password === null) return;
+    try {
+      const data = await api(`/admin/users/${userId}/password`, { method: "PATCH", body: JSON.stringify({ password }) });
+      setMessage(data.message);
+    } catch (error) { setMessage(error.message); }
+  }
   const applications = (
     <section className="application-manager">
       <div className="application-metrics">
@@ -2133,13 +2174,13 @@ function AdminDashboard({ user, logout }) {
               <div className="rejection-record"><b>Rejection reason</b><p>{selectedApplicant.rejectionReason}</p></div>
             )}
             {selectedApplicant.status === "pending" ? (
-              <div className="applicant-decisions">
+            <div className="applicant-decisions">
                 <button className="button approve-button" onClick={() => confirmDecision(selectedApplicant, "approved")}>Approve application</button>
                 <label>Reason for rejection<textarea value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} maxLength="500" placeholder="Explain why this application is not being approved." /></label>
                 <button className="button reject-button" disabled={!rejectionReason.trim()} onClick={() => { if (window.confirm(`Reject ${selectedApplicant.fullName}'s application?`)) decide(selectedApplicant, "rejected", rejectionReason); }}>Reject application</button>
               </div>
             ) : (
-              <button className="button light-border full" onClick={() => confirmDecision(selectedApplicant, "pending")}>Return to pending review</button>
+              <div className="approved-account-actions"><button className="button light-border full" onClick={() => confirmDecision(selectedApplicant, "pending")}>Return to pending review</button>{selectedApplicant.status === "approved" && <button className="button primary full" onClick={() => resetUserPassword(selectedApplicant.id, selectedApplicant.fullName)}>Set temporary password</button>}</div>
             )}
           </section>
         </div>
@@ -2224,12 +2265,7 @@ function AdminDashboard({ user, logout }) {
                 </label>
                 <label>
                   Temporary password
-                  <input
-                    name="password"
-                    type="password"
-                    minLength="8"
-                    required
-                  />
+                  <PasswordInput name="password" minLength="8" autoComplete="new-password" />
                 </label>
                 <button className="button primary">
                   Create mentor account
@@ -2250,6 +2286,7 @@ function AdminDashboard({ user, logout }) {
                         </p>
                       </div>
                       <b className="status approved">active</b>
+                      <button className="profile-button" onClick={() => resetUserPassword(m.id, m.fullName)}>Reset password</button>
                     </article>
                   ))
                 )}
@@ -2261,6 +2298,7 @@ function AdminDashboard({ user, logout }) {
         )}{" "}
         {active === "Learning" && <LearningCenter mode="staff" demo={user.demo} />}
         {active === "Live quiz" && <QuizCenter mode="admin" demo={user.demo} />}
+        {active === "Security" && <SecurityCenter role="admin" demo={user.demo} />}
       </section>
     </main>
   );
@@ -2319,6 +2357,7 @@ function MentorDashboard({ user, logout }) {
           </>
         )}
         {active === "Announcements" && <AnnouncementsCenter mode="staff" />}
+        {active === "Security" && <SecurityCenter role="mentor" />}
         {active === "Learners" && (
           <div className="student-list">
             {students.length === 0 ? (
@@ -2351,10 +2390,13 @@ function MentorDashboard({ user, logout }) {
 }
 
 export default function App() {
-  const [page, setPage] = useState("home");
+  const resetToken = new URLSearchParams(window.location.search).get("reset") || "";
+  const [page, setPage] = useState(resetToken ? "reset-password" : "home");
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authNotice, setAuthNotice] = useState("");
   const navigate = (p) => {
+    if (window.location.search) window.history.replaceState({}, "", window.location.pathname);
     setPage(p);
     scrollTo(0, 0);
   };
@@ -2369,6 +2411,12 @@ export default function App() {
     setPage("home");
   };
   useEffect(() => {
+    const expired = (event) => { setUser(null); setAuthNotice(event.detail); setPage("student-login"); };
+    window.addEventListener("lw-session-expired", expired);
+    return () => window.removeEventListener("lw-session-expired", expired);
+  }, []);
+  useEffect(() => {
+    if (resetToken) { setLoading(false); return; }
     if (localStorage.getItem("lw_demo_admin")) {
       setUser({
         id: "demo-admin",
@@ -2389,15 +2437,17 @@ export default function App() {
           setUser(u);
           setPage("dashboard");
         })
-        .catch(() => localStorage.removeItem("lw_token"))
+        .catch((error) => { localStorage.removeItem("lw_token"); if (error.message.startsWith("Your student session has expired")) { setAuthNotice(error.message); setPage("student-login"); } })
         .finally(() => setLoading(false));
     else setLoading(false);
   }, []);
   if (loading)
     return <div className="loading">Loading Livingworth Academy…</div>;
   if (page === "register") return <Register navigate={navigate} />;
+  if (page === "forgot-password") return <ForgotPassword navigate={navigate} />;
+  if (page === "reset-password") return <ResetPassword navigate={navigate} token={resetToken} />;
   if (page === "student-login")
-    return <Login portal="student" navigate={navigate} onLogin={onLogin} />;
+    return <Login portal="student" navigate={navigate} onLogin={onLogin} notice={authNotice} />;
   if (page === "mentor-login")
     return <Login portal="mentor" navigate={navigate} onLogin={onLogin} />;
   if (page === "admin-login")

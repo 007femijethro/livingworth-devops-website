@@ -3,12 +3,13 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
 import { createServer } from 'node:http';
 import { Server as SocketServer } from 'socket.io';
 import { pool } from './db.js';
 import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } from './auth.js';
 import { configureQuizSockets, ensureQuizSchema, registerQuizRoutes } from './quiz.js';
-import { sendApplicationDecision, sendApplicationEmails } from './mailer.js';
+import { sendApplicationDecision, sendApplicationEmails, sendPasswordReset } from './mailer.js';
 import { ensureLearningSchema, registerLearningRoutes } from './learning.js';
 import { ensureAnnouncementSchema, registerAnnouncementRoutes } from './announcements.js';
 
@@ -81,9 +82,12 @@ app.post('/api/auth/register', async (req, res, next) => {
 app.post('/api/auth/login', async (req, res, next) => {
   try {
     const { email, password, portal = 'student' } = req.body;
-    const [rows] = await pool.execute('SELECT * FROM users WHERE email = ?', [email?.trim().toLowerCase()]);
+    const [rows] = await pool.execute('SELECT *, locked_until > NOW() AS is_locked FROM users WHERE email = ?', [email?.trim().toLowerCase()]);
     const user = rows[0];
+    if (user?.is_locked) return res.status(429).json({ message: 'Too many incorrect attempts. Try again in 15 minutes.' });
     if (!user || !(await bcrypt.compare(password || '', user.password_hash))) {
+      if (user) await pool.execute(`UPDATE users SET failed_login_attempts = failed_login_attempts + 1,
+        locked_until = CASE WHEN failed_login_attempts + 1 >= 5 THEN DATE_ADD(NOW(), INTERVAL 15 MINUTE) ELSE locked_until END WHERE id = ?`, [user.id]);
       return res.status(401).json({ message: 'Incorrect email or password.' });
     }
     if (!['student', 'mentor', 'admin'].includes(portal)) return res.status(400).json({ message: 'Choose a valid portal.' });
@@ -91,7 +95,65 @@ app.post('/api/auth/login', async (req, res, next) => {
     if (user.role === 'student' && user.status !== 'approved') {
       return res.status(403).json({ message: user.status === 'pending' ? 'Your registration is awaiting administrator approval.' : 'Your registration was not approved.' });
     }
+    await pool.execute('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?', [user.id]);
     res.json({ token: createToken(user), user: { id: user.id, fullName: user.full_name, email: user.email, role: user.role, status: user.status } });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/auth/forgot-password', async (req, res, next) => {
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const [users] = await pool.execute("SELECT id, full_name AS fullName, email FROM users WHERE email = ? AND status = 'approved'", [email]);
+    if (users.length) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      await pool.execute('UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL', [users[0].id]);
+      await pool.execute('INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE))', [users[0].id, tokenHash]);
+      const publicUrl = String(process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+      await sendPasswordReset(users[0], `${publicUrl}/?reset=${token}`);
+    }
+    res.json({ message: 'If an approved account exists for that email, a password-reset link has been sent.' });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/auth/reset-password', async (req, res, next) => {
+  const connection = await pool.getConnection();
+  try {
+    const tokenHash = crypto.createHash('sha256').update(String(req.body.token || '')).digest('hex');
+    const password = String(req.body.password || '');
+    if (password.length < 8) return res.status(400).json({ message: 'Password must contain at least 8 characters.' });
+    await connection.beginTransaction();
+    const [tokens] = await connection.execute(`SELECT id, user_id AS userId FROM password_reset_tokens
+      WHERE token_hash = ? AND used_at IS NULL AND expires_at > NOW() FOR UPDATE`, [tokenHash]);
+    if (!tokens.length) { await connection.rollback(); return res.status(400).json({ message: 'This reset link is invalid or has expired.' }); }
+    const passwordHash = await bcrypt.hash(password, 12);
+    await connection.execute('UPDATE users SET password_hash = ?, failed_login_attempts = 0, locked_until = NULL WHERE id = ?', [passwordHash, tokens[0].userId]);
+    await connection.execute('UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL', [tokens[0].userId]);
+    await connection.commit();
+    res.json({ message: 'Password changed successfully. You can now sign in.' });
+  } catch (error) { await connection.rollback(); next(error); }
+  finally { connection.release(); }
+});
+
+app.patch('/api/auth/change-password', requireAuth, async (req, res, next) => {
+  try {
+    const currentPassword = String(req.body.currentPassword || '');
+    const newPassword = String(req.body.newPassword || '');
+    if (newPassword.length < 8) return res.status(400).json({ message: 'New password must contain at least 8 characters.' });
+    const [users] = await pool.execute('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
+    if (!users.length || !(await bcrypt.compare(currentPassword, users[0].password_hash))) return res.status(400).json({ message: 'Your current password is incorrect.' });
+    await pool.execute('UPDATE users SET password_hash = ? WHERE id = ?', [await bcrypt.hash(newPassword, 12), req.user.id]);
+    res.json({ message: 'Password changed successfully.' });
+  } catch (error) { next(error); }
+});
+
+app.patch('/api/admin/users/:id/password', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const password = String(req.body.password || '');
+    if (password.length < 8) return res.status(400).json({ message: 'Temporary password must contain at least 8 characters.' });
+    const [result] = await pool.execute("UPDATE users SET password_hash = ?, failed_login_attempts = 0, locked_until = NULL WHERE id = ? AND role IN ('student','mentor')", [await bcrypt.hash(password, 12), req.params.id]);
+    if (!result.affectedRows) return res.status(404).json({ message: 'Student or mentor account not found.' });
+    res.json({ message: 'Temporary password saved and account unlocked.' });
   } catch (error) { next(error); }
 });
 
@@ -401,7 +463,7 @@ async function start() {
     country: 'VARCHAR(80) NULL', state_city: 'VARCHAR(120) NULL', employment_status: 'VARCHAR(100) NULL',
     educational_level: 'VARCHAR(80) NULL', course_choice: 'VARCHAR(120) NULL', learning_mode: 'VARCHAR(60) NULL',
     tech_experience: 'VARCHAR(100) NULL', terms_accepted: 'BOOLEAN NOT NULL DEFAULT FALSE'
-    , rejection_reason: 'VARCHAR(500) NULL'
+    , rejection_reason: 'VARCHAR(500) NULL', failed_login_attempts: 'INT NOT NULL DEFAULT 0', locked_until: 'DATETIME NULL'
   };
   const [existingColumns] = await pool.query('SHOW COLUMNS FROM users');
   const existingNames = new Set(existingColumns.map(column => column.Field));
@@ -420,6 +482,11 @@ async function start() {
     INDEX attendance_session_date (session_date),
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (marked_by) REFERENCES users(id)
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, token_hash CHAR(64) NOT NULL UNIQUE,
+    expires_at DATETIME NOT NULL, used_at DATETIME NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX password_reset_user (user_id), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   )`);
   await ensureLearningSchema(pool);
   await ensureAnnouncementSchema(pool);
