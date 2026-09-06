@@ -8,6 +8,7 @@ button:disabled, .button:disabled { cursor: not-allowed; opacity: .55; }
 .form-message:not(:empty) { padding: 9px 11px; border-left: 4px solid #b2473f; background: #fff1ef; }
 .form-message.success:not(:empty) { border-left-color: #087451; background: #e8f7f0; }
 .progress-loading, .loading { color: #173c68; }
+.login-label-short { display: none; }
 
 @media (max-width: 900px) {
   .dashboard { display: block; }
@@ -24,9 +25,10 @@ button:disabled, .button:disabled { cursor: not-allowed; opacity: .55; }
     box-shadow: 0 4px 14px #082d6514;
   }
   .sidebar .brand img { width: 145px; height: 42px; }
-  .sidebar .role-chip { align-self: center; margin: 0; }
+  .sidebar .role-chip { grid-column: 1 / -1; grid-row: 2; justify-self: start; margin: 0; }
   .sidebar nav {
     grid-column: 1 / -1;
+    grid-row: 3;
     display: flex;
     gap: 6px;
     margin: 0;
@@ -36,7 +38,7 @@ button:disabled, .button:disabled { cursor: not-allowed; opacity: .55; }
     scrollbar-width: thin;
   }
   .sidebar nav button { min-width: max-content; min-height: 44px; padding: 9px 12px; }
-  .sidebar > .logout { position: absolute; top: 13px; right: 12px; min-height: 38px; margin: 0; }
+  .sidebar > .logout { grid-column: 2; grid-row: 1; align-self: center; justify-self: end; min-height: 38px; margin: 0; padding: 7px 10px; }
   .dash-main { padding-top: 28px; }
 }
 
@@ -53,6 +55,13 @@ button:disabled, .button:disabled { cursor: not-allowed; opacity: .55; }
   .student-list > article, .quiz-list > article { overflow-wrap: anywhere; }
   .applicant-panel { padding: 24px 16px; }
   .result-table, .attendance-list, .learning-material-list { overflow-x: auto; }
+  .nav { gap: 7px; padding-inline: 10px; }
+  .nav .brand img { width: 128px; height: 48px; }
+  .nav-actions { gap: 6px; }
+  .nav-actions .text-btn { display: inline-flex !important; align-items: center; min-height: 42px; padding: 6px 8px; color: var(--navy); }
+  .nav-actions .button { width: auto; min-height: 42px; padding: 9px 11px; white-space: nowrap; }
+  .login-label-full { display: none; }
+  .login-label-short { display: inline; }
 }
 
 @media (prefers-reduced-motion: reduce) {

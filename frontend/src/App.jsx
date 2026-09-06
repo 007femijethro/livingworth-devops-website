@@ -76,7 +76,8 @@ function Header({ navigate }) {
       </nav>
       <div className="nav-actions">
         <button className="text-btn" onClick={() => navigate("student-login")}>
-          Portal login
+          <span className="login-label-full">Portal login</span>
+          <span className="login-label-short">Login</span>
         </button>
         <button className="button primary" onClick={() => navigate("register")}>
           Apply now
