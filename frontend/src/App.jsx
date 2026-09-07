@@ -1606,6 +1606,7 @@ function QuizResults({ mode, onLive }) {
   const [student, setStudent] = useState("");
   const [selected, setSelected] = useState(null);
   const [message, setMessage] = useState("");
+  const [deletingAttemptId, setDeletingAttemptId] = useState(null);
   async function load() {
     try {
       if (staff) {
@@ -1634,6 +1635,16 @@ function QuizResults({ mode, onLive }) {
     const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement("a");
     link.href = url; link.download = "livingworth-quiz-results.csv"; link.click(); URL.revokeObjectURL(url);
   }
+  async function deleteParticipation(attempt) {
+    if (!window.confirm(`Delete ${attempt.studentName}'s attempt ${attempt.attemptNo} for “${attempt.title}”? This removes only this participation and its answers.`)) return;
+    setDeletingAttemptId(attempt.id);
+    try {
+      const result = await api(`/staff/quiz-results/${attempt.id}`, { method: "DELETE" });
+      await load();
+      setMessage(result.message);
+    } catch (error) { setMessage(error.message); }
+    finally { setDeletingAttemptId(null); }
+  }
   if (selected) return <section className="quiz-results"><div className="quiz-mode-tabs"><button onClick={() => setSelected(null)}>← Quiz history</button></div><div className="result-detail-head"><div><p className="eyebrow">Answer review</p><h2>{selected.title}</h2><p>Attempt {selected.attemptNo} · {selected.correctCount}/{selected.totalQuestions} correct · Average response {(selected.averageResponseMs / 1000).toFixed(1)}s</p></div><strong>{Math.round(selected.correctCount * 100 / selected.totalQuestions)}%</strong></div><div className="answer-review">{selected.answers.map((answer) => <article key={answer.sequenceNo} className={answer.isCorrect ? "right" : "wrong"}><div><span>Question {answer.sequenceNo} · {answer.materialTitle}</span><h3>{answer.prompt}</h3></div><p>Your answer: <b>{answer.options[answer.answerIndex]}</b></p><p>Correct answer: <b>{answer.options[answer.correctIndex]}</b></p><small>{(answer.responseMs / 1000).toFixed(1)} seconds</small></article>)}</div></section>;
   return <section className="quiz-results">
     <div className="quiz-mode-tabs"><button onClick={onLive}>Live quiz</button><button className="active">Results & history</button></div>
@@ -1645,7 +1656,7 @@ function QuizResults({ mode, onLive }) {
       {results.leaderboard?.length > 0 && <div className="leaderboard result-leaderboard"><h3>Class leaderboard</h3>{results.leaderboard.map((attempt, index) => <div key={attempt.id}><b>#{index + 1}</b><span>{attempt.studentName}</span><strong>{attempt.percentage}%</strong></div>)}</div>}
       {results.topics.length > 0 && <div className="topic-performance"><h3>Performance by topic</h3>{results.topics.map((topic) => <div key={topic.topic}><span>{topic.topic}</span><div><i style={{ width: `${topic.percentage}%` }} /></div><strong>{topic.percentage}%</strong></div>)}</div>}
       {results.hardestQuestions?.length > 0 && <div className="hardest-questions"><h3>Hardest questions</h3><p>Unanswered responses count as incorrect.</p>{results.hardestQuestions.map((question, index) => <article key={question.id}><b>#{index + 1}</b><div><strong>{question.prompt}</strong><span>{question.topic} · {question.correct}/{question.attempts} correct · {question.unanswered} unanswered</span></div><i>{question.percentage}%</i></article>)}</div>}
-      <div className="result-table">{results.attempts.length === 0 ? <div className="empty">No completed quiz results yet.</div> : results.attempts.map((attempt) => <article key={attempt.id} className={!attempt.passed ? "support-needed" : ""}><div><h3>{attempt.studentName}</h3><p>{attempt.title} · Attempt {attempt.attemptNo}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct{attempt.unansweredCount ? ` · ${attempt.unansweredCount} unanswered` : ""}</span><strong>{attempt.percentage}%</strong>{!attempt.passed && <b>Needs support</b>}</article>)}</div>
+      <div className="result-table">{results.attempts.length === 0 ? <div className="empty">No completed quiz results yet.</div> : results.attempts.map((attempt) => <article key={attempt.id} className={!attempt.passed ? "support-needed" : ""}><div><h3>{attempt.studentName}</h3><p>{attempt.title} · Attempt {attempt.attemptNo}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct{attempt.unansweredCount ? ` · ${attempt.unansweredCount} unanswered` : ""}</span><strong>{attempt.percentage}%</strong>{!attempt.passed && <b>Needs support</b>}<button type="button" className="delete-participation" disabled={deletingAttemptId === attempt.id} onClick={() => deleteParticipation(attempt)}>{deletingAttemptId === attempt.id ? "Deleting…" : "Delete participation"}</button></article>)}</div>
     </> : <div className="student-result-list">{results.length === 0 ? <div className="empty">Your completed quizzes will appear here.</div> : results.map((attempt) => <article key={attempt.id}><div><h3>{attempt.title}</h3><p>Attempt {attempt.attemptNo} · {new Date(attempt.completedAt).toLocaleString()}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct</span><strong>{attempt.percentage}%</strong><button className="profile-button" onClick={() => openResult(attempt.id)}>Review answers</button></article>)}</div>}
   </section>;
 }

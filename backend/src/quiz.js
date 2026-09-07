@@ -299,6 +299,20 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
   app.get('/api/staff/quiz-results', requireAuth, requireStaff, async (req, res, next) => {
     try { res.json(await staffResults(req.query)); } catch (error) { next(error); }
   });
+  app.delete('/api/staff/quiz-results/:attemptId', requireAuth, requireStaff, async (req, res, next) => {
+    try {
+      const attemptId = Number.parseInt(req.params.attemptId, 10);
+      if (!attemptId) return res.status(400).json({ message: 'Choose a valid quiz participation.' });
+      const [attempts] = await pool.execute(`SELECT qa.id, qa.status, qa.attempt_no AS attemptNo,
+        u.full_name AS studentName, q.title FROM quiz_attempts qa
+        JOIN users u ON u.id = qa.student_id JOIN quizzes q ON q.id = qa.quiz_id
+        WHERE qa.id = ?`, [attemptId]);
+      if (!attempts.length) return res.status(404).json({ message: 'Quiz participation not found.' });
+      if (attempts[0].status !== 'completed') return res.status(400).json({ message: 'Only a completed quiz participation can be deleted.' });
+      await pool.execute('DELETE FROM quiz_attempts WHERE id = ?', [attemptId]);
+      res.json({ message: `${attempts[0].studentName}'s attempt ${attempts[0].attemptNo} for “${attempts[0].title}” was deleted.` });
+    } catch (error) { next(error); }
+  });
   app.get('/api/staff/quiz-results/export', requireAuth, requireStaff, async (req, res, next) => {
     try {
       const result = await staffResults(req.query);
