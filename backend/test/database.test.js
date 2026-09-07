@@ -19,4 +19,5 @@ test('converts MySQL date and boolean aggregate expressions', () => {
 test('adds insert id returns for identity tables', () => {
   assert.match(translateSql('INSERT INTO enquiries (name, email, message) VALUES (?, ?, ?)'), /RETURNING id$/);
   assert.doesNotMatch(translateSql('INSERT INTO material_progress (material_id, student_id) VALUES (?, ?)'), /RETURNING id/);
+  assert.doesNotMatch(translateSql("INSERT INTO system_settings (setting_key, enabled) VALUES ('email_notifications', ?)"), /RETURNING id/);
 });

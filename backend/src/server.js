@@ -9,7 +9,7 @@ import { Server as SocketServer } from 'socket.io';
 import { pool } from './db.js';
 import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } from './auth.js';
 import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
-import { sendApplicationDecision, sendApplicationEmails, sendPasswordReset, sendTestEmail, verifyEmailConnection } from './mailer.js';
+import { configureEmailControl, isEmailDeliveryEnabled, sendApplicationDecision, sendApplicationEmails, sendPasswordReset, sendTestEmail, verifyEmailConnection } from './mailer.js';
 import { registerLearningRoutes } from './learning.js';
 import { registerAnnouncementRoutes } from './announcements.js';
 import { registerAnalyticsRoutes } from './analytics.js';
@@ -23,6 +23,7 @@ const app = express();
 const httpServer = createServer(app);
 const io = new SocketServer(httpServer, { cors: { origin: true, credentials: true } });
 const port = Number(process.env.PORT || 5000);
+configureEmailControl(pool);
 
 app.use(helmet());
 app.use(cors());
@@ -46,10 +47,31 @@ app.get('/api/staff/email-health', requireAuth, requireStaff, async (_req, res) 
 
 app.post('/api/staff/email-test', requireAuth, requireStaff, async (req, res, next) => {
   try {
+    if (!await isEmailDeliveryEnabled()) return res.status(200).json({ message: 'Email notifications are currently switched off. No test email was sent.' });
     const [users] = await pool.execute('SELECT full_name AS fullName, email FROM users WHERE id = ?', [req.user.id]);
     if (!users.length) return res.status(404).json({ message: 'Staff account not found.' });
     const sent = await sendTestEmail(users[0]);
     res.status(sent ? 200 : 503).json({ message: sent ? `Test email sent to ${users[0].email}.` : 'Email is not configured or the SMTP connection failed.' });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/staff/email-settings', requireAuth, requireStaff, async (_req, res, next) => {
+  try {
+    const [settings] = await pool.execute("SELECT enabled, updated_at AS updatedAt FROM system_settings WHERE setting_key = 'email_notifications'");
+    res.json({ enabled: settings.length ? settings[0].enabled === true : true, updatedAt: settings[0]?.updatedAt || null });
+  } catch (error) { next(error); }
+});
+
+app.patch('/api/staff/email-settings', requireAuth, requireStaff, async (req, res, next) => {
+  try {
+    if (typeof req.body.enabled !== 'boolean') return res.status(400).json({ message: 'Choose whether email notifications should be on or off.' });
+    await pool.execute(`INSERT INTO system_settings (setting_key, enabled, updated_by, updated_at)
+      VALUES ('email_notifications', ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT (setting_key) DO UPDATE SET enabled = EXCLUDED.enabled, updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP`,
+    [req.body.enabled, req.user.id]);
+    res.json({ enabled: req.body.enabled, message: req.body.enabled
+      ? 'Email notifications are ON. The system can send emails again.'
+      : 'Email notifications are OFF. No system emails will be sent to anyone.' });
   } catch (error) { next(error); }
 });
 

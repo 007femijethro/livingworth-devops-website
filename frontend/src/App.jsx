@@ -1569,7 +1569,31 @@ function SecurityCenter({ role, demo = false }) {
       }
     } catch (error) { setMessage(error.message); }
   }
-  return <section className="security-center"><div><p className="eyebrow">Account security</p><h2>Change password</h2><p>{role === "student" ? "Student sessions expire after eight hours. You will be asked to sign in again." : "Your portal session remains active until you log out."}</p></div><form className="security-form" onSubmit={submit}><label>Current password<PasswordInput name="currentPassword" autoComplete="current-password" /></label><label>New password<PasswordInput name="newPassword" autoComplete="new-password" minLength="8" /></label><label>Confirm new password<PasswordInput name="confirmPassword" autoComplete="new-password" minLength="8" /></label><button className="button primary" disabled={demo}>Change password</button><p className="form-message success">{message}</p></form></section>;
+  return <><section className="security-center"><div><p className="eyebrow">Account security</p><h2>Change password</h2><p>{role === "student" ? "Student sessions expire after eight hours. You will be asked to sign in again." : "Your portal session remains active until you log out."}</p></div><form className="security-form" onSubmit={submit}><label>Current password<PasswordInput name="currentPassword" autoComplete="current-password" /></label><label>New password<PasswordInput name="newPassword" autoComplete="new-password" minLength="8" /></label><label>Confirm new password<PasswordInput name="confirmPassword" autoComplete="new-password" minLength="8" /></label><button className="button primary" disabled={demo}>Change password</button><p className="form-message success">{message}</p></form></section>{role !== "student" && <EmailNotificationControl demo={demo} />}</>;
+}
+
+function EmailNotificationControl({ demo = false }) {
+  const [enabled, setEnabled] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    if (demo) { setEnabled(false); return; }
+    api("/staff/email-settings").then((data) => setEnabled(data.enabled)).catch((error) => setMessage(error.message));
+  }, [demo]);
+  async function toggle() {
+    const next = !enabled;
+    if (!next && !window.confirm("Switch off ALL email notifications? Applications, password resets, reminders and every other system email will stop.")) return;
+    setSaving(true); setMessage("");
+    try {
+      const data = await api("/staff/email-settings", { method: "PATCH", body: JSON.stringify({ enabled: next }) });
+      setEnabled(data.enabled); setMessage(data.message);
+    } catch (error) { setMessage(error.message); }
+    finally { setSaving(false); }
+  }
+  return <section className={`email-master-control ${enabled ? "on" : "off"}`}>
+    <div><p className="eyebrow">Communication control</p><h2>Email notifications</h2><p>This master switch controls every outgoing system email. In-app portal notifications will continue to work.</p></div>
+    <div className="email-control-status"><span className={`email-state ${enabled ? "on" : "off"}`}>{enabled === null ? "Loading…" : enabled ? "ON" : "OFF"}</span><p>{enabled ? "Application emails, password resets, learning alerts and reminders can be sent." : "No application, password-reset, learning, quiz, class, attendance or test email will be sent to anyone."}</p><button type="button" className={`button ${enabled ? "email-off-button" : "primary"}`} disabled={demo || saving || enabled === null} onClick={toggle}>{saving ? "Saving…" : enabled ? "Switch off all emails" : "Switch emails back on"}</button>{message && <p className="form-message success" role="status">{message}</p>}</div>
+  </section>;
 }
 
 const storyTypeLabel = (value) => ({ testimony: "Testimony", success_story: "Success story", learning_journey: "Learning journey" }[value] || value);

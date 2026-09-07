@@ -4,6 +4,7 @@ const smtpHost = process.env.SMTP_HOST?.trim();
 const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpFrom = process.env.SMTP_FROM?.trim();
 const adminNotificationEmail = (process.env.ADMIN_NOTIFICATION_EMAIL || process.env.ADMIN_EMAIL)?.trim();
+let settingsPool = null;
 
 const transporter = smtpHost && smtpFrom
   ? nodemailer.createTransport({
@@ -27,8 +28,24 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
+export function configureEmailControl(pool) {
+  settingsPool = pool;
+}
+
+export async function isEmailDeliveryEnabled() {
+  if (String(process.env.EMAIL_NOTIFICATIONS_ENABLED || 'true').toLowerCase() === 'false') return false;
+  if (!settingsPool) return true;
+  try {
+    const [settings] = await settingsPool.execute("SELECT enabled FROM system_settings WHERE setting_key = 'email_notifications'");
+    return settings.length ? settings[0].enabled === true : true;
+  } catch (error) {
+    console.error('Could not read email notification setting:', error.message);
+    return false;
+  }
+}
+
 async function send(message) {
-  if (!transporter) return false;
+  if (!transporter || !await isEmailDeliveryEnabled()) return false;
   try {
     await transporter.sendMail({ from: smtpFrom, ...message });
     return true;
@@ -39,9 +56,11 @@ async function send(message) {
 }
 
 export async function verifyEmailConnection() {
-  if (!transporter) return { configured: false, connected: false };
-  try { await transporter.verify(); return { configured: true, connected: true }; }
-  catch (error) { return { configured: true, connected: false, error: error.message }; }
+  const enabled = await isEmailDeliveryEnabled();
+  if (!transporter) return { configured: false, connected: false, enabled };
+  if (!enabled) return { configured: true, connected: false, enabled: false };
+  try { await transporter.verify(); return { configured: true, connected: true, enabled: true }; }
+  catch (error) { return { configured: true, connected: false, enabled: true, error: error.message }; }
 }
 
 export function sendTestEmail(account) {
