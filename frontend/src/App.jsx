@@ -88,6 +88,8 @@ function Header({ navigate }) {
 }
 
 function Home({ navigate }) {
+  const [stories, setStories] = useState([]);
+  useEffect(() => { api("/stories").then(setStories).catch(() => {}); }, []);
   const modules = [
     [
       "01",
@@ -411,6 +413,20 @@ function Home({ navigate }) {
             </p>
           </div>
         </section>
+        {stories.length > 0 && <section className="home-stories" id="student-stories">
+          <div className="section-head">
+            <div><p className="eyebrow">Student voices</p><h2>Built here. Told by our learners.</h2></div>
+            <p className="section-copy">Real testimonies, success stories and learning journeys from the Livingworth Academy community.</p>
+          </div>
+          <div className="home-story-grid">
+            {stories.slice(0, 6).map((story) => <article key={story.id} className={story.featured ? "featured" : ""}>
+              <span>{story.storyType.replaceAll("_", " ")}</span>
+              <h3>{story.title}</h3>
+              <p>“{story.content}”</p>
+              <footer><b>{story.studentName}</b><small>Livingworth Academy student</small></footer>
+            </article>)}
+          </div>
+        </section>}
         <section className="career">
           <p className="eyebrow">Beyond the tools</p>
           <h2>Finish ready to tell your engineering story.</h2>
@@ -892,10 +908,10 @@ function Register({ navigate }) {
 function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forceSecurity = false }) {
   const items = forceSecurity ? ["Security"] :
     role === "admin"
-      ? ["Overview", "Applications", "Mentors", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
+      ? ["Overview", "Applications", "Mentors", "Stories", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
       : role === "mentor"
-        ? ["Overview", "Learners", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
-        : ["Overview", "Notifications", "Announcements", "Programme", "Learning", "Attendance", "Live quiz", "Security"];
+        ? ["Overview", "Learners", "Stories", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
+        : ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Attendance", "Live quiz", "Security"];
   return (
     <aside className="sidebar" aria-label={`${role} portal navigation`}>
       <Logo />
@@ -1556,6 +1572,92 @@ function SecurityCenter({ role, demo = false }) {
   return <section className="security-center"><div><p className="eyebrow">Account security</p><h2>Change password</h2><p>{role === "student" ? "Student sessions expire after eight hours. You will be asked to sign in again." : "Your portal session remains active until you log out."}</p></div><form className="security-form" onSubmit={submit}><label>Current password<PasswordInput name="currentPassword" autoComplete="current-password" /></label><label>New password<PasswordInput name="newPassword" autoComplete="new-password" minLength="8" /></label><label>Confirm new password<PasswordInput name="confirmPassword" autoComplete="new-password" minLength="8" /></label><button className="button primary" disabled={demo}>Change password</button><p className="form-message success">{message}</p></form></section>;
 }
 
+const storyTypeLabel = (value) => ({ testimony: "Testimony", success_story: "Success story", learning_journey: "Learning journey" }[value] || value);
+
+function StudentStoriesCenter() {
+  const emptyDraft = { storyType: "testimony", title: "", content: "" };
+  const [stories, setStories] = useState([]);
+  const [draft, setDraft] = useState(emptyDraft);
+  const [editingId, setEditingId] = useState(null);
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const load = () => api("/student/stories").then(setStories).catch((error) => setMessage(error.message));
+  useEffect(() => { load(); }, []);
+  function edit(story) {
+    setEditingId(story.id);
+    setDraft({ storyType: story.storyType, title: story.title, content: story.content });
+    setMessage("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function cancel() { setEditingId(null); setDraft(emptyDraft); }
+  async function submit(event) {
+    event.preventDefault(); setSaving(true); setMessage("");
+    try {
+      const data = await api(editingId ? `/student/stories/${editingId}` : "/student/stories", {
+        method: editingId ? "PATCH" : "POST", body: JSON.stringify(draft),
+      });
+      setMessage(data.message); cancel(); await load();
+    } catch (error) { setMessage(error.message); }
+    finally { setSaving(false); }
+  }
+  async function remove(story) {
+    if (!window.confirm(`Delete “${story.title}”? This cannot be undone.`)) return;
+    try { const data = await api(`/student/stories/${story.id}`, { method: "DELETE" }); setMessage(data.message); if (editingId === story.id) cancel(); await load(); }
+    catch (error) { setMessage(error.message); }
+  }
+  return <section className="stories-center">
+    <div className="stories-heading"><p className="eyebrow">Your voice</p><h2>Share your Livingworth story</h2><p>Tell future learners about your testimony, success or learning journey. Your mentor will review it before it appears on the homepage.</p></div>
+    <form className="story-form" onSubmit={submit}>
+      <label>Story type<select value={draft.storyType} onChange={(event) => setDraft({ ...draft, storyType: event.target.value })}><option value="testimony">Testimony</option><option value="success_story">Success story</option><option value="learning_journey">Learning journey</option></select></label>
+      <label>Title<input value={draft.title} maxLength="180" required placeholder="For example: From beginner to deploying my first application" onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
+      <label>Your story<textarea value={draft.content} minLength="40" maxLength="5000" required placeholder="What changed for you? What did you learn or achieve?" onChange={(event) => setDraft({ ...draft, content: event.target.value })} /><small>{draft.content.length}/5,000 characters</small></label>
+      <div className="story-form-actions"><button className="button primary" disabled={saving}>{saving ? "Saving…" : editingId ? "Save and resubmit" : "Submit for review"}</button>{editingId && <button type="button" className="button light-border" onClick={cancel}>Cancel edit</button>}</div>
+      {message && <p className="form-message success" role="status">{message}</p>}
+    </form>
+    <div className="story-list"><h2>My submissions</h2>{stories.length === 0 ? <div className="empty">You have not submitted a story yet.</div> : stories.map((story) => <article className={`story-card ${story.status}`} key={story.id}>
+      <div className="story-card-head"><div><small>{storyTypeLabel(story.storyType)}</small><h3>{story.title}</h3></div><b className={`status ${story.status}`}>{story.status}</b></div>
+      <p>{story.content}</p>{story.rejectionReason && <p className="story-reason"><b>Mentor feedback:</b> {story.rejectionReason}</p>}
+      <small>Submitted {new Date(story.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</small>
+      <div className="story-actions">{story.status !== "approved" && <button className="button light-border" onClick={() => edit(story)}>Edit</button>}<button className="button story-delete" onClick={() => remove(story)}>Delete</button></div>
+    </article>)}</div>
+  </section>;
+}
+
+function StaffStoriesCenter({ demo = false }) {
+  const [stories, setStories] = useState([]);
+  const [status, setStatus] = useState("");
+  const [reasons, setReasons] = useState({});
+  const [message, setMessage] = useState(demo ? "Story moderation is unavailable in offline preview." : "");
+  const load = () => { if (!demo) api(`/staff/stories${status ? `?status=${status}` : ""}`).then(setStories).catch((error) => setMessage(error.message)); };
+  useEffect(() => { load(); }, [status, demo]);
+  async function review(story, nextStatus) {
+    if (nextStatus === "approved" && !window.confirm(`Publish “${story.title}” on the homepage?`)) return;
+    try {
+      const data = await api(`/staff/stories/${story.id}/review`, { method: "PATCH", body: JSON.stringify({ status: nextStatus, rejectionReason: reasons[story.id] || "" }) });
+      setMessage(data.message); await load();
+    } catch (error) { setMessage(error.message); }
+  }
+  async function feature(story) {
+    try { const data = await api(`/staff/stories/${story.id}/featured`, { method: "PATCH", body: JSON.stringify({ featured: !story.featured }) }); setMessage(data.message); await load(); }
+    catch (error) { setMessage(error.message); }
+  }
+  async function remove(story) {
+    if (!window.confirm(`Permanently delete “${story.title}”?`)) return;
+    try { const data = await api(`/staff/stories/${story.id}`, { method: "DELETE" }); setMessage(data.message); await load(); }
+    catch (error) { setMessage(error.message); }
+  }
+  return <section className="stories-center"><div className="stories-heading"><p className="eyebrow">Student voices</p><h2>Stories & testimonials</h2><p>Review student submissions before they are published on the academy homepage.</p></div>
+    <label>Filter by status<select className="story-filter" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All submissions</option><option value="pending">Pending review</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></label>
+    {message && <p className="form-message success" role="status">{message}</p>}
+    <div className="story-list">{stories.length === 0 ? <div className="empty">No stories match this view.</div> : stories.map((story) => <article className={`story-card ${story.status}`} key={story.id}>
+      <div className="story-card-head"><div><small>{storyTypeLabel(story.storyType)} · {story.studentName} · {story.studentEmail}</small><h3>{story.title}</h3></div><div>{story.featured && <span className="story-featured">★ Featured</span>} <b className={`status ${story.status}`}>{story.status}</b></div></div>
+      <p>{story.content}</p>{story.rejectionReason && <p className="story-reason"><b>Rejection reason:</b> {story.rejectionReason}</p>}
+      {story.status !== "approved" && <div className="story-review-actions"><textarea value={reasons[story.id] || ""} onChange={(event) => setReasons({ ...reasons, [story.id]: event.target.value })} maxLength="500" placeholder="Reason required when rejecting" /><button className="button story-approve" onClick={() => review(story, "approved")}>Approve & publish</button><button className="button story-reject" onClick={() => review(story, "rejected")}>Reject</button></div>}
+      <div className="story-actions">{story.status === "approved" && <button className="button light-border" onClick={() => feature(story)}>{story.featured ? "Remove featured" : "Feature story"}</button>}<button className="button story-delete" onClick={() => remove(story)}>Delete</button></div>
+    </article>)}</div>
+  </section>;
+}
+
 function StudentDashboard({ user, logout }) {
   const [active, setActive] = useState(user.mustChangePassword ? "Security" : "Overview");
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
@@ -1573,6 +1675,7 @@ function StudentDashboard({ user, logout }) {
       <section className="dash-main">
         {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} onUnreadChange={setUnreadAnnouncements} />}
         {active === "Notifications" && <NotificationsCenter onNavigate={setActive} />}
+        {active === "My stories" && <StudentStoriesCenter />}
         {active === "Announcements" && <AnnouncementsCenter mode="student" onUnreadChange={setUnreadAnnouncements} />}
         {active === "Programme" && (
           <section className="portal-path">
@@ -2680,6 +2783,7 @@ function AdminDashboard({ user, logout }) {
         <p className="form-message success">{message}</p>
         {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} onViewLearner={user.demo ? null : setProfileStudentId} demo={user.demo} />}
         {active === "Applications" && applications}
+        {active === "Stories" && <StaffStoriesCenter demo={user.demo} />}
         {active === "Announcements" && <AnnouncementsCenter mode="staff" demo={user.demo} />}
         {active === "Mentors" &&
           (user.demo ? (
@@ -2775,6 +2879,7 @@ function MentorDashboard({ user, logout }) {
         <p className="form-message">{message}</p>
         {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} onViewLearner={setProfileStudentId} />}
         {active === "Announcements" && <AnnouncementsCenter mode="staff" />}
+        {active === "Stories" && <StaffStoriesCenter />}
         {active === "Security" && <SecurityCenter role="mentor" />}
         {active === "Learners" && (
           <div className="student-list">
