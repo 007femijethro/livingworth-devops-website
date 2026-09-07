@@ -326,12 +326,15 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
   });
 }
 
-async function leaderboard(pool, quizId, answers) {
-  const scores = {};
-  for (const answer of answers.values()) scores[answer.studentId] = (scores[answer.studentId] || 0) + (answer.points || 0);
+async function leaderboard(pool, quizId, answers, totalQuestions = 0) {
+  const scores = {}, correctCounts = {};
+  for (const answer of answers.values()) {
+    scores[answer.studentId] = (scores[answer.studentId] || 0) + (answer.points || 0);
+    correctCounts[answer.studentId] = (correctCounts[answer.studentId] || 0) + (answer.correct ? 1 : 0);
+  }
   const ids = Object.keys(scores); if (!ids.length) return [];
   const [users] = await pool.query(`SELECT id, full_name AS fullName FROM users WHERE id IN (${ids.map(()=>'?').join(',')})`, ids);
-  return users.map(u=>({studentId:u.id,fullName:u.fullName,score:scores[u.id]||0})).sort((a,b)=>b.score-a.score).slice(0,20);
+  return users.map(u=>({studentId:u.id,fullName:u.fullName,score:scores[u.id]||0,correctCount:correctCounts[u.id]||0,totalQuestions})).sort((a,b)=>b.score-a.score).slice(0,20);
 }
 
 async function ensureAttempt(pool, state, quizId, studentId) {
@@ -376,7 +379,7 @@ export function configureQuizSockets(io, pool, verifyToken) {
   const initials = name => String(name || '').split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 3).toUpperCase();
   const emitRanked = async (quizId, event, extra = {}) => {
     const state = rooms.get(Number(quizId));
-    const rankings = await leaderboard(pool, quizId, state?.answers || new Map());
+    const rankings = await leaderboard(pool, quizId, state?.answers || new Map(), state?.questions?.length || 0);
     for (const client of await io.in(`quiz:${quizId}`).fetchSockets()) {
       let visible = rankings;
       if (client.user?.role === 'student' && state?.rankingVisibility === 'initials') visible = rankings.map((entry, index) => ({ ...entry, fullName: initials(entry.fullName), position: index + 1 }));

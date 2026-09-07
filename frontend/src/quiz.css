@@ -344,6 +344,9 @@
 .leaderboard > div > strong {
   color: #078397;
 }
+.leaderboard-result { display: grid; justify-items: end; line-height: 1.25; }
+.leaderboard-result small { color: #536b79; font-weight: 800; }
+.leaderboard-result strong { color: #078397; }
 @media (max-width: 850px) {
   .quiz-admin-grid {
     grid-template-columns: 1fr;

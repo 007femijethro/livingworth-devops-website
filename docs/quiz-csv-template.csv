@@ -1,0 +1,4 @@
+Question,Option 1,Option 2,Option 3,Option 4,Correct Answer
+What does CI stand for?,Continuous Integration,Cloud Infrastructure,Code Inspection,Continuous Installation,1
+Which command displays the current Git branch?,git branch,git push,git clone,git init,1
+Which Docker command lists running containers?,docker build,docker ps,docker pull,docker images,2
