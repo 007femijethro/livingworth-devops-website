@@ -27,5 +27,15 @@ export function registerNotificationRoutes(app, pool, requireAuth) {
       res.json({ message: 'Notification marked as read.' });
     } catch (error) { next(error); }
   });
+  app.delete('/api/notifications/:id', requireAuth, async (req, res, next) => {
+    try {
+      if (req.user.role !== 'student') return res.status(403).json({ message: 'Only students can delete their notifications.' });
+      const notificationId = Number.parseInt(req.params.id, 10);
+      if (!notificationId) return res.status(400).json({ message: 'Choose a valid notification.' });
+      const [result] = await pool.execute('DELETE FROM notifications WHERE id = ? AND user_id = ?', [notificationId, req.user.id]);
+      if (!result.affectedRows) return res.status(404).json({ message: 'Notification not found.' });
+      res.json({ message: 'Notification deleted.' });
+    } catch (error) { next(error); }
+  });
 }
 import { sendStudentNotification } from './mailer.js';

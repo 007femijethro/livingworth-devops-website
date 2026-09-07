@@ -21,6 +21,7 @@ const upload = multer({
 
 async function modulesFor(pool, studentId = null, staff = false) {
   const [modules] = await pool.query(`SELECT id, week_number AS weekNumber, title, summary, published FROM learning_modules ${staff ? '' : 'WHERE published = TRUE'} ORDER BY display_order, week_number`);
+  const visibleModules = [];
   for (const module of modules) {
     const [materials] = studentId
       ? await pool.execute(`SELECT lm.id, lm.title, lm.material_type AS materialType, lm.resource_url AS resourceUrl,
@@ -43,8 +44,16 @@ async function modulesFor(pool, studentId = null, staff = false) {
         );
     module.materials = materials;
     module.assignments = assignments;
+    if (studentId) {
+      const hasLearningWork = materials.length > 0 || assignments.length > 0;
+      module.isComplete = hasLearningWork
+        && materials.every(material => material.progressStatus === 'done')
+        && assignments.every(assignment => Boolean(assignment.submissionId));
+      visibleModules.push(module);
+      if (!module.isComplete) break;
+    }
   }
-  return modules;
+  return studentId ? visibleModules : modules;
 }
 
 export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
@@ -52,9 +61,10 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
     try {
       if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
       const modules = await modulesFor(pool, req.user.id, false);
+      const [[published]] = await pool.query('SELECT COUNT(*) AS total FROM learning_modules WHERE published = TRUE');
       const assignments = modules.flatMap(module => module.assignments);
       const completed = assignments.filter(assignment => assignment.submissionStatus === 'completed').length;
-      res.json({ modules, progress: { completed, total: assignments.length, percentage: assignments.length ? Math.round(completed / assignments.length * 100) : 0 } });
+      res.json({ modules, lockedWeeks: Math.max(0, Number(published.total) - modules.length), progress: { completed, total: assignments.length, percentage: assignments.length ? Math.round(completed / assignments.length * 100) : 0 } });
     } catch (error) { next(error); }
   });
 

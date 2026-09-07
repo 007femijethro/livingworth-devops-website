@@ -1514,6 +1514,7 @@ function AnnouncementsCenter({ mode, demo = false, onUnreadChange = () => {} }) 
 function NotificationsCenter({ onNavigate }) {
   const [items, setItems] = useState([]);
   const [message, setMessage] = useState("Loading notifications…");
+  const [deletingId, setDeletingId] = useState(null);
   async function load() {
     try { const data = await api("/notifications"); setItems(data.notifications); setMessage(""); }
     catch (error) { setMessage(error.message); }
@@ -1523,7 +1524,17 @@ function NotificationsCenter({ onNavigate }) {
     if (!item.readAt) await api(`/notifications/${item.id}/read`, { method: "POST" });
     if (item.actionTarget) onNavigate(item.actionTarget); else load();
   }
-  return <section className="notifications-center"><div className="learning-head"><div><p className="eyebrow">My updates</p><h2>Notifications</h2><p>Learning updates, deadlines and mentor feedback.</p></div></div>{message && <p className="form-message">{message}</p>}<div className="notification-list">{!message && items.length === 0 ? <div className="empty">You have no notifications yet.</div> : items.map((item) => <button key={item.id} className={item.readAt ? "read" : "unread"} onClick={() => open(item)}><b>{item.category}</b><span><strong>{item.title}</strong><small>{item.message}</small></span><time>{new Date(item.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</time></button>)}</div></section>;
+  async function deleteNotification(item) {
+    if (!window.confirm(`Delete “${item.title}”?`)) return;
+    setDeletingId(item.id);
+    try {
+      await api(`/notifications/${item.id}`, { method: "DELETE" });
+      setItems(current => current.filter(notification => notification.id !== item.id));
+      setMessage("Notification deleted.");
+    } catch (error) { setMessage(error.message); }
+    finally { setDeletingId(null); }
+  }
+  return <section className="notifications-center"><div className="learning-head"><div><p className="eyebrow">My updates</p><h2>Notifications</h2><p>Learning updates, deadlines and mentor feedback.</p></div></div>{message && <p className="form-message" role="status">{message}</p>}<div className="notification-list">{items.length === 0 && message !== "Loading notifications…" ? <div className="empty">You have no notifications yet.</div> : items.map((item) => <article key={item.id} className={item.readAt ? "read" : "unread"}><button className="notification-open" onClick={() => open(item)}><b>{item.category}</b><span><strong>{item.title}</strong><small>{item.message}</small></span><time>{new Date(item.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</time></button><button type="button" className="notification-delete" disabled={deletingId === item.id} onClick={() => deleteNotification(item)} aria-label={`Delete ${item.title}`}>{deletingId === item.id ? "Deleting…" : "Delete"}</button></article>)}</div></section>;
 }
 
 function SecurityCenter({ role, demo = false }) {
