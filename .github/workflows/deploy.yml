@@ -26,7 +26,11 @@ jobs:
             git reset --hard origin/main
 
             echo "Building application..."
-            sudo docker compose up -d --build --remove-orphans --force-recreate
+            sudo docker compose build
+
+            echo "Replacing the existing application stack..."
+            sudo docker compose down --remove-orphans || true
+            sudo docker compose up -d --remove-orphans
 
             echo "Checking containers..."
             sudo docker compose ps
