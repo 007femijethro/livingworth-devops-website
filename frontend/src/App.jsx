@@ -925,455 +925,7 @@ function dateInputValue(date) {
 function latestClassDate() {
   const date = new Date();
   while (![1, 3, 5].includes(date.getDay())) date.setDate(date.getDate() - 1);
-  return dateInputValue(date);
-}
-function displayDate(value) {
-  return new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(`${String(value).slice(0, 10)}T12:00:00`));
-}
-
-function reportDefaultRange() {
-  const to = new Date();
-  const from = new Date(to);
-  from.setDate(to.getDate() - 30);
-  return { from: dateInputValue(from), to: dateInputValue(to) };
-}
-
-function AttendanceReports({ onDaily }) {
-  const defaults = reportDefaultRange();
-  const [from, setFrom] = useState(defaults.from);
-  const [to, setTo] = useState(defaults.to);
-  const [studentId, setStudentId] = useState("");
-  const [status, setStatus] = useState("");
-  const [report, setReport] = useState({ records: [], students: [], summary: { total: 0, present: 0, late: 0, absent: 0, excused: 0 } });
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
-  function setQuickRange(kind) {
-    const end = new Date();
-    const start = new Date(end);
-    if (kind === "week") start.setDate(end.getDate() - ((end.getDay() + 6) % 7));
-    else start.setDate(end.getDate() - 30);
-    setFrom(dateInputValue(start));
-    setTo(dateInputValue(end));
-  }
-  async function load() {
-    setLoading(true);
-    setMessage("");
-    try {
-      const params = new URLSearchParams({ from, to });
-      if (studentId) params.set("studentId", studentId);
-      if (status) params.set("status", status);
-      setReport(await api(`/staff/attendance/report?${params}`));
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => { load(); }, [studentId, status, from, to]);
-  async function exportReport() {
-    try {
-      const params = new URLSearchParams({ from, to });
-      if (studentId) params.set("studentId", studentId);
-      if (status) params.set("status", status);
-      const response = await fetch(`/api/staff/attendance/export?${params}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("lw_token")}` },
-      });
-      if (!response.ok) throw new Error("Could not export attendance.");
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `livingworth-attendance-${from}-to-${to}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (error) { setMessage(error.message); }
-  }
-  const selectedName = report.students.find((student) => String(student.studentId) === String(studentId))?.fullName;
-  return (
-    <>
-      <div className="attendance-view-tabs">
-        <button onClick={onDaily}>Daily register</button><button className="active">Reports & warnings</button>
-      </div>
-      <div className="attendance-head report-heading">
-        <div><p className="eyebrow">Attendance intelligence</p><h2>Reports & warnings</h2><p>Review performance and identify learners who need follow-up.</p></div>
-        <button className="button light-border" onClick={exportReport}>Export CSV</button>
-      </div>
-      <div className="report-presets"><span>Quick summary</span><button onClick={() => setQuickRange("week")}>This week</button><button onClick={() => setQuickRange("month")}>Last 30 days</button></div>
-      <form className="report-filters" onSubmit={(event) => { event.preventDefault(); load(); }}>
-        <label>From<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} required /></label>
-        <label>To<input type="date" value={to} onChange={(event) => setTo(event.target.value)} required /></label>
-        <label>Student<select value={studentId} onChange={(event) => setStudentId(event.target.value)}><option value="">All students</option>{report.students.map((student) => <option key={student.studentId} value={student.studentId}>{student.fullName}</option>)}</select></label>
-        <label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["present", "late", "absent", "excused"].map((value) => <option key={value}>{value}</option>)}</select></label>
-        <button className="button primary">Apply filters</button>
-      </form>
-      <p className="form-message">{loading ? "Loading report…" : message}</p>
-      <div className="report-metrics">
-        {[["Sessions", report.summary.total], ["Present", report.summary.present], ["Late", report.summary.late], ["Absent", report.summary.absent], ["Excused", report.summary.excused]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}
-      </div>
-      {!studentId && <div className="learner-attendance-list">
-        {report.students.map((student) => (
-          <article key={student.studentId} className={student.warning || (student.counted > 0 && student.percentage < 75) ? "needs-attention" : ""}>
-            <div className="attendance-person"><span className="student-avatar">{student.fullName[0]}</span><div><strong>{student.fullName}</strong><small>{student.email}</small></div></div>
-            <div className="attendance-breakdown"><span>{student.present} present</span><span>{student.late} late</span><span>{student.absent} absent</span><span>{student.excused} excused</span></div>
-            <strong className={`attendance-percentage ${student.counted > 0 && student.percentage < 75 ? "low" : ""}`}>{student.percentage}%</strong>
-            <div className="attendance-flags">{student.warning && <b>Missed Mon & Wed</b>}{student.counted > 0 && student.percentage < 75 && <b>Below 75%</b>}</div>
-            <button className="profile-button" onClick={() => setStudentId(String(student.studentId))}>View history</button>
-          </article>
-        ))}
-      </div>}
-      {studentId && <div className="individual-history"><div className="history-title"><div><p className="eyebrow">Individual history</p><h3>{selectedName || "Selected learner"}</h3></div><button className="text-btn" onClick={() => setStudentId("")}>View all students</button></div>{report.records.length ? report.records.map((record, index) => <article key={`${record.studentId}-${record.sessionDate}-${index}`}><div><strong>{displayDate(record.sessionDate)}</strong><small>{record.note || "No note"}</small></div><span className={`attendance-status ${record.status}`}>{record.status}</span></article>) : <div className="empty">No attendance records match these filters.</div>}</div>}
-    </>
-  );
-}
-
-function AttendanceCenter({ mode, demo = false }) {
-  const staff = mode === "staff";
-  const [date, setDate] = useState(latestClassDate()),
-    [records, setRecords] = useState([]),
-    [summary, setSummary] = useState({ attended: 0, total: 0, percentage: 0 }),
-    [message, setMessage] = useState(""),
-    [saving, setSaving] = useState(false),
-    [view, setView] = useState("daily");
-  async function load(selected = date) {
-    if (demo) {
-      setMessage("Connect the backend to use the attendance register.");
-      return;
-    }
-    setMessage("Loading attendance…");
-    try {
-      const data = await api(
-        staff ? `/staff/attendance?date=${selected}` : "/student/attendance",
-      );
-      setRecords(data.records || []);
-      if (data.summary) setSummary(data.summary);
-      setMessage("");
-    } catch (e) {
-      setRecords([]);
-      setMessage(e.message);
-    }
-  }
-  useEffect(() => {
-    load();
-  }, [mode, demo]);
-  function update(studentId, field, value) {
-    setRecords((current) =>
-      current.map((record) =>
-        record.studentId === studentId ? { ...record, [field]: value } : record,
-      ),
-    );
-  }
-  function markEveryone(status) {
-    setRecords((current) => current.map((record) => ({ ...record, status })));
-  }
-  async function save() {
-    const selected = records
-      .filter((record) => record.status)
-      .map(({ studentId, status, note }) => ({ studentId, status, note }));
-    if (!selected.length) {
-      setMessage("Mark at least one student before saving.");
-      return;
-    }
-    setSaving(true);
-    try {
-      const data = await api("/staff/attendance", {
-        method: "PUT",
-        body: JSON.stringify({ date, records: selected }),
-      });
-      setMessage(data.message);
-      load(date);
-    } catch (e) {
-      setMessage(e.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-  if (staff && view === "reports") return <section className="attendance"><AttendanceReports onDaily={() => setView("daily")} /></section>;
-  if (staff)
-    return (
-      <section className="attendance">
-        <div className="attendance-view-tabs"><button className="active">Daily register</button><button onClick={() => setView("reports")}>Reports & warnings</button></div>
-        <div className="attendance-head">
-          <div>
-            <p className="eyebrow">Class register</p>
-            <h2>Mark attendance</h2>
-            <p>Sessions run every Monday, Wednesday and Friday.</p>
-          </div>
-          <label>
-            Session date
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => {
-                setDate(e.target.value);
-                load(e.target.value);
-              }}
-            />
-          </label>
-        </div>
-        <p className="form-message">{message}</p>
-        <div className="attendance-key">
-          <span className="present">Present</span>
-          <span className="late">Late</span>
-          <span className="absent">Absent</span>
-          <span className="excused">Excused</span>
-        </div>
-        {records.length > 0 && <div className="attendance-bulk"><span>Bulk actions</span><button onClick={() => markEveryone("present")}>Mark everyone present</button><button onClick={() => markEveryone("absent")}>Mark everyone absent</button><button onClick={() => markEveryone("")}>Clear selections</button></div>}
-        <div className="attendance-list">
-          {records.length === 0 ? (
-            <div className="empty">
-              No approved students found for this register.
-            </div>
-          ) : (
-            records.map((record) => (
-              <article key={record.studentId}>
-                <div className="attendance-person">
-                  <span className="student-avatar">{record.fullName[0]}</span>
-                  <div>
-                    <strong>{record.fullName}</strong>
-                    <small>{record.email}</small>
-                  </div>
-                </div>
-                <div className="attendance-options">
-                  {["present", "late", "absent", "excused"].map((status) => (
-                    <button
-                      key={status}
-                      className={
-                        record.status === status ? `selected ${status}` : ""
-                      }
-                      onClick={() => update(record.studentId, "status", status)}
-                    >
-                      {status}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  className="attendance-note"
-                  placeholder="Optional note"
-                  value={record.note || ""}
-                  onChange={(e) =>
-                    update(record.studentId, "note", e.target.value)
-                  }
-                />
-              </article>
-            ))
-          )}
-        </div>
-        {records.length > 0 && (
-          <div className="attendance-save">
-            <span>
-              {records.filter((r) => r.status).length} of {records.length}{" "}
-              marked
-            </span>
-            <button className="button primary" disabled={saving} onClick={save}>
-              {saving ? "Saving…" : "Save attendance"}
-            </button>
-          </div>
-        )}
-      </section>
-    );
-  return (
-    <section className="attendance">
-      <div className="attendance-head">
-        <div>
-          <p className="eyebrow">My attendance</p>
-          <h2>{summary.percentage}% attendance</h2>
-          <p>
-            {summary.attended} of {summary.total} counted sessions attended.
-            Excused sessions are not counted against you.
-          </p>
-        </div>
-        <div className="attendance-score">{summary.percentage}%</div>
-      </div>
-      <p className="form-message">{message}</p>
-      <div className="attendance-history">
-        {records.length === 0 ? (
-          <div className="empty">
-            Your attendance history will appear after your first marked session.
-          </div>
-        ) : (
-          records.map((record) => (
-            <article key={record.sessionDate}>
-              <div>
-                <strong>{displayDate(record.sessionDate)}</strong>
-                {record.note && <small>{record.note}</small>}
-              </div>
-              <span className={`attendance-status ${record.status}`}>
-                {record.status}
-              </span>
-            </article>
-          ))
-        )}
-      </div>
-    </section>
-  );
-}
-
-function submissionLabel(status) {
-  return status ? status.replaceAll("_", " ") : "Not started";
-}
-
-function youtubeThumbnail(url = "") {
-  try {
-    const parsed = new URL(url);
-    let id = parsed.hostname.includes("youtu.be") ? parsed.pathname.slice(1) : parsed.searchParams.get("v");
-    if (!id && parsed.pathname.includes("/shorts/")) id = parsed.pathname.split("/shorts/")[1]?.split("/")[0];
-    if (!id && parsed.pathname.includes("/embed/")) id = parsed.pathname.split("/embed/")[1]?.split("/")[0];
-    return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : "";
-  } catch { return ""; }
-}
-
-function MaterialFields({ initialType = "link", material = null, resourceRequired = true }) {
-  const [type, setType] = useState(initialType);
-  return <>
-    <label>Type<select name="materialType" value={type} onChange={(event) => setType(event.target.value)}><option value="note">Lesson note</option><option value="link">Resource link</option><option value="video">YouTube video</option>{material?.materialType === "file" && <option value="file">Uploaded file</option>}</select></label>
-    {type === "note" ? <label>Lesson note<textarea name="lessonContent" rows="10" defaultValue={material?.lessonContent || ""} placeholder="Write or paste the complete lesson note here…" required /></label> : <label>{type === "video" ? "YouTube URL" : "Resource URL"}<input name="resourceUrl" type="url" defaultValue={material?.resourceUrl || ""} placeholder={type === "video" ? "https://youtube.com/watch?v=…" : "https://…"} required={resourceRequired} /></label>}
-  </>;
-}
-
-function StudentMaterial({ material, onProgress }) {
-  const content = material.materialType === "note"
-    ? <details className="student-lesson-note"><summary><span><small>Lesson note</small><b>{material.title}</b></span><strong>View lesson note</strong></summary><div>{material.lessonContent}</div></details>
-    : <a className={youtubeThumbnail(material.resourceUrl) ? "video-material" : ""} href={material.resourceUrl} target="_blank" rel="noreferrer">{youtubeThumbnail(material.resourceUrl) ? <img src={youtubeThumbnail(material.resourceUrl)} alt="" /> : <b>{material.materialType === "video" ? "▶" : "↗"}</b>}<span>{material.title}<small>{material.originalName || material.materialType}</small></span></a>;
-  return <div className={`material-with-progress ${material.progressStatus}`}>{content}<label>My progress<select value={material.progressStatus || "not_started"} onChange={(event) => onProgress(material.id, event.target.value)}><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="done">Done</option></select></label></div>;
-}
-
-function LearningCenter({ mode, demo = false }) {
-  const staff = mode === "staff";
-  const [modules, setModules] = useState([]);
-  const [submissions, setSubmissions] = useState([]);
-  const [materialProgress, setMaterialProgress] = useState([]);
-  const [progress, setProgress] = useState({ completed: 0, total: 0, percentage: 0 });
-  const [message, setMessage] = useState("");
-  const [selectedModule, setSelectedModule] = useState(null);
-  const [editing, setEditing] = useState("");
-  const [view, setView] = useState("modules");
-  const [progressMaterial, setProgressMaterial] = useState("");
-  const [progressWeek, setProgressWeek] = useState("");
-  const [progressStatus, setProgressStatus] = useState("");
-  const [progressSearch, setProgressSearch] = useState("");
-  async function load() {
-    if (demo) { setMessage("Connect the backend to manage learning content."); return; }
-    try {
-      const data = await api(staff ? "/staff/learning" : "/student/learning");
-      setModules(data.modules || []);
-      setSubmissions(data.submissions || []);
-      setMaterialProgress(data.materialProgress || []);
-      if (data.progress) setProgress(data.progress);
-      setMessage("");
-    } catch (error) { setMessage(error.message); }
-  }
-  useEffect(() => { load(); }, [mode, demo]);
-  async function createModule(event) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    try {
-      const values = Object.fromEntries(new FormData(form));
-      const data = await api("/staff/learning/modules", { method: "POST", body: JSON.stringify({ ...values, published: values.published === "on" }) });
-      setMessage(data.message); form.reset(); load();
-    } catch (error) { setMessage(error.message); }
-  }
-  async function togglePublished(module) {
-    try {
-      const data = await api(`/staff/learning/modules/${module.id}`, { method: "PATCH", body: JSON.stringify({ published: !module.published }) });
-      setMessage(data.message); load();
-    } catch (error) { setMessage(error.message); }
-  }
-  async function saveEdit(event, path) {
-    event.preventDefault();
-    try {
-      const data = await api(path, { method: "PATCH", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) });
-      setMessage(data.message); setEditing(""); load();
-    } catch (error) { setMessage(error.message); }
-  }
-  async function move(entity, items, index, direction) {
-    const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= items.length) return;
-    const ids = items.map((item) => item.id);
-    [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
-    try {
-      const data = await api("/staff/learning/order", { method: "PATCH", body: JSON.stringify({ entity, ids }) });
-      setMessage(data.message); load();
-    } catch (error) { setMessage(error.message); }
-  }
-  async function deleteMaterial(material) {
-    if (!window.confirm(`Delete “${material.title}”? Students will no longer be able to access it.`)) return;
-    try {
-      const data = await api(`/staff/learning/materials/${material.id}`, { method: "DELETE" });
-      setMessage(data.message); setEditing(""); load();
-    } catch (error) { setMessage(error.message); }
-  }
-  async function addMaterial(event, moduleId) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    try {
-      const response = await fetch(`/api/staff/learning/modules/${moduleId}/materials`, {
-        method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("lw_token")}` }, body: new FormData(form),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Could not add material.");
-      setMessage(data.message); form.reset(); load();
-    } catch (error) { setMessage(error.message); }
-  }
-  async function addAssignment(event, moduleId) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    try {
-      const data = await api(`/staff/learning/modules/${moduleId}/assignments`, { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
-      setMessage(data.message); form.reset(); load();
-    } catch (error) { setMessage(error.message); }
-  }
-  async function submitAssignment(event, assignmentId) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    try {
-      const data = await api(`/student/assignments/${assignmentId}/submission`, { method: "PUT", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
-      setMessage(data.message); load();
-    } catch (error) { setMessage(error.message); }
-  }
-  async function reviewSubmission(event, submissionId) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    try {
-      const data = await api(`/staff/submissions/${submissionId}/review`, { method: "PATCH", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
-      setMessage(data.message); load();
-    } catch (error) { setMessage(error.message); }
-  }
-  async function updateMaterialProgress(materialId, status) {
-    try {
-      const data = await api(`/student/learning/materials/${materialId}/progress`, { method: "PUT", body: JSON.stringify({ status }) });
-      setMessage(data.message); load();
-    } catch (error) { setMessage(error.message); }
-  }
-  const progressMaterials = [...new Map(materialProgress.map((item) => [item.materialId, item])).values()]
-    .sort((left, right) => Number(left.weekNumber) - Number(right.weekNumber) || left.materialTitle.localeCompare(right.materialTitle));
-  const progressWeeks = [...new Set(materialProgress.map((item) => Number(item.weekNumber)))].sort((a, b) => a - b);
-  const progressTerm = progressSearch.trim().toLowerCase();
-  const filteredMaterialProgress = materialProgress.filter((item) =>
-    (!progressMaterial || String(item.materialId) === progressMaterial)
-    && (!progressWeek || String(item.weekNumber) === progressWeek)
-    && (!progressStatus || item.status === progressStatus)
-    && (!progressTerm || `${item.studentName} ${item.email}`.toLowerCase().includes(progressTerm))
-  );
-  function clearProgressFilters() {
-    setProgressMaterial(""); setProgressWeek(""); setProgressStatus(""); setProgressSearch("");
-  }
-  if (staff) return (
-    <section className="learning-center">
-      <div className="learning-head"><div><p className="eyebrow">Course workspace</p><h2>Learning & assignments</h2><p>Build the weekly programme, publish resources and review student work.</p></div><div className="learning-tabs"><button className={view === "modules" ? "active" : ""} onClick={() => setView("modules")}>Modules</button><button className={view === "progress" ? "active" : ""} onClick={() => setView("progress")}>Material progress</button><button className={view === "submissions" ? "active" : ""} onClick={() => setView("submissions")}>Submissions ({submissions.filter((item) => item.status === "submitted").length})</button></div></div>
-      <p className="form-message success">{message}</p>
-      {view === "modules" && <div className="learning-staff-grid">
-        <form className="learning-form" onSubmit={createModule}><h3>Create weekly module</h3><label>Week number<input name="weekNumber" type="number" min="1" max="52" required /></label><label>Module title<input name="title" required /></label><label>Summary<textarea name="summary" rows="4" /></label><label className="inline-check"><input name="published" type="checkbox" /> Publish immediately</label><button className="button primary">Create module</button></form>
-        <div className="module-admin-list">{modules.length === 0 ? <div className="empty">No modules created yet.</div> : modules.map((module, moduleIndex) => <article key={module.id} className={selectedModule === module.id ? "open" : ""}>
-          <div className="module-row"><span>Week {module.weekNumber}</span><div><h3>{module.title}</h3><p>{module.summary || "No summary yet."}</p></div><b className={`publish-state ${module.published ? "published" : "draft"}`}>{module.published ? "Published" : "Draft"}</b><div className="content-actions"><button title="Move module up" disabled={moduleIndex === 0} onClick={() => move("modules", modules, moduleIndex, -1)}>↑</button><button title="Move module down" disabled={moduleIndex === modules.length - 1} onClick={() => move("modules", modules, moduleIndex, 1)}>↓</button><button className="profile-button" onClick={() => setSelectedModule(selectedModule === module.id ? null : module.id)}>{selectedModule === module.id ? "Close" : "Manage"}</button></div></div>
-          {selectedModule === module.id && <div className="module-editor">
-            <form className="edit-module-form" onSubmit={(event) => saveEdit(event, `/staff/learning/modules/${module.id}`)}><h4>Edit module details</h4><label>Week number<input name="weekNumber" type="number" min="1" max="52" defaultValue={module.weekNumber} required /></label><label>Module title<input name="title" defaultValue={module.title} required /></label><label>Summary<textarea name="summary" rows="3" defaultValue={module.summary || ""} /></label><button className="button light-border">Save module changes</button></form>
-            <div className="module-resources"><h4>Current learning materials ({module.materials.length})</h4>{module.materials.length === 0 && <small>No learning materials yet.</small>}{module.materials.map((material, index) => <div className="editable-content" key={material.id}>{editing === `material-${material.id}` ? <form onSubmit={(event) => saveEdit(event, `/staff/learning/materials/${material.id}`)}><label>Title<input name="title" defaultValue={material.title} required /></label><MaterialFields initialType={material.materialType} material={material} /><div className="edit-buttons"><button className="button light-border">Save</button><button type="button" onClick={() => setEditing("")}>Cancel</button></div></form> : <><div><b>{material.title}</b><small>{material.materialType === "note" ? `${material.lessonContent?.slice(0, 80)}${material.lessonContent?.length > 80 ? "…" : ""}` : material.materialType}</small></div><div className="content-actions"><button aria-label={`Move ${material.title} up`} disabled={index === 0} onClick={() => move("materials", module.materials, index, -1)}>↑</button><button aria-label={`Move ${material.title} down`} disabled={index === module.materials.length - 1} onClick={() => move("materials", module.materials, index, 1)}>↓</button><button onClick={() => setEditing(`material-${material.id}`)}>Edit</button><button className="delete-content" onClick={() => deleteMaterial(material)}>Delete</button></div></>}</div>)}</div>
-            <div className="module-resources"><h4>Current assignments</h4>{module.assignments.length === 0 && <small>No assignments yet.</small>}{module.assignments.map((assignment, index) => <div className="editable-content" key={assignment.id}>{editing === `assignment-${assignment.id}` ? <form onSubmit={(event) => saveEdit(event, `/staff/learning/assignments/${assignment.id}`)}><label>Title<input name="title" defaultValue={assignment.title} required /></label><label>Instructions<textarea name="instructions" rows="3" defaultValue={assignment.instructions} required /></label><label>Deadline<input name="dueAt" type="datetime-local" defaultValue={new Date(assignment.dueAt).toISOString().slice(0, 16)} required /></label><label>Maximum score<input name="maxScore" type="number" min="1" max="1000" defaultValue={assignment.maxScore} required /></label><div className="edit-buttons"><button className="button light-border">Save</button><button type="button" onClick={() => setEditing("")}>Cancel</button></div></form> : <><div><b>{assignment.title}</b><small>Due {new Date(assignment.dueAt).toLocaleString()}</small></div><div className="content-actions"><button disabled={index === 0} onClick={() => move("assignments", module.assignments, index, -1)}>↑</button><button disabled={index === module.assignments.length - 1} onClick={() => move("assignments", module.assignments, index, 1)}>↓</button><button onClick={() => setEditing(`assignment-${assignment.id}`)}>Edit</button></div></>}</div>)}</div>
+  re…6916 tokens truncated…onSubmit={(event) => saveEdit(event, `/staff/learning/assignments/${assignment.id}`)}><label>Title<input name="title" defaultValue={assignment.title} required /></label><label>Instructions<textarea name="instructions" rows="3" defaultValue={assignment.instructions} required /></label><label>Deadline<input name="dueAt" type="datetime-local" defaultValue={new Date(assignment.dueAt).toISOString().slice(0, 16)} required /></label><label>Maximum score<input name="maxScore" type="number" min="1" max="1000" defaultValue={assignment.maxScore} required /></label><div className="edit-buttons"><button className="button light-border">Save</button><button type="button" onClick={() => setEditing("")}>Cancel</button></div></form> : <><div><b>{assignment.title}</b><small>Due {new Date(assignment.dueAt).toLocaleString()}</small></div><div className="content-actions"><button disabled={index === 0} onClick={() => move("assignments", module.assignments, index, -1)}>↑</button><button disabled={index === module.assignments.length - 1} onClick={() => move("assignments", module.assignments, index, 1)}>↓</button><button onClick={() => setEditing(`assignment-${assignment.id}`)}>Edit</button></div></>}</div>)}</div>
             <form className="combined-material-form" onSubmit={(event) => addMaterial(event, module.id)}><h4>Add learning content</h4><p className="material-help">Use one topic for everything below. Add a note, video, link or file—or add several together.</p><label>Topic or title<input name="title" placeholder="e.g. Introduction to Linux" required /></label><fieldset><legend>Lesson note</legend><label>Lesson note<textarea name="lessonContent" rows="8" placeholder="Write or paste the lesson note here…" /></label></fieldset><fieldset><legend>YouTube video</legend><label>YouTube URL<input name="videoUrl" type="url" placeholder="https://youtube.com/watch?v=…" /></label></fieldset><fieldset><legend>Resource link or file</legend><label>Resource URL<input name="resourceUrl" type="url" placeholder="https://…" /></label><label>Upload file<input name="file" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.zip" /></label><small>Maximum file size: 10 MB.</small></fieldset><button className="button light-border">Add selected content to this week</button></form>
             <form onSubmit={(event) => addAssignment(event, module.id)}><h4>Create assignment</h4><label>Title<input name="title" required /></label><label>Instructions<textarea name="instructions" rows="4" required /></label><label>Deadline<input name="dueAt" type="datetime-local" required /></label><label>Maximum score<input name="maxScore" type="number" min="1" max="1000" defaultValue="100" required /></label><button className="button light-border">Create assignment</button></form>
             <button className="button primary full" onClick={() => togglePublished(module)}>{module.published ? "Return module to draft" : "Publish module to students"}</button>
@@ -1634,7 +1186,7 @@ function QuizResults({ mode, onLive }) {
     const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement("a");
     link.href = url; link.download = "livingworth-quiz-results.csv"; link.click(); URL.revokeObjectURL(url);
   }
-  if (selected) return <section className="quiz-results"><div className="quiz-mode-tabs"><button onClick={() => setSelected(null)}>← Quiz history</button></div><div className="result-detail-head"><div><p className="eyebrow">Answer review</p><h2>{selected.title}</h2><p>Attempt {selected.attemptNo} · {selected.correctCount}/{selected.totalQuestions} correct · Average response {(selected.averageResponseMs / 1000).toFixed(1)}s</p></div><strong>{Math.round(selected.correctCount * 100 / selected.totalQuestions)}%</strong></div><div className="answer-review">{selected.answers.map((answer) => <article key={answer.sequenceNo} className={answer.isCorrect ? "right" : "wrong"}><div><span>Question {answer.sequenceNo} · {answer.topic}</span><h3>{answer.prompt}</h3></div><p>Your answer: <b>{answer.options[answer.answerIndex]}</b></p><p>Correct answer: <b>{answer.options[answer.correctIndex]}</b></p><small>{(answer.responseMs / 1000).toFixed(1)} seconds</small></article>)}</div></section>;
+  if (selected) return <section className="quiz-results"><div className="quiz-mode-tabs"><button onClick={() => setSelected(null)}>← Quiz history</button></div><div className="result-detail-head"><div><p className="eyebrow">Answer review</p><h2>{selected.title}</h2><p>Attempt {selected.attemptNo} · {selected.correctCount}/{selected.totalQuestions} correct · Average response {(selected.averageResponseMs / 1000).toFixed(1)}s</p></div><strong>{Math.round(selected.correctCount * 100 / selected.totalQuestions)}%</strong></div><div className="answer-review">{selected.answers.map((answer) => <article key={answer.sequenceNo} className={answer.isCorrect ? "right" : "wrong"}><div><span>Question {answer.sequenceNo} · {answer.materialTitle}</span><h3>{answer.prompt}</h3></div><p>Your answer: <b>{answer.options[answer.answerIndex]}</b></p><p>Correct answer: <b>{answer.options[answer.correctIndex]}</b></p><small>{(answer.responseMs / 1000).toFixed(1)} seconds</small></article>)}</div></section>;
   return <section className="quiz-results">
     <div className="quiz-mode-tabs"><button onClick={onLive}>Live quiz</button><button className="active">Results & history</button></div>
     <div className="quiz-heading"><div><p className="eyebrow">Quiz performance</p><h2>{staff ? "Class results and insights" : "My quiz history"}</h2></div>{staff && <button className="button light-border" onClick={exportResults}>Export CSV</button>}</div>
@@ -1670,8 +1222,10 @@ function QuizCenter({ mode, demo = false }) {
     [typedAnswer, setTypedAnswer] = useState(""),
     [soundEnabled, setSoundEnabled] = useState(soundEnabledRef.current),
     [deletingQuizId, setDeletingQuizId] = useState(null),
+    [materials, setMaterials] = useState([]),
     [view, setView] = useState("live");
   const [title, setTitle] = useState("DevOps Knowledge Check");
+  const [materialId, setMaterialId] = useState("");
   const [questionTimeSeconds, setQuestionTimeSeconds] = useState(30);
   const [navigationMode, setNavigationMode] = useState("manual");
   const [speedScoring, setSpeedScoring] = useState(true);
@@ -1679,7 +1233,7 @@ function QuizCenter({ mode, demo = false }) {
   const [rankingVisibility, setRankingVisibility] = useState("full");
   const [editingQuizId, setEditingQuizId] = useState(null);
   const [questions, setQuestions] = useState([
-    { prompt: "", topic: "General", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "" },
+    { prompt: "", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "" },
   ]);
   function playSound(kind) {
     if (!soundEnabledRef.current) return;
@@ -1723,6 +1277,7 @@ function QuizCenter({ mode, demo = false }) {
       return;
     }
     load();
+    if (mode === "admin") api("/staff/learning").then(data => setMaterials(data.modules.flatMap(module => module.materials.map(material => ({ ...material, weekNumber: module.weekNumber }))))).catch(() => {});
     const s = io({
       auth: { token: localStorage.getItem("lw_token") },
       autoConnect: true,
@@ -1857,7 +1412,7 @@ function QuizCenter({ mode, demo = false }) {
     try {
       const quiz = await api(editingQuizId ? `/admin/quizzes/${editingQuizId}` : "/admin/quizzes", {
         method: editingQuizId ? "PUT" : "POST",
-        body: JSON.stringify({ title, questions, questionTimeSeconds, navigationMode, speedScoring, scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null, rankingVisibility }),
+        body: JSON.stringify({ title, materialId, questions, questionTimeSeconds, navigationMode, speedScoring, scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null, rankingVisibility }),
       });
       setMessage(editingQuizId ? quiz.message : `Quiz created. Join code: ${quiz.joinCode}`);
       cancelQuizEdit();
@@ -1869,20 +1424,22 @@ function QuizCenter({ mode, demo = false }) {
   function cancelQuizEdit() {
     setEditingQuizId(null);
     setTitle("DevOps Knowledge Check");
+    setMaterialId("");
     setQuestionTimeSeconds(30);
     setNavigationMode("manual");
     setSpeedScoring(true); setScheduledAt(""); setRankingVisibility("full");
-    setQuestions([{ prompt: "", topic: "General", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "" }]);
+    setQuestions([{ prompt: "", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "" }]);
   }
   async function editQuiz(quiz) {
     try {
       const detail = await api(`/admin/quizzes/${quiz.id}`);
       setEditingQuizId(quiz.id);
       setTitle(detail.title);
+      setMaterialId(String(detail.materialId || ""));
       setQuestionTimeSeconds(Number(detail.questionTimeSeconds));
       setNavigationMode(detail.navigationMode || "manual");
       setSpeedScoring(detail.speedScoring !== false); setScheduledAt(detail.scheduledAt ? new Date(detail.scheduledAt).toISOString().slice(0, 16) : ""); setRankingVisibility(detail.rankingVisibility || "full");
-      setQuestions(detail.questions.map(question => ({ prompt: question.prompt, topic: question.topic, questionType: question.questionType || "single_choice", options: question.options, correctIndex: Number(question.correctIndex), correctAnswers: question.correctAnswers || [], correctText: question.correctText || "" })));
+      setQuestions(detail.questions.map(question => ({ prompt: question.prompt, questionType: question.questionType || "single_choice", options: question.options, correctIndex: Number(question.correctIndex), correctAnswers: question.correctAnswers || [], correctText: question.correctText || "" })));
       setMessage(`Editing ${detail.title}.`);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) { setMessage(error.message); }
@@ -1905,7 +1462,7 @@ function QuizCenter({ mode, demo = false }) {
     try {
       const text = await file.text();
       const quiz = await api(
-        `/admin/quizzes/import?title=${encodeURIComponent(title)}&questionTimeSeconds=${questionTimeSeconds}&navigationMode=${navigationMode}`,
+        `/admin/quizzes/import?title=${encodeURIComponent(title)}&materialId=${encodeURIComponent(materialId)}&questionTimeSeconds=${questionTimeSeconds}&navigationMode=${navigationMode}`,
         { method: "POST", headers: { "Content-Type": "text/csv" }, body: text },
       );
       setMessage(`CSV imported. Join code: ${quiz.joinCode}`);
@@ -2019,6 +1576,14 @@ function QuizCenter({ mode, demo = false }) {
               />
             </label>
             <label>
+              Learning material
+              <select value={materialId} onChange={(event) => setMaterialId(event.target.value)} required>
+                <option value="">Select the material this quiz covers</option>
+                {materials.map(material => <option key={material.id} value={material.id}>Week {material.weekNumber} — {material.title}</option>)}
+              </select>
+              <small>Quiz performance will be reported under this material.</small>
+            </label>
+            <label>
               Time per question (seconds)
               <input
                 type="number"
@@ -2061,12 +1626,6 @@ function QuizCenter({ mode, demo = false }) {
                   onChange={(e) => updateQuestion(qi, "prompt", e.target.value)}
                   required
                 />
-                <input
-                  placeholder="Topic, e.g. Linux or Git"
-                  value={q.topic}
-                  onChange={(e) => updateQuestion(qi, "topic", e.target.value)}
-                  required
-                />
                 <label>Answer type<select value={q.questionType || "single_choice"} onChange={(event) => {
                   const questionType = event.target.value;
                   setQuestions(prev => prev.map((item, index) => index === qi ? { ...item, questionType, options: questionType === "true_false" ? ["True", "False"] : questionType === "typed" ? [] : item.options.length >= 2 ? item.options : ["", "", "", ""] } : item));
@@ -2098,7 +1657,7 @@ function QuizCenter({ mode, demo = false }) {
                 onClick={() =>
                   setQuestions([
                     ...questions,
-                    { prompt: "", topic: "General", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "" },
+                    { prompt: "", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "" },
                   ])
                 }
               >
@@ -2111,9 +1670,9 @@ function QuizCenter({ mode, demo = false }) {
             <h3>Import questions from CSV</h3>
             <p>
               Columns: question, option 1, option 2, option 3, option 4, correct
-              answer number, topic.
+              answer number. Select the learning material above before importing.
             </p>
-            <pre>question,option1,option2,option3,option4,correctAnswer,topic</pre>
+            <pre>question,option1,option2,option3,option4,correctAnswer</pre>
             <label className="button light-border file-button">
               Choose CSV
               <input
@@ -2135,7 +1694,7 @@ function QuizCenter({ mode, demo = false }) {
                 <span>
                   {q.questionCount} questions · {q.questionTimeSeconds} sec each · {q.navigationMode === "automatic" ? "Automatic" : "Manual"} · Code {q.joinCode}
                 </span>
-                <small>{q.speedScoring ? "Speed scoring" : "Equal scoring"} · {q.rankingVisibility === "private" ? "Private ranking" : q.rankingVisibility === "initials" ? "Initials only" : "Full-name ranking"}{q.scheduledAt ? ` · Opens ${new Date(q.scheduledAt).toLocaleString()}` : ""}</small>
+                <small>Material: {q.materialTitle || "Unlinked material"} · {q.speedScoring ? "Speed scoring" : "Equal scoring"} · {q.rankingVisibility === "private" ? "Private ranking" : q.rankingVisibility === "initials" ? "Initials only" : "Full-name ranking"}{q.scheduledAt ? ` · Opens ${new Date(q.scheduledAt).toLocaleString()}` : ""}</small>
               </div>
               <label className="quiz-time-setting">
                 Seconds
@@ -2350,7 +1909,7 @@ function LearnerProfilePanel({ studentId, onClose, onDeleted }) {
             {report.attendance.records.length === 0 ? <p className="progress-empty">No attendance has been recorded.</p> : <div className="compact-report-list">{report.attendance.records.map((item) => <article key={`${item.sessionDate}-${item.markedAt}`}><div><strong>{reportDate(item.sessionDate)}</strong><small>{item.note || "No note"}</small></div><i className={`report-status ${item.status}`}>{readableStatus(item.status)}</i></article>)}</div>}
           </section>
           <section className="learner-report-section"><h3>Quiz performance</h3>
-            {report.quizzes.weakestTopics.length > 0 && <div className="weak-topic-list"><b>Topics to revisit</b>{report.quizzes.weakestTopics.map((topic) => <div key={topic.topic}><span>{topic.topic}</span><strong>{topic.percentage}%</strong></div>)}</div>}
+            {report.quizzes.weakestTopics.length > 0 && <div className="weak-topic-list"><b>Materials to revisit</b>{report.quizzes.weakestTopics.map((topic) => <div key={topic.topic}><span>{topic.topic}</span><strong>{topic.percentage}%</strong></div>)}</div>}
             {report.quizzes.attempts.length === 0 ? <p className="progress-empty">No completed quiz attempts.</p> : <div className="compact-report-list">{report.quizzes.attempts.map((item) => <article key={item.id}><div><strong>{item.title}</strong><small>Attempt {item.attemptNo} · {reportDate(item.completedAt)}</small></div><b>{item.percentage}%</b></article>)}</div>}
           </section>
         </div>
@@ -2389,7 +1948,7 @@ function StaffAnalyticsOverview({ onNavigate, onViewLearner, demo = false }) {
         {data.attention.length === 0 ? <p className="progress-empty">No learners are currently flagged.</p> : data.attention.slice(0, 6).map((learner) => <article key={learner.id}><span className="student-avatar">{learner.fullName[0]}</span><div><h3>{learner.fullName}</h3><p>{learner.reasons.join(" · ")}</p></div>{onViewLearner && <button className="profile-button" onClick={() => onViewLearner(learner.id)}>Open profile</button>}</article>)}
       </section>
       <div className="staff-side-stack">
-        <section><div className="staff-section-title"><div><span>Quiz insight</span><h2>Weakest topics</h2></div></div>{data.weakestTopics.length === 0 ? <p className="progress-empty">Topic insights will appear after quiz attempts.</p> : data.weakestTopics.map((topic) => <article className="topic-insight" key={topic.topic}><span>{topic.topic}</span><b>{topic.percentage}%</b></article>)}</section>
+        <section><div className="staff-section-title"><div><span>Quiz insight</span><h2>Materials needing review</h2></div></div>{data.weakestTopics.length === 0 ? <p className="progress-empty">Material insights will appear after quiz attempts.</p> : data.weakestTopics.map((topic) => <article className="topic-insight" key={topic.topic}><span>{topic.topic}</span><b>{topic.percentage}%</b></article>)}</section>
         <section><div className="staff-section-title"><div><span>Quick actions</span><h2>Run the programme</h2></div></div><div className="staff-quick-actions"><button onClick={() => onNavigate("Attendance")}>Mark attendance</button><button onClick={() => onNavigate("Announcements")}>Post update</button><button onClick={() => onNavigate("Learning")}>Manage learning</button><button onClick={() => onNavigate("Live quiz")}>Open quizzes</button></div></section>
       </div>
     </div>

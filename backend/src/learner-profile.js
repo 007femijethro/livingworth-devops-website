@@ -43,12 +43,12 @@ export function registerLearnerProfileRoutes(app, pool, requireAuth, requireStaf
           ROUND(qa.correct_count * 100 / NULLIF(qa.total_questions, 0)) AS percentage,
           qa.completed_at AS completedAt FROM quiz_attempts qa JOIN quizzes q ON q.id = qa.quiz_id
           WHERE qa.student_id = ? AND qa.status = 'completed' ORDER BY qa.completed_at DESC`, [studentId]),
-        pool.execute(`SELECT qq.topic, COUNT(*) AS answers, SUM(qaa.is_correct) AS correct,
+        pool.execute(`SELECT COALESCE(lm.title, 'Unlinked material') AS topic, COUNT(*) AS answers, SUM(qaa.is_correct) AS correct,
           ROUND(SUM(qaa.is_correct) * 100 / COUNT(*)) AS percentage
           FROM quiz_attempt_answers qaa JOIN quiz_attempts qa ON qa.id = qaa.attempt_id
-          JOIN quiz_questions qq ON qq.id = qaa.question_id
+          JOIN quizzes q ON q.id = qa.quiz_id LEFT JOIN learning_materials lm ON lm.id = q.material_id
           WHERE qa.student_id = ? AND qa.status = 'completed'
-          GROUP BY qq.topic ORDER BY percentage ASC, answers DESC LIMIT 5`, [studentId]),
+          GROUP BY lm.id, lm.title ORDER BY percentage ASC, answers DESC LIMIT 5`, [studentId]),
         pool.execute(`SELECT a.id AS assignmentId, a.title, a.due_at AS dueAt, a.max_score AS maxScore,
           m.week_number AS weekNumber, m.title AS moduleTitle, s.status, s.score, s.feedback,
           s.submission_url AS submissionUrl, s.note, s.submitted_at AS submittedAt, s.reviewed_at AS reviewedAt,

@@ -49,7 +49,7 @@ function validateQuestions(title, questions) {
     if (!question.prompt?.trim() || (type !== 'typed' && (options.length < 2 || options.some(option => !option))) || invalidChoice || invalidMultiple || (type === 'typed' && !correctText)) {
       throw new Error(`Question ${index + 1} is incomplete.`);
     }
-    return { prompt: question.prompt.trim(), topic: String(question.topic || 'General').trim() || 'General', type, options, correctIndex: type === 'typed' ? 0 : correctIndex, correctAnswers, correctText };
+    return { prompt: question.prompt.trim(), type, options, correctIndex: type === 'typed' ? 0 : correctIndex, correctAnswers, correctText };
   });
 }
 
@@ -72,12 +72,21 @@ function parseCsv(text) {
     if (r.length < 6) throw new Error(`CSV row ${index + 2} must contain question, four options and correct answer.`);
     const correct = Number(r[5]) - 1;
     if (correct < 0 || correct > 3) throw new Error(`CSV row ${index + 2} correct answer must be 1, 2, 3 or 4.`);
-    return { prompt: r[0], options: r.slice(1, 5), correctIndex: correct, topic: r[6] || 'General' };
+    return { prompt: r[0], options: r.slice(1, 5), correctIndex: correct };
   });
+}
+
+async function requireMaterial(pool, materialId) {
+  const id = Number.parseInt(materialId, 10);
+  if (!id) throw new Error('Choose the learning material this quiz assesses.');
+  const [materials] = await pool.execute('SELECT id, title FROM learning_materials WHERE id = ?', [id]);
+  if (!materials.length) throw new Error('The selected learning material no longer exists.');
+  return materials[0];
 }
 
 async function createQuiz(pool, adminId, title, questions, requestedQuestionTime, requestedNavigationMode, settings = {}) {
   const validQuestions = validateQuestions(title, questions);
+  const material = await requireMaterial(pool, settings.materialId);
   const questionTimeSeconds = validQuestionTime(requestedQuestionTime);
   const navigationMode = validNavigationMode(requestedNavigationMode);
   const speedScoring = settings.speedScoring !== false;
@@ -87,13 +96,13 @@ async function createQuiz(pool, adminId, title, questions, requestedQuestionTime
   try {
     await connection.beginTransaction();
     const code = joinCode();
-    const [result] = await connection.execute('INSERT INTO quizzes (title, join_code, question_time_seconds, navigation_mode, speed_scoring, scheduled_at, ranking_visibility, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [title.trim(), code, questionTimeSeconds, navigationMode, speedScoring, scheduledAt, rankingVisibility, adminId]);
+    const [result] = await connection.execute('INSERT INTO quizzes (title, material_id, join_code, question_time_seconds, navigation_mode, speed_scoring, scheduled_at, ranking_visibility, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [title.trim(), material.id, code, questionTimeSeconds, navigationMode, speedScoring, scheduledAt, rankingVisibility, adminId]);
     for (let i = 0; i < validQuestions.length; i += 1) {
       const q = validQuestions[i];
-      await connection.execute('INSERT INTO quiz_questions (quiz_id, prompt, topic, options_json, correct_index, question_type, correct_answers_json, correct_text, sequence_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [result.insertId, q.prompt, q.topic, JSON.stringify(q.options), q.correctIndex, q.type, JSON.stringify(q.correctAnswers), q.correctText || null, i + 1]);
+      await connection.execute('INSERT INTO quiz_questions (quiz_id, prompt, options_json, correct_index, question_type, correct_answers_json, correct_text, sequence_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [result.insertId, q.prompt, JSON.stringify(q.options), q.correctIndex, q.type, JSON.stringify(q.correctAnswers), q.correctText || null, i + 1]);
     }
     await connection.commit();
-    return { id: result.insertId, title: title.trim(), joinCode: code, status: 'draft', questionCount: validQuestions.length, questionTimeSeconds, navigationMode, speedScoring, scheduledAt, rankingVisibility };
+    return { id: result.insertId, title: title.trim(), materialId: material.id, materialTitle: material.title, joinCode: code, status: 'draft', questionCount: validQuestions.length, questionTimeSeconds, navigationMode, speedScoring, scheduledAt, rankingVisibility };
   } catch (error) { await connection.rollback(); throw error; }
   finally { connection.release(); }
 }
@@ -102,26 +111,27 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
   const openScheduled = () => pool.query("UPDATE quizzes SET status='lobby' WHERE status='draft' AND scheduled_at IS NOT NULL AND scheduled_at <= CURRENT_TIMESTAMP");
   setInterval(() => openScheduled().catch(() => {}), 30_000).unref();
   app.get('/api/admin/quizzes', requireAuth, requireStaff, async (_req, res, next) => {
-    try { await openScheduled(); const [rows] = await pool.query('SELECT q.id, q.title, q.join_code AS joinCode, q.status, q.allow_retakes AS allowRetakes, q.question_time_seconds AS questionTimeSeconds, q.navigation_mode AS navigationMode, q.speed_scoring AS speedScoring, q.scheduled_at AS scheduledAt, q.ranking_visibility AS rankingVisibility, COUNT(qq.id) AS questionCount FROM quizzes q LEFT JOIN quiz_questions qq ON qq.quiz_id=q.id GROUP BY q.id ORDER BY q.created_at DESC'); res.json(rows); } catch (e) { next(e); }
+    try { await openScheduled(); const [rows] = await pool.query(`SELECT q.id, q.title, q.material_id AS materialId, lm.title AS materialTitle, q.join_code AS joinCode, q.status, q.allow_retakes AS allowRetakes, q.question_time_seconds AS questionTimeSeconds, q.navigation_mode AS navigationMode, q.speed_scoring AS speedScoring, q.scheduled_at AS scheduledAt, q.ranking_visibility AS rankingVisibility, COUNT(qq.id) AS questionCount FROM quizzes q LEFT JOIN learning_materials lm ON lm.id=q.material_id LEFT JOIN quiz_questions qq ON qq.quiz_id=q.id GROUP BY q.id, lm.title ORDER BY q.created_at DESC`); res.json(rows); } catch (e) { next(e); }
   });
   app.get('/api/admin/quizzes/:id', requireAuth, requireStaff, async (req, res, next) => {
     try {
-      const [quizzes] = await pool.execute('SELECT id, title, status, question_time_seconds AS questionTimeSeconds, navigation_mode AS navigationMode, speed_scoring AS speedScoring, scheduled_at AS scheduledAt, ranking_visibility AS rankingVisibility FROM quizzes WHERE id = ?', [req.params.id]);
+      const [quizzes] = await pool.execute('SELECT id, title, material_id AS materialId, status, question_time_seconds AS questionTimeSeconds, navigation_mode AS navigationMode, speed_scoring AS speedScoring, scheduled_at AS scheduledAt, ranking_visibility AS rankingVisibility FROM quizzes WHERE id = ?', [req.params.id]);
       if (!quizzes.length) return res.status(404).json({ message: 'Quiz not found.' });
       const [questions] = await pool.execute('SELECT id, prompt, topic, options_json AS options, correct_index AS correctIndex, question_type AS questionType, correct_answers_json AS correctAnswers, correct_text AS correctText, sequence_no AS sequenceNo FROM quiz_questions WHERE quiz_id = ? ORDER BY sequence_no', [req.params.id]);
       res.json({ ...quizzes[0], questions: questions.map(question => ({ ...question, options: typeof question.options === 'string' ? JSON.parse(question.options) : question.options, correctAnswers: typeof question.correctAnswers === 'string' ? JSON.parse(question.correctAnswers) : (question.correctAnswers || []) })) });
     } catch (error) { next(error); }
   });
   app.post('/api/admin/quizzes', requireAuth, requireStaff, async (req, res, next) => {
-    try { res.status(201).json(await createQuiz(pool, req.user.id, req.body.title, req.body.questions, req.body.questionTimeSeconds, req.body.navigationMode, req.body)); } catch (e) { if (e.message.includes('required') || e.message.includes('incomplete') || e.message.includes('Question time') || e.message.includes('navigation') || e.message.includes('ranking') || e.message.includes('date')) return res.status(400).json({message:e.message}); next(e); }
+    try { res.status(201).json(await createQuiz(pool, req.user.id, req.body.title, req.body.questions, req.body.questionTimeSeconds, req.body.navigationMode, req.body)); } catch (e) { if (e.message.includes('required') || e.message.includes('incomplete') || e.message.includes('Question time') || e.message.includes('navigation') || e.message.includes('ranking') || e.message.includes('date') || e.message.includes('material')) return res.status(400).json({message:e.message}); next(e); }
   });
   app.post('/api/admin/quizzes/import', requireAuth, requireStaff, async (req, res, next) => {
-    try { res.status(201).json(await createQuiz(pool, req.user.id, req.query.title || 'Imported DevOps Quiz', parseCsv(req.body), req.query.questionTimeSeconds, req.query.navigationMode)); } catch (e) { return res.status(400).json({message:e.message}); }
+    try { res.status(201).json(await createQuiz(pool, req.user.id, req.query.title || 'Imported DevOps Quiz', parseCsv(req.body), req.query.questionTimeSeconds, req.query.navigationMode, { materialId: req.query.materialId })); } catch (e) { return res.status(400).json({message:e.message}); }
   });
   app.put('/api/admin/quizzes/:id', requireAuth, requireStaff, async (req, res, next) => {
     const connection = await pool.getConnection();
     try {
       const questions = validateQuestions(req.body.title, req.body.questions);
+      const material = await requireMaterial(pool, req.body.materialId);
       const questionTimeSeconds = validQuestionTime(req.body.questionTimeSeconds);
       const navigationMode = validNavigationMode(req.body.navigationMode), speedScoring = req.body.speedScoring !== false, scheduledAt = validSchedule(req.body.scheduledAt), rankingVisibility = validRankingVisibility(req.body.rankingVisibility);
       await connection.beginTransaction();
@@ -132,17 +142,17 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
         await connection.rollback();
         return res.status(400).json({ message: 'A live or previously attempted quiz cannot be edited because that would change saved results.' });
       }
-      await connection.execute('UPDATE quizzes SET title = ?, question_time_seconds = ?, navigation_mode = ?, speed_scoring = ?, scheduled_at = ?, ranking_visibility = ? WHERE id = ?', [req.body.title.trim(), questionTimeSeconds, navigationMode, speedScoring, scheduledAt, rankingVisibility, req.params.id]);
+      await connection.execute('UPDATE quizzes SET title = ?, material_id = ?, question_time_seconds = ?, navigation_mode = ?, speed_scoring = ?, scheduled_at = ?, ranking_visibility = ? WHERE id = ?', [req.body.title.trim(), material.id, questionTimeSeconds, navigationMode, speedScoring, scheduledAt, rankingVisibility, req.params.id]);
       await connection.execute('DELETE FROM quiz_questions WHERE quiz_id = ?', [req.params.id]);
       for (let index = 0; index < questions.length; index += 1) {
         const question = questions[index];
-        await connection.execute('INSERT INTO quiz_questions (quiz_id, prompt, topic, options_json, correct_index, question_type, correct_answers_json, correct_text, sequence_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [req.params.id, question.prompt, question.topic, JSON.stringify(question.options), question.correctIndex, question.type, JSON.stringify(question.correctAnswers), question.correctText || null, index + 1]);
+        await connection.execute('INSERT INTO quiz_questions (quiz_id, prompt, options_json, correct_index, question_type, correct_answers_json, correct_text, sequence_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [req.params.id, question.prompt, JSON.stringify(question.options), question.correctIndex, question.type, JSON.stringify(question.correctAnswers), question.correctText || null, index + 1]);
       }
       await connection.commit();
       res.json({ message: 'Quiz and questions updated.' });
     } catch (error) {
       await connection.rollback();
-      if (error.message.includes('required') || error.message.includes('incomplete') || error.message.includes('Question time') || error.message.includes('navigation')) return res.status(400).json({ message: error.message });
+      if (error.message.includes('required') || error.message.includes('incomplete') || error.message.includes('Question time') || error.message.includes('navigation') || error.message.includes('material')) return res.status(400).json({ message: error.message });
       next(error);
     } finally { connection.release(); }
   });
@@ -215,10 +225,11 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
         qa.completed_at AS completedAt FROM quiz_attempts qa JOIN quizzes q ON q.id = qa.quiz_id
         WHERE qa.id = ? AND qa.student_id = ? AND qa.status = 'completed'`, [req.params.attemptId, req.user.id]);
       if (!attempts.length) return res.status(404).json({ message: 'Quiz result not found.' });
-      const [answers] = await pool.execute(`SELECT qq.sequence_no AS sequenceNo, qq.prompt, qq.topic,
+      const [answers] = await pool.execute(`SELECT qq.sequence_no AS sequenceNo, qq.prompt, COALESCE(lm.title, 'Unlinked material') AS materialTitle,
         qq.options_json AS options, qq.correct_index AS correctIndex, qaa.answer_index AS answerIndex,
         qaa.is_correct AS isCorrect, qaa.response_ms AS responseMs
         FROM quiz_attempt_answers qaa JOIN quiz_questions qq ON qq.id = qaa.question_id
+        JOIN quizzes q ON q.id = qq.quiz_id LEFT JOIN learning_materials lm ON lm.id = q.material_id
         WHERE qaa.attempt_id = ? ORDER BY qq.sequence_no`, [req.params.attemptId]);
       res.json({ ...attempts[0], answers: answers.map(answer => ({ ...answer, options: typeof answer.options === 'string' ? JSON.parse(answer.options) : answer.options })) });
     } catch (error) { next(error); }
@@ -249,19 +260,21 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
     const topicParams = [];
     if (quizId) { topicWhere.push('qa.quiz_id = ?'); topicParams.push(quizId); }
     if (student) { topicWhere.push('(u.full_name LIKE ? OR u.email LIKE ?)'); const term = `%${student}%`; topicParams.push(term, term); }
-    const [topics] = await pool.execute(`SELECT qq.topic, COUNT(*) AS answers, SUM(qaa.is_correct) AS correct,
+    const [topics] = await pool.execute(`SELECT COALESCE(lm.title, 'Unlinked material') AS topic, COUNT(*) AS answers, SUM(qaa.is_correct) AS correct,
       ROUND(SUM(qaa.is_correct) * 100 / COUNT(*)) AS percentage
       FROM quiz_attempt_answers qaa JOIN quiz_attempts qa ON qa.id = qaa.attempt_id
+      JOIN quizzes q ON q.id = qa.quiz_id LEFT JOIN learning_materials lm ON lm.id = q.material_id
       JOIN quiz_questions qq ON qq.id = qaa.question_id JOIN users u ON u.id = qa.student_id
-      WHERE ${topicWhere.join(' AND ')} GROUP BY qq.topic ORDER BY percentage ASC`, topicParams);
-    const [questionStats] = await pool.execute(`SELECT qq.id, qq.sequence_no AS sequenceNo, qq.prompt, qq.topic,
+      WHERE ${topicWhere.join(' AND ')} GROUP BY lm.id, lm.title ORDER BY percentage ASC`, topicParams);
+    const [questionStats] = await pool.execute(`SELECT qq.id, qq.sequence_no AS sequenceNo, qq.prompt, COALESCE(lm.title, 'Unlinked material') AS topic,
       COUNT(DISTINCT qa.id) AS attempts, COUNT(qaa.id) AS answered,
       SUM(CASE WHEN qaa.is_correct THEN 1 ELSE 0 END) AS correct
       FROM quiz_attempts qa JOIN users u ON u.id = qa.student_id
+      JOIN quizzes q ON q.id = qa.quiz_id LEFT JOIN learning_materials lm ON lm.id = q.material_id
       JOIN quiz_questions qq ON qq.quiz_id = qa.quiz_id
       LEFT JOIN quiz_attempt_answers qaa ON qaa.attempt_id = qa.id AND qaa.question_id = qq.id
       WHERE ${topicWhere.join(' AND ')}
-      GROUP BY qq.id ORDER BY qq.sequence_no`, topicParams);
+      GROUP BY qq.id, lm.id, lm.title ORDER BY qq.sequence_no`, topicParams);
     const hardestQuestions = questionStats.map(question => {
       const total = Number(question.attempts || 0), answered = Number(question.answered || 0), correct = Number(question.correct || 0);
       return { ...question, attempts: total, answered, correct, unanswered: Math.max(0, total - answered), percentage: total ? Math.round(correct * 100 / total) : 0 };
