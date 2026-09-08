@@ -305,7 +305,11 @@ app.delete('/api/admin/students/:id', requireAuth, requireAdmin, async (req, res
 
 app.get('/api/staff/students', requireAuth, requireStaff, async (_req, res, next) => {
   try {
-    const [rows] = await pool.query("SELECT id, full_name AS fullName, email, phone, experience_level AS experienceLevel, learning_goal AS learningGoal, status, created_at AS createdAt FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name");
+    const [rows] = await pool.query(`SELECT id, full_name AS fullName, email, phone, gender, country,
+      state_city AS stateCity, employment_status AS employmentStatus, educational_level AS educationalLevel,
+      course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience,
+      experience_level AS experienceLevel, learning_goal AS learningGoal, status, created_at AS createdAt
+      FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name`);
     res.json(rows);
   } catch (error) { next(error); }
 });

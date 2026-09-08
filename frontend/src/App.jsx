@@ -908,9 +908,9 @@ function Register({ navigate }) {
 function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forceSecurity = false }) {
   const items = forceSecurity ? ["Security"] :
     role === "admin"
-      ? ["Overview", "Applications", "Mentors", "Stories", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
+      ? ["Overview", "Applications", "Students", "Mentors", "Stories", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
       : role === "mentor"
-        ? ["Overview", "Learners", "Stories", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
+        ? ["Overview", "Students", "Stories", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
         : ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Attendance", "Live quiz", "Security"];
   return (
     <aside className="sidebar" aria-label={`${role} portal navigation`}>
@@ -2525,6 +2525,44 @@ function LearnerProfilePanel({ studentId, onClose, onDeleted }) {
   </div>;
 }
 
+function StudentDirectory({ demo = false, canDelete = false }) {
+  const [students, setStudents] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+  const [search, setSearch] = useState("");
+  const [learningMode, setLearningMode] = useState("");
+  const [country, setCountry] = useState("");
+  const [message, setMessage] = useState(demo ? "Connect the backend to view live student profiles." : "Loading students…");
+  function load() {
+    if (demo) return;
+    api("/staff/students").then((data) => { setStudents(data); setMessage(""); }).catch((error) => setMessage(error.message));
+  }
+  useEffect(load, [demo]);
+  const countries = [...new Set(students.map((student) => student.country).filter(Boolean))].sort();
+  const modes = [...new Set(students.map((student) => student.learningMode).filter(Boolean))].sort();
+  const query = search.trim().toLowerCase();
+  const filtered = students.filter((student) => {
+    const searchable = `${student.fullName} ${student.email} ${student.phone || ""} ${student.stateCity || ""} ${student.country || ""}`.toLowerCase();
+    return (!query || searchable.includes(query)) && (!learningMode || student.learningMode === learningMode) && (!country || student.country === country);
+  });
+  return <section className="student-directory">
+    <div className="directory-heading"><div><p className="eyebrow">Student records</p><h2>Student directory</h2><p>Find a learner and open their complete registration and performance profile.</p></div><strong>{students.length}<span>approved student{students.length === 1 ? "" : "s"}</span></strong></div>
+    <div className="directory-filters">
+      <label>Search<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, email, phone or city" /></label>
+      <label>Country<select value={country} onChange={(event) => setCountry(event.target.value)}><option value="">All countries</option>{countries.map((value) => <option key={value}>{value}</option>)}</select></label>
+      <label>Learning mode<select value={learningMode} onChange={(event) => setLearningMode(event.target.value)}><option value="">All learning modes</option>{modes.map((value) => <option key={value}>{value}</option>)}</select></label>
+      {(search || country || learningMode) && <button type="button" className="text-btn" onClick={() => { setSearch(""); setCountry(""); setLearningMode(""); }}>Clear filters</button>}
+    </div>
+    {message && <p className="form-message" role="status">{message}</p>}
+    {!message && <p className="directory-result-count">Showing {filtered.length} of {students.length} students</p>}
+    <div className="directory-grid">{!message && filtered.length === 0 ? <div className="empty">No students match these filters.</div> : filtered.map((student) => <article key={student.id}>
+      <div className="directory-card-head"><span className="student-avatar">{student.fullName[0]}</span><div><h3>{student.fullName}</h3><p>{student.email}</p></div><b className="status approved">active</b></div>
+      <div className="student-facts"><span><small>Phone</small><b>{student.phone || "Not provided"}</b></span><span><small>Location</small><b>{[student.stateCity, student.country].filter(Boolean).join(", ") || "Not provided"}</b></span><span><small>Learning mode</small><b>{student.learningMode || "Not provided"}</b></span><span><small>Current status</small><b>{student.employmentStatus || "Not provided"}</b></span><span><small>Education</small><b>{student.educationalLevel || "Not provided"}</b></span><span><small>Tech experience</small><b>{student.techExperience || student.experienceLevel || "Not provided"}</b></span></div>
+      <button type="button" className="button primary full" onClick={() => setSelectedId(student.id)}>View full profile</button>
+    </article>)}</div>
+    {selectedId && <LearnerProfilePanel studentId={selectedId} onClose={() => setSelectedId(null)} onDeleted={canDelete ? (notice) => { setSelectedId(null); setMessage(notice); load(); } : undefined} />}
+  </section>;
+}
+
 function StaffAnalyticsOverview({ onNavigate, onViewLearner, demo = false }) {
   const [data, setData] = useState(null);
   const [message, setMessage] = useState(demo ? "Connect the backend to view live cohort insights." : "Loading cohort insights…");
@@ -2807,6 +2845,7 @@ function AdminDashboard({ user, logout }) {
         <p className="form-message success">{message}</p>
         {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} onViewLearner={user.demo ? null : setProfileStudentId} demo={user.demo} />}
         {active === "Applications" && applications}
+        {active === "Students" && <StudentDirectory demo={user.demo} canDelete={!user.demo} />}
         {active === "Stories" && <StaffStoriesCenter demo={user.demo} />}
         {active === "Announcements" && <AnnouncementsCenter mode="staff" demo={user.demo} />}
         {active === "Mentors" &&
@@ -2874,14 +2913,8 @@ function AdminDashboard({ user, logout }) {
 
 function MentorDashboard({ user, logout }) {
   const [active, setActive] = useState(user.mustChangePassword ? "Security" : "Overview"),
-    [students, setStudents] = useState([]),
     [message, setMessage] = useState(""),
     [profileStudentId, setProfileStudentId] = useState(null);
-  useEffect(() => {
-    api("/staff/students")
-      .then(setStudents)
-      .catch((e) => setMessage(e.message));
-  }, []);
   return (
     <main className="dashboard">
       <Sidebar
@@ -2905,30 +2938,7 @@ function MentorDashboard({ user, logout }) {
         {active === "Announcements" && <AnnouncementsCenter mode="staff" />}
         {active === "Stories" && <StaffStoriesCenter />}
         {active === "Security" && <SecurityCenter role="mentor" />}
-        {active === "Learners" && (
-          <div className="student-list">
-            {students.length === 0 ? (
-              <div className="empty">No approved learners yet.</div>
-            ) : (
-              students.map((s) => (
-                <article key={s.id}>
-                  <span className="student-avatar">{s.fullName[0]}</span>
-                  <div className="student-info">
-                    <h3>{s.fullName}</h3>
-                    <p>
-                      {s.email} · {s.phone || "No phone"}
-                    </p>
-                    <small>
-                      {s.experienceLevel} — {s.learningGoal}
-                    </small>
-                  </div>
-                  <b className="status approved">approved</b>
-                  <button className="profile-button" onClick={() => setProfileStudentId(s.id)}>View progress</button>
-                </article>
-              ))
-            )}
-          </div>
-        )}
+        {active === "Students" && <StudentDirectory />}
         {active === "Attendance" && <AttendanceCenter mode="staff" />}
         {active === "Learning" && <LearningCenter mode="staff" />}
         {active === "Live quiz" && <QuizCenter mode="admin" />}
