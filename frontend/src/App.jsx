@@ -1864,6 +1864,23 @@ function QuizCenter({ mode, demo = false }) {
       setMessage(`${restored ? "Reconnected to" : "Joined"} ${result.quiz.title}. Waiting for the quiz to start.`);
     }
   }
+  function leaveQuizRoom(notice = "Returned to the quiz list.") {
+    setRoom(null);
+    roomRef.current = null;
+    setQuestion(null);
+    setPresence(0);
+    setAnswerCount({ answered: 0, total: 0, remaining: 0 });
+    setPaused(false);
+    setSubmitted(false);
+    setSelectedAnswer(null);
+    setMultiAnswer([]);
+    setTypedAnswer("");
+    setReveal(null);
+    setLeaderboard([]);
+    sessionStorage.removeItem("lw_live_quiz_code");
+    setMessage(notice);
+    load();
+  }
   const load = () =>
     api(mode === "admin" ? "/admin/quizzes" : "/quizzes/active")
       .then(setQuizzes)
@@ -1931,6 +1948,7 @@ function QuizCenter({ mode, demo = false }) {
       setLeaderboard(d.leaderboard);
       setMessage("Quiz completed. Final leaderboard is ready.");
     });
+    s.on("quiz:closed", (data) => leaveQuizRoom(data.message || "The quiz room was closed."));
     return () => s.disconnect();
   }, [mode, demo]);
   useEffect(() => {
@@ -1976,6 +1994,17 @@ function QuizCenter({ mode, demo = false }) {
     if (!window.confirm("Restart this live quiz from question one? All unfinished attempts and answers from this run will be cleared.")) return;
     socket?.emit("quiz:restart", { quizId: room.id }, (result) => {
       if (!result.ok) setMessage(result.message);
+    });
+  }
+  function closeQuizRoom() {
+    const started = Boolean(question);
+    const warning = started
+      ? "Stop this quiz and go back? Current answers will be saved, incomplete questions will count as unanswered, and students will be removed from the room."
+      : "Close this quiz room and go back to the quiz list? No result will be created.";
+    if (!window.confirm(warning)) return;
+    socket?.emit("quiz:close", { quizId: room.id }, (result) => {
+      if (!result.ok) setMessage(result.message);
+      else leaveQuizRoom(result.message);
     });
   }
   function answer(answerIndex = null) {
@@ -2338,9 +2367,7 @@ function QuizCenter({ mode, demo = false }) {
           </p>
           <p>{room.questionTimeSeconds} seconds per question · {room.navigationMode === "automatic" ? "Automatic navigation" : "Mentor-controlled navigation"}</p>
           {mode === "admin" ? (
-            <button className="button gold" onClick={start}>
-              Start quiz for everyone
-            </button>
+            <div className="quiz-lobby-actions"><button className="button gold" onClick={start}>Start quiz for everyone</button><button className="button close-quiz-room" onClick={closeQuizRoom}>Close room &amp; go back</button></div>
           ) : (
             <p>Waiting for your instructor to start…</p>
           )}
@@ -2372,7 +2399,7 @@ function QuizCenter({ mode, demo = false }) {
               </button>
             ))}
           {question.questionType === "multiple_selection" && <button type="button" className="button primary multi-lock" disabled={!multiAnswer.length || submitted || paused || seconds <= 0} onClick={() => answer(null)}>Lock selected answers</button>}</div>}
-          {mode === "admin" && <div className="mentor-quiz-controls"><span className="navigation-mode-label">{room.navigationMode === "automatic" ? "Automatic navigation" : "Manual navigation"}</span><button type="button" onClick={togglePause} disabled={reveal !== null}>{paused ? "▶ Resume timer" : "Ⅱ Pause timer"}</button><button type="button" onClick={revealNow} disabled={reveal !== null}>Reveal answer</button><button type="button" className="next-question" onClick={nextQuestion} disabled={reveal === null}>{question.index + 1 === question.total ? "Finish quiz" : "Next question →"}</button><button type="button" className="restart-quiz" onClick={restartQuiz}>Restart quiz</button></div>}
+          {mode === "admin" && <div className="mentor-quiz-controls"><span className="navigation-mode-label">{room.navigationMode === "automatic" ? "Automatic navigation" : "Manual navigation"}</span><button type="button" onClick={togglePause} disabled={reveal !== null}>{paused ? "▶ Resume timer" : "Ⅱ Pause timer"}</button><button type="button" onClick={revealNow} disabled={reveal !== null}>Reveal answer</button><button type="button" className="next-question" onClick={nextQuestion} disabled={reveal === null}>{question.index + 1 === question.total ? "Finish quiz" : "Next question →"}</button><button type="button" className="restart-quiz" onClick={restartQuiz}>Restart quiz</button><button type="button" className="stop-quiz" onClick={closeQuizRoom}>Stop quiz &amp; go back</button></div>}
           <p>
             {mode !== "student"
               ? reveal !== null ? `Correct answer revealed. ${room.navigationMode === "automatic" ? "The next question will open automatically." : "Move on when the class is ready."}` : paused ? "Timer paused. Student answers are temporarily locked." : "Students are answering now."

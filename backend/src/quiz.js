@@ -591,6 +591,31 @@ export function configureQuizSockets(io, pool, verifyToken) {
         ack({ ok: true });
       } catch (error) { ack({ ok: false, message: error.message }); }
     });
+    socket.on('quiz:close', async ({ quizId }, ack = () => {}) => {
+      try {
+        if (!['admin', 'mentor'].includes(socket.user.role)) throw new Error('Staff access required.');
+        const id = Number(quizId);
+        const [quizzes] = await pool.execute("SELECT id, title, status FROM quizzes WHERE id = ? AND status IN ('draft','lobby','live')", [id]);
+        if (!quizzes.length) throw new Error('Open quiz room not found.');
+        const state = rooms.get(id);
+        let completed = false;
+        if (state) {
+          clearTimeout(state.timer);
+          state.timer = null;
+          await finalizeAttempts(pool, state);
+          await pool.execute("UPDATE quizzes SET status = 'completed' WHERE id = ?", [id]);
+          rooms.delete(id);
+          completed = true;
+        } else {
+          const [attempts] = await pool.execute("SELECT COUNT(*) AS count FROM quiz_attempts WHERE quiz_id = ? AND status = 'completed'", [id]);
+          completed = Number(attempts[0]?.count || 0) > 0;
+          await pool.execute("UPDATE quizzes SET status = ? WHERE id = ?", [completed ? 'completed' : 'draft', id]);
+        }
+        io.to(`quiz:${id}`).emit('quiz:closed', { completed, message: completed ? 'The mentor stopped the quiz.' : 'The mentor closed the quiz room.' });
+        io.in(`quiz:${id}`).socketsLeave(`quiz:${id}`);
+        ack({ ok: true, completed, message: completed ? 'Quiz stopped. Current attempts were saved.' : 'Quiz room closed.' });
+      } catch (error) { ack({ ok: false, message: error.message }); }
+    });
     socket.on('disconnect', () => {
       if (socket.data.quizId) emitParticipation(socket.data.quizId).catch(() => {});
     });

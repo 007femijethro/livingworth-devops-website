@@ -195,6 +195,7 @@
   letter-spacing: 0.15em;
   color: #e0ae40;
 }
+.quiz-lobby-actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}.quiz-lobby-actions .close-quiz-room{border:1px solid #9bd8de;background:transparent;color:#fff}
 .live-dot {
   color: #72e4e8;
   font-weight: 800;
@@ -322,6 +323,7 @@
 .mentor-quiz-controls button:disabled { cursor: not-allowed; opacity: .4; }
 .mentor-quiz-controls .next-question { background: #e0ae40; border-color: #e0ae40; }
 .mentor-quiz-controls .restart-quiz { margin-left: auto; border-color: #f09b94; background: transparent; color: #ffd2cf; }
+.mentor-quiz-controls .stop-quiz{border-color:#ff857b;background:#9d302a;color:#fff}
 .leaderboard {
   max-width: 650px;
   margin: 25px auto 0;
