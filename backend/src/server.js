@@ -528,8 +528,8 @@ app.use((error, _req, res, _next) => {
 async function start() {
   await ensurePostgresSchema(pool);
   await pool.execute(`INSERT INTO courses (title, description, duration, level)
-    VALUES ('DevOps Engineering', 'Practical DevOps training from foundations to production delivery.', '12 weeks', 'Beginner–Intermediate')
-    ON CONFLICT (title) DO NOTHING`);
+    VALUES ('DevOps Engineering', 'Practical DevOps training from foundations to production delivery.', '14 weeks', 'Beginner–Intermediate')
+    ON CONFLICT (title) DO UPDATE SET duration = EXCLUDED.duration`);
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (adminEmail && adminPassword) {

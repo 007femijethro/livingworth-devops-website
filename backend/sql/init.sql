@@ -235,6 +235,6 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 INSERT INTO courses (title, description, duration, level) VALUES
-  ('DevOps Engineering Bootcamp', 'A complete practical journey through Linux, Git, AWS, automation, Docker, Kubernetes, CI/CD and monitoring.', '12 weeks', 'Beginner–Intermediate'),
+  ('DevOps Engineering Bootcamp', 'A complete practical journey through Linux, Git, AWS, automation, Docker, Kubernetes, CI/CD and monitoring.', '14 weeks', 'Beginner–Intermediate'),
   ('Cloud & Infrastructure Automation', 'Build AWS environments and automate infrastructure with Ansible and Terraform.', 'Included', 'Practical track'),
   ('Containers, Kubernetes & CI/CD', 'Dockerize applications, orchestrate workloads and create reliable delivery pipelines.', 'Included', 'Practical track');

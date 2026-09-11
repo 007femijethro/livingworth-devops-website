@@ -160,7 +160,7 @@ function Home({ navigate }) {
       <main>
         <section className="hero" id="home">
           <div>
-            <p className="eyebrow">12-week live DevOps engineering bootcamp</p>
+            <p className="eyebrow">14-week live DevOps engineering bootcamp</p>
             <h1>
               Don’t just learn it.
               <br />
@@ -183,7 +183,7 @@ function Home({ navigate }) {
               </a>
             </div>
             <div className="trust">
-              <span>✓ 54 guided class days</span>
+              <span>✓ 42 guided class days</span>
               <span>✓ Live mentor support</span>
               <span>✓ Portfolio-ready projects</span>
             </div>
@@ -209,11 +209,11 @@ function Home({ navigate }) {
         </section>
         <section className="outcome-band">
           <article>
-            <strong>12</strong>
+            <strong>14</strong>
             <span>weeks of guided learning</span>
           </article>
           <article>
-            <strong>54</strong>
+            <strong>42</strong>
             <span>structured class days</span>
           </article>
           <article>
