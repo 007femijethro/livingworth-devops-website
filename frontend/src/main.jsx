@@ -15,6 +15,7 @@ import './staff-analytics.css';
 import './learner-profile.css';
 import './accessibility.css';
 import './stories.css';
+import './homepage.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode><App /></React.StrictMode>

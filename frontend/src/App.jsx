@@ -157,7 +157,7 @@ function Home({ navigate }) {
   return (
     <>
       <Header navigate={navigate} />
-      <main>
+      <main className="academy-home">
         <section className="hero" id="home">
           <div>
             <p className="eyebrow">14-week live DevOps engineering bootcamp</p>
@@ -188,9 +188,9 @@ function Home({ navigate }) {
               <span>✓ Portfolio-ready projects</span>
             </div>
           </div>
-          <div className="hero-art">
+          <div className="hero-art learning-preview">
             <div className="hero-card">
-              <small>YOUR LEARNING PATH</small>
+              <small>YOUR NEXT CHAPTER STARTS HERE</small>
               <strong>Code → Cloud → Career</strong>
               <div>
                 <span>Linux</span>
@@ -199,11 +199,14 @@ function Home({ navigate }) {
                 <span>K8s</span>
               </div>
             </div>
-            <div className="orbit o1">&lt;/&gt;</div>
-            <div className="orbit o2">☁</div>
-            <div className="orbit o3">∞</div>
-            <div className="core">
-              DEV<span>OPS</span>
+            <div className="path-preview">
+              <p className="path-caption">14 weeks. Real engineering skills.</p>
+              <ol>
+                <li><span>01</span><div><strong>Build your foundation</strong><small>Linux · Shell scripting · Git</small></div></li>
+                <li><span>02</span><div><strong>Automate & deploy</strong><small>AWS · Terraform · Docker</small></div></li>
+                <li><span>03</span><div><strong>Deliver with confidence</strong><small>Kubernetes · CI/CD · Monitoring</small></div></li>
+              </ol>
+              <div className="path-footer"><span>Live classes + guided practice</span><a href="#curriculum">Explore the curriculum ↗</a></div>
             </div>
           </div>
         </section>
@@ -356,7 +359,7 @@ function Home({ navigate }) {
           <div>
             <p className="eyebrow">Meet your mentor</p>
             <h2>Guidance grounded in real DevOps work.</h2>
-            <span className="mentor-name">Jethro Femi</span>
+            <span className="mentor-name">Jethro F.M</span>
             <span className="mentor-role">
               Lead DevOps Mentor · Managing Director
             </span>
