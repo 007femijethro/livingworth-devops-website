@@ -9,7 +9,7 @@ import { Server as SocketServer } from 'socket.io';
 import { pool } from './db.js';
 import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } from './auth.js';
 import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
-import { configureEmailControl, isEmailDeliveryEnabled, sendApplicationDecision, sendApplicationEmails, sendPasswordReset, sendTestEmail, verifyEmailConnection } from './mailer.js';
+import { configureEmailControl, isEmailDeliveryEnabled, sendApplicationDecision, sendApplicationEmails, sendEmailChangeCode, sendPasswordReset, sendTestEmail, verifyEmailConnection } from './mailer.js';
 import { registerLearningRoutes } from './learning.js';
 import { registerAnnouncementRoutes } from './announcements.js';
 import { registerAnalyticsRoutes } from './analytics.js';
@@ -188,6 +188,56 @@ app.patch('/api/auth/change-password', requireAuth, async (req, res, next) => {
     await pool.execute('UPDATE users SET password_hash = ?, must_change_password = FALSE WHERE id = ?', [await bcrypt.hash(newPassword, 12), req.user.id]);
     res.json({ message: 'Password changed successfully.', token: createToken({ ...req.user, mustChangePassword: false }) });
   } catch (error) { next(error); }
+});
+
+app.post('/api/auth/change-email/request', requireAuth, async (req, res, next) => {
+  try {
+    if (req.user.role !== 'student') return res.status(403).json({ message: 'Only student accounts can change their email here.' });
+    const newEmail = String(req.body.newEmail || '').trim().toLowerCase();
+    const currentPassword = String(req.body.currentPassword || '');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) return res.status(400).json({ message: 'Enter a valid new email address.' });
+    const [users] = await pool.execute('SELECT full_name AS fullName, email, password_hash FROM users WHERE id = ?', [req.user.id]);
+    if (!users.length || !(await bcrypt.compare(currentPassword, users[0].password_hash))) return res.status(400).json({ message: 'Your current password is incorrect.' });
+    if (newEmail === users[0].email) return res.status(400).json({ message: 'That is already your account email.' });
+    const [existing] = await pool.execute('SELECT id FROM users WHERE email = ? AND id <> ?', [newEmail, req.user.id]);
+    if (existing.length) return res.status(409).json({ message: 'That email address is already used by another account.' });
+    const code = String(crypto.randomInt(100000, 1000000));
+    const codeHash = crypto.createHash('sha256').update(`${req.user.id}:${newEmail}:${code}`).digest('hex');
+    await pool.execute('UPDATE email_change_tokens SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL', [req.user.id]);
+    const sent = await sendEmailChangeCode(users[0], newEmail, code);
+    if (!sent) return res.status(503).json({ message: 'We could not send the verification code. Please try again later or ask a mentor to check email delivery.' });
+    await pool.execute('INSERT INTO email_change_tokens (user_id, new_email, code_hash, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))', [req.user.id, newEmail, codeHash]);
+    res.json({ message: `A 6-digit verification code was sent to ${newEmail}. It expires in 10 minutes.`, newEmail });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/auth/change-email/confirm', requireAuth, async (req, res, next) => {
+  const connection = await pool.getConnection();
+  try {
+    if (req.user.role !== 'student') return res.status(403).json({ message: 'Only student accounts can change their email here.' });
+    const code = String(req.body.code || '').trim();
+    if (!/^\d{6}$/.test(code)) return res.status(400).json({ message: 'Enter the 6-digit verification code.' });
+    await connection.beginTransaction();
+    const [tokens] = await connection.execute(`SELECT id, new_email AS newEmail, code_hash AS codeHash, attempts FROM email_change_tokens
+      WHERE user_id = ? AND used_at IS NULL AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, [req.user.id]);
+    if (!tokens.length) { await connection.rollback(); return res.status(400).json({ message: 'This verification code has expired. Request a new one.' }); }
+    const token = tokens[0];
+    const submittedHash = crypto.createHash('sha256').update(`${req.user.id}:${token.newEmail}:${code}`).digest('hex');
+    if (!crypto.timingSafeEqual(Buffer.from(submittedHash), Buffer.from(token.codeHash))) {
+      const attempts = Number(token.attempts) + 1;
+      await connection.execute('UPDATE email_change_tokens SET attempts = ?, used_at = CASE WHEN ? >= 5 THEN NOW() ELSE used_at END WHERE id = ?', [attempts, attempts, token.id]);
+      await connection.commit();
+      return res.status(400).json({ message: attempts >= 5 ? 'Too many incorrect codes. Request a new code.' : `Incorrect code. ${5 - attempts} attempt${5 - attempts === 1 ? '' : 's'} remaining.` });
+    }
+    const [existing] = await connection.execute('SELECT id FROM users WHERE email = ? AND id <> ?', [token.newEmail, req.user.id]);
+    if (existing.length) { await connection.rollback(); return res.status(409).json({ message: 'That email address is now used by another account. Request a code for a different email.' }); }
+    await connection.execute('UPDATE users SET email = ?, updated_at = NOW() WHERE id = ?', [token.newEmail, req.user.id]);
+    await connection.execute('UPDATE email_change_tokens SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL', [req.user.id]);
+    await connection.commit();
+    const updatedUser = { ...req.user, email: token.newEmail };
+    res.json({ message: 'Email address changed successfully.', email: token.newEmail, token: createToken(updatedUser) });
+  } catch (error) { await connection.rollback(); next(error); }
+  finally { connection.release(); }
 });
 
 app.patch('/api/admin/users/:id/password', requireAuth, requireAdmin, async (req, res, next) => {

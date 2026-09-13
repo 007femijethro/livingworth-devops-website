@@ -111,6 +111,14 @@ export function sendPasswordReset(account, resetUrl) {
   });
 }
 
+export function sendEmailChangeCode(account, newEmail, code) {
+  return send({
+    to: newEmail,
+    subject: 'Confirm your new Livingworth Academy email',
+    html: `<h2>Confirm your email address</h2><p>Hello ${escapeHtml(account.fullName)},</p><p>Use this verification code to change the email address on your student account:</p><p style="font-size:28px;font-weight:800;letter-spacing:6px">${escapeHtml(code)}</p><p>The code expires in 10 minutes. If you did not request this change, do not share the code and your current email will remain unchanged.</p><p>Livingworth Academy</p>`
+  });
+}
+
 export function sendStudentNotification(account, notification) {
   return send({
     to: account.email,

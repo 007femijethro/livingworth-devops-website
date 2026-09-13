@@ -1553,8 +1553,12 @@ function NotificationsCenter({ onNavigate }) {
   return <section className="notifications-center"><div className="learning-head"><div><p className="eyebrow">My updates</p><h2>Notifications</h2><p>Learning updates, deadlines and mentor feedback.</p></div></div>{message && <p className="form-message" role="status">{message}</p>}<div className="notification-list">{items.length === 0 && message !== "Loading notifications…" ? <div className="empty">You have no notifications yet.</div> : items.map((item) => <article key={item.id} className={item.readAt ? "read" : "unread"}><button className="notification-open" onClick={() => open(item)}><b>{item.category}</b><span><strong>{item.title}</strong><small>{item.message}</small></span><time>{new Date(item.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</time></button><button type="button" className="notification-delete" disabled={deletingId === item.id} onClick={() => deleteNotification(item)} aria-label={`Delete ${item.title}`}>{deletingId === item.id ? "Deleting…" : "Delete"}</button></article>)}</div></section>;
 }
 
-function SecurityCenter({ role, demo = false }) {
+function SecurityCenter({ role, currentEmail = "", demo = false }) {
   const [message, setMessage] = useState(demo ? "Password changes are unavailable in offline preview." : "");
+  const [emailStep, setEmailStep] = useState("request");
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [emailMessage, setEmailMessage] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
   async function submit(event) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1569,7 +1573,24 @@ function SecurityCenter({ role, demo = false }) {
       }
     } catch (error) { setMessage(error.message); }
   }
-  return <><section className="security-center"><div><p className="eyebrow">Account security</p><h2>Change password</h2><p>{role === "student" ? "Student sessions expire after eight hours. You will be asked to sign in again." : "Your portal session remains active until you log out."}</p></div><form className="security-form" onSubmit={submit}><label>Current password<PasswordInput name="currentPassword" autoComplete="current-password" /></label><label>New password<PasswordInput name="newPassword" autoComplete="new-password" minLength="8" /></label><label>Confirm new password<PasswordInput name="confirmPassword" autoComplete="new-password" minLength="8" /></label><button className="button primary" disabled={demo}>Change password</button><p className="form-message success">{message}</p></form></section>{role !== "student" && <EmailNotificationControl demo={demo} />}</>;
+  async function requestEmailChange(event) {
+    event.preventDefault(); setEmailBusy(true); setEmailMessage("Sending verification code…");
+    const form = event.currentTarget;
+    try {
+      const data = await api("/auth/change-email/request", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      setPendingEmail(data.newEmail); setEmailStep("confirm"); setEmailMessage(data.message); form.reset();
+    } catch (error) { setEmailMessage(error.message); }
+    finally { setEmailBusy(false); }
+  }
+  async function confirmEmailChange(event) {
+    event.preventDefault(); setEmailBusy(true); setEmailMessage("Checking code…");
+    try {
+      const data = await api("/auth/change-email/confirm", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) });
+      if (data.token) localStorage.setItem("lw_token", data.token);
+      setEmailMessage(data.message); setTimeout(() => window.location.reload(), 800);
+    } catch (error) { setEmailMessage(error.message); setEmailBusy(false); }
+  }
+  return <><section className="security-center"><div><p className="eyebrow">Account security</p><h2>Change password</h2><p>{role === "student" ? "Student sessions expire after eight hours. You will be asked to sign in again." : "Your portal session remains active until you log out."}</p></div><form className="security-form" onSubmit={submit}><label>Current password<PasswordInput name="currentPassword" autoComplete="current-password" /></label><label>New password<PasswordInput name="newPassword" autoComplete="new-password" minLength="8" /></label><label>Confirm new password<PasswordInput name="confirmPassword" autoComplete="new-password" minLength="8" /></label><button className="button primary" disabled={demo}>Change password</button><p className="form-message success">{message}</p></form></section>{role === "student" && <section className="security-center email-change-center"><div><p className="eyebrow">Account email</p><h2>Change email</h2><p>Your current email is <strong>{currentEmail}</strong>. For security, you must enter your password and verify the new address with a code.</p></div>{emailStep === "request" ? <form className="security-form" onSubmit={requestEmailChange}><label>New email address<input name="newEmail" type="email" autoComplete="email" required /></label><label>Current password<PasswordInput name="currentPassword" autoComplete="current-password" /></label><button className="button primary" disabled={demo || emailBusy}>{emailBusy ? "Sending…" : "Send verification code"}</button><p className="form-message" role="status">{emailMessage}</p></form> : <form className="security-form" onSubmit={confirmEmailChange}><div className="verification-destination">Code sent to <strong>{pendingEmail}</strong></div><label>6-digit verification code<input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength="6" placeholder="000000" required /></label><button className="button primary" disabled={emailBusy}>{emailBusy ? "Verifying…" : "Verify and change email"}</button><button type="button" className="button light-border" disabled={emailBusy} onClick={() => { setEmailStep("request"); setEmailMessage(""); }}>Use a different email</button><p className="form-message" role="status">{emailMessage}</p></form>}</section>}{role !== "student" && <EmailNotificationControl demo={demo} />}</>;
 }
 
 function EmailNotificationControl({ demo = false }) {
@@ -1730,7 +1751,7 @@ function StudentDashboard({ user, logout }) {
         {active === "Attendance" && <AttendanceCenter mode="student" />}
         {active === "Learning" && <LearningCenter mode="student" />}
         {active === "Live quiz" && <QuizCenter mode="student" />}
-        {active === "Security" && <SecurityCenter role="student" />}
+        {active === "Security" && <SecurityCenter role="student" currentEmail={user.email} />}
       </section>
     </main>
   );

@@ -2,7 +2,7 @@ import pg from 'pg';
 
 const { Pool } = pg;
 const logicalTables = [
-  'quiz_attempt_answers', 'assignment_submissions', 'password_reset_tokens', 'announcement_reads',
+  'quiz_attempt_answers', 'assignment_submissions', 'password_reset_tokens', 'email_change_tokens', 'announcement_reads',
   'learning_materials', 'material_progress', 'learning_modules', 'quiz_questions', 'quiz_attempts',
   'quiz_answers', 'announcements', 'assignments', 'notifications', 'attendance', 'enquiries',
   'email_events', 'system_settings', 'student_stories', 'quizzes', 'courses', 'users'
