@@ -602,8 +602,10 @@ function Login({ portal, navigate, onLogin, notice = "" }) {
 function ForgotPassword({ navigate }) {
   const [message, setMessage] = useState("");
   async function submit(event) {
-    event.preventDefault(); setMessage("Sending reset link…");
-    try { const data = await api("/auth/forgot-password", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) }); setMessage(data.message); event.currentTarget.reset(); }
+    event.preventDefault();
+    const form = event.currentTarget;
+    setMessage("Sending reset link…");
+    try { const data = await api("/auth/forgot-password", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form))) }); setMessage(data.message); form.reset(); }
     catch (error) { setMessage(error.message); }
   }
   return <AuthLayout navigate={navigate} title="Reset your password" subtitle="We will email you a secure link that expires after 30 minutes."><form className="form" onSubmit={submit}><label>Email address<input name="email" type="email" autoComplete="email" required /></label><button className="button primary full">Send reset link</button><p className="form-message success">{message}</p></form><p className="switch"><button onClick={() => navigate("student-login")}>Return to sign in</button></p></AuthLayout>;
@@ -1493,9 +1495,10 @@ function AnnouncementsCenter({ mode, demo = false, onUnreadChange = () => {} }) 
   useEffect(() => { load(); }, [mode, demo]);
   async function publish(event) {
     event.preventDefault();
+    const form = event.currentTarget;
     try {
-      const data = await api("/staff/announcements", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) });
-      setMessage(data.message); event.currentTarget.reset(); load();
+      const data = await api("/staff/announcements", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      setMessage(data.message); form.reset(); load();
     } catch (error) { setMessage(error.message); }
   }
   async function markRead(announcement) {
@@ -2749,13 +2752,14 @@ function AdminDashboard({ user, logout }) {
   }
   async function addMentor(e) {
     e.preventDefault();
+    const form = e.currentTarget;
     try {
       const data = await api("/admin/mentors", {
         method: "POST",
-        body: JSON.stringify(Object.fromEntries(new FormData(e.currentTarget))),
+        body: JSON.stringify(Object.fromEntries(new FormData(form))),
       });
       setMessage(data.message);
-      e.currentTarget.reset();
+      form.reset();
       api("/admin/mentors").then(setMentors);
     } catch (err) {
       setMessage(err.message);
