@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import AssignmentCard, { AttachmentDownload } from './AssignmentCard.jsx';
+import AssignmentsCenter from './AssignmentsCenter.jsx';
 
 async function api(path, options = {}) {
   const token = localStorage.getItem("lw_token");
@@ -914,10 +915,10 @@ function Register({ navigate }) {
 function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forceSecurity = false }) {
   const items = forceSecurity ? ["Security"] :
     role === "admin"
-      ? ["Overview", "Applications", "Students", "Mentors", "Stories", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
+      ? ["Overview", "Applications", "Students", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
       : role === "mentor"
-        ? ["Overview", "Students", "Stories", "Announcements", "Learning", "Attendance", "Live quiz", "Security"]
-        : ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Attendance", "Live quiz", "Security"];
+        ? ["Overview", "Students", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
+        : ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Attendance", "Live quiz", "Security"];
   return (
     <aside className="sidebar" aria-label={`${role} portal navigation`}>
       <Logo />
@@ -1456,7 +1457,7 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
         {data.announcements.announcements[0] && <button className="dashboard-announcement" onClick={() => onNavigate("Announcements")}><span>{data.announcements.announcements[0].category}</span><div><strong>{data.announcements.announcements[0].title}</strong><p>{data.announcements.announcements[0].message}</p></div><b>View update</b></button>}
         <div className="progress-metrics">
           <button onClick={() => onNavigate("Attendance")}><span>Attendance</span><strong>{data.attendance.summary.percentage}%</strong><small>{data.attendance.summary.attended} of {data.attendance.summary.total} counted sessions</small></button>
-          <button onClick={() => onNavigate("Learning")}><span>Assignments</span><strong>{data.learning.progress.percentage}%</strong><small>{data.learning.progress.completed} of {data.learning.progress.total} completed</small></button>
+          <button onClick={() => onNavigate("Assignments")}><span>Assignments</span><strong>{data.learning.progress.percentage}%</strong><small>{data.learning.progress.completed} of {data.learning.progress.total} completed</small></button>
           <button onClick={() => onNavigate("Live quiz")}><span>Quiz average</span><strong>{quizAverage}%</strong><small>{data.quizzes.length} completed attempt{data.quizzes.length === 1 ? "" : "s"}</small></button>
           <article><span>Next class</span><strong>{nextClass ? new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Lagos" }).format(nextClass) : "—"}</strong><small>8:00 p.m. GMT+1</small></article>
         </div>
@@ -1468,7 +1469,7 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
             <button className="button gold" onClick={() => onNavigate("Learning")}>Open learning workspace</button>
           </section>
           <section className="attention-card">
-            <div className="progress-section-title"><div><span>Assignments</span><h2>Needs your attention</h2></div><button onClick={() => onNavigate("Learning")}>View all</button></div>
+            <div className="progress-section-title"><div><span>Assignments</span><h2>Needs your attention</h2></div><button onClick={() => onNavigate("Assignments")}>View all</button></div>
             {outstanding.length === 0 ? <p className="progress-empty">You have no outstanding assignments.</p> : outstanding.slice(0, 3).map((assignment) => {
               const overdue = new Date(assignment.dueAt) < new Date();
               return <article key={assignment.id}><div><small>Week {assignment.weekNumber} · {assignment.moduleTitle}</small><h3>{assignment.title}</h3><p>Due {new Date(assignment.dueAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p></div><b className={overdue ? "overdue" : "upcoming"}>{overdue ? "Overdue" : "Upcoming"}</b></article>;
@@ -1757,6 +1758,7 @@ function StudentDashboard({ user, logout }) {
         )}
         {active === "Attendance" && <AttendanceCenter mode="student" />}
         {active === "Learning" && <LearningCenter mode="student" />}
+        {active === "Assignments" && <AssignmentsCenter />}
         {active === "Live quiz" && <QuizCenter mode="student" />}
         {active === "Security" && <SecurityCenter role="student" currentEmail={user.email} />}
       </section>
@@ -2630,7 +2632,7 @@ function StaffAnalyticsOverview({ onNavigate, onViewLearner, demo = false }) {
     <div className="staff-metrics">
       <button onClick={() => onNavigate("Attendance")}><span>30-day attendance</span><strong>{metrics.attendanceRate}%</strong><small>{metrics.todayMarked} of {metrics.students} marked today</small></button>
       <button onClick={() => onNavigate("Live quiz")}><span>Quiz average</span><strong>{metrics.quizAverage}%</strong><small>{metrics.quizAttempts} completed attempt{metrics.quizAttempts === 1 ? "" : "s"}</small></button>
-      <button onClick={() => onNavigate("Learning")}><span>Outstanding work</span><strong>{metrics.outstanding}</strong><small>{metrics.overdue} currently overdue</small></button>
+      <button onClick={() => onNavigate("Assignments")}><span>Outstanding work</span><strong>{metrics.outstanding}</strong><small>{metrics.overdue} currently overdue</small></button>
       <article><span>Learners needing attention</span><strong>{data.attention.length}</strong><small>Attendance, quizzes and deadlines</small></article>
     </div>
     <div className="staff-overview-grid">
@@ -2959,6 +2961,7 @@ function AdminDashboard({ user, logout }) {
           <AttendanceCenter mode="staff" demo={user.demo} />
         )}{" "}
         {active === "Learning" && <LearningCenter mode="staff" demo={user.demo} />}
+        {active === "Assignments" && <AssignmentsCenter staff demo={user.demo} />}
         {active === "Live quiz" && <QuizCenter mode="admin" demo={user.demo} />}
         {active === "Security" && <SecurityCenter role="admin" demo={user.demo} />}
         {profileStudentId && <LearnerProfilePanel studentId={profileStudentId} onClose={() => setProfileStudentId(null)} onDeleted={(notice) => { setProfileStudentId(null); setMessage(notice); loadApplications(); }} />}
@@ -2997,6 +3000,7 @@ function MentorDashboard({ user, logout }) {
         {active === "Students" && <StudentDirectory />}
         {active === "Attendance" && <AttendanceCenter mode="staff" />}
         {active === "Learning" && <LearningCenter mode="staff" />}
+        {active === "Assignments" && <AssignmentsCenter staff />}
         {active === "Live quiz" && <QuizCenter mode="admin" />}
         {profileStudentId && <LearnerProfilePanel studentId={profileStudentId} onClose={() => setProfileStudentId(null)} />}
       </section>
