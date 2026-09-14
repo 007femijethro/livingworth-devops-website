@@ -6,6 +6,16 @@ import { notifyStudents, notifyUser } from './notifications.js';
 
 const uploadDirectory = process.env.UPLOAD_DIR || path.resolve('uploads');
 fs.mkdirSync(uploadDirectory, { recursive: true });
+const assignmentDirectory = path.join(uploadDirectory, '.assignments');
+fs.mkdirSync(assignmentDirectory, { recursive: true });
+const assignmentUpload = multer({
+  storage: multer.diskStorage({ destination: assignmentDirectory, filename: (_req, _file, done) => done(null, crypto.randomUUID()) }),
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, done) => {
+    const allowed = ['.pdf', '.doc', '.docx', '.txt', '.zip', '.png', '.jpg', '.jpeg', '.sh', '.yaml', '.yml', '.json'].includes(path.extname(file.originalname).toLowerCase());
+    done(allowed ? null : new Error('Unsupported assignment file type.'), allowed);
+  }
+}).single('file');
 const allowedExtensions = new Set(['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.txt', '.zip']);
 const upload = multer({
   storage: multer.diskStorage({
@@ -32,7 +42,7 @@ async function modulesFor(pool, studentId = null, staff = false) {
     const [assignments] = studentId
       ? await pool.execute(
           `SELECT a.id, a.title, a.instructions, a.due_at AS dueAt, a.max_score AS maxScore,
-            s.id AS submissionId, s.submission_url AS submissionUrl, s.note AS submissionNote,
+            s.id AS submissionId, s.submission_url AS submissionUrl, s.note AS submissionNote, s.file_name AS fileName,
             s.status AS submissionStatus, s.score, s.feedback, s.submitted_at AS submittedAt,
             CASE WHEN s.id IS NOT NULL AND s.submitted_at > a.due_at THEN TRUE ELSE FALSE END AS isLate
            FROM assignments a LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.student_id = ?
@@ -72,7 +82,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
     try {
       const modules = await modulesFor(pool, null, true);
       const [submissions] = await pool.query(`SELECT s.id, s.assignment_id AS assignmentId, s.student_id AS studentId,
-        u.full_name AS studentName, u.email, s.submission_url AS submissionUrl, s.note, s.status, s.score,
+        u.full_name AS studentName, u.email, s.submission_url AS submissionUrl, s.note, s.status, s.score, s.file_name AS fileName,
         s.feedback, s.submitted_at AS submittedAt, a.title AS assignmentTitle, a.due_at AS dueAt,
         CASE WHEN s.submitted_at > a.due_at THEN TRUE ELSE FALSE END AS isLate
         FROM assignment_submissions s JOIN users u ON u.id = s.student_id JOIN assignments a ON a.id = s.assignment_id
@@ -234,19 +244,40 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
     } catch (error) { next(error); }
   });
 
-  app.put('/api/student/assignments/:id/submission', requireAuth, async (req, res, next) => {
+  app.get('/api/submissions/:id/file', requireAuth, async (req, res, next) => {
+    try {
+      const [rows] = await pool.execute('SELECT student_id AS studentId, file_path AS filePath, file_name AS fileName FROM assignment_submissions WHERE id = ?', [req.params.id]);
+      const item = rows[0];
+      if (!item || !item.filePath) return res.status(404).json({ message: 'Attachment not found.' });
+      if (req.user.role === 'student' && Number(item.studentId) !== Number(req.user.id)) return res.status(403).json({ message: 'Access denied.' });
+      res.download(path.join(assignmentDirectory, path.basename(item.filePath)), item.fileName);
+    } catch (error) { next(error); }
+  });
+
+  app.put('/api/student/assignments/:id/submission', requireAuth, (req, res, next) => {
+    if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
+    assignmentUpload(req, res, error => error ? res.status(400).json({ message: error.code === 'LIMIT_FILE_SIZE' ? 'Attachment must be 15 MB or smaller.' : 'Upload one supported file, up to 15 MB.' }) : next());
+  }, async (req, res, next) => {
+    let saved = false;
     try {
       if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
       const submissionUrl = String(req.body.submissionUrl || '').trim();
-      if (!/^https?:\/\//i.test(submissionUrl)) return res.status(400).json({ message: 'Enter a complete GitHub or project URL.' });
-      const [assignments] = await pool.execute('SELECT id FROM assignments WHERE id = ?', [req.params.id]);
-      if (!assignments.length) return res.status(404).json({ message: 'Assignment not found.' });
-      await pool.execute(`INSERT INTO assignment_submissions (assignment_id, student_id, submission_url, note)
-        VALUES (?, ?, ?, ?) ON CONFLICT (assignment_id, student_id) DO UPDATE SET submission_url = EXCLUDED.submission_url, note = EXCLUDED.note,
+      if (submissionUrl && !/^https?:\/\//i.test(submissionUrl)) return res.status(400).json({ message: 'Enter a complete GitHub or project URL.' });
+      const modules = await modulesFor(pool, req.user.id);
+      if (!modules.some(module => module.assignments.some(a => Number(a.id) === Number(req.params.id)))) return res.status(404).json({ message: 'Assignment is not available yet.' });
+      const [previous] = await pool.execute('SELECT file_path AS filePath, file_name AS fileName FROM assignment_submissions WHERE assignment_id = ? AND student_id = ?', [req.params.id, req.user.id]);
+      const filePath = req.file?.filename || previous[0]?.filePath || null;
+      const fileName = req.file?.originalname || previous[0]?.fileName || null;
+      if (!submissionUrl && !filePath) return res.status(400).json({ message: 'Attach a file or add a project link before submitting.' });
+      await pool.execute(`INSERT INTO assignment_submissions (assignment_id, student_id, submission_url, note, file_path, file_name)
+        VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (assignment_id, student_id) DO UPDATE SET submission_url = EXCLUDED.submission_url, note = EXCLUDED.note, file_path = EXCLUDED.file_path, file_name = EXCLUDED.file_name,
         status = 'submitted', score = NULL, feedback = NULL, submitted_at = CURRENT_TIMESTAMP`,
-        [req.params.id, req.user.id, submissionUrl, String(req.body.note || '').trim()]);
+        [req.params.id, req.user.id, submissionUrl, String(req.body.note || '').trim(), filePath, fileName]);
+      saved = true;
+      if (req.file && previous[0]?.filePath) await fs.promises.unlink(path.join(assignmentDirectory, path.basename(previous[0].filePath))).catch(() => {});
       res.json({ message: 'Assignment submitted successfully.' });
     } catch (error) { next(error); }
+    finally { if (req.file && !saved) await fs.promises.unlink(req.file.path).catch(() => {}); }
   });
 
   app.put('/api/student/learning/materials/:id/progress', requireAuth, async (req, res, next) => {
