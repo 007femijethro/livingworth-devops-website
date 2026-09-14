@@ -34,13 +34,13 @@ export default function AssignmentCard({ assignment: a, onSubmitted }) {
       const response = await fetch(`/api/student/assignments/${a.id}/submission`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('lw_token')}` }, body: data });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || 'Submission failed. Please try again.');
-      setMessage('Your work has been submitted for mentor review.'); setFile(null); form.elements.file.value = ''; onSubmitted();
+      setMessage('Your work has been submitted for mentor review.'); setFile(null); form.elements.file.value = ''; window.dispatchEvent(new Event('lw-assignments-changed')); onSubmitted();
     } catch (e) { setError(true); setMessage(e.message); } finally { setBusy(false); }
   }
   return <section className="student-assignment assignment-card">
     <header className="assignment-title"><div><span>Practical assignment</span><h4>{a.title}</h4></div><b className={`work-status ${a.submissionStatus || 'not-started'}`}>{labels[a.submissionStatus] || 'Not submitted'}</b></header>
     <div className="assignment-meta"><span>Due {new Date(a.dueAt).toLocaleString()}</span><span>{a.maxScore} points</span>{a.isLate && <b>Submitted late</b>}</div>
-    <details open className="assignment-brief"><summary>Assignment instructions</summary><p>{a.instructions}</p></details>
+    <details open className="assignment-brief"><summary>Assignment instructions</summary><AssignmentMarkdown>{a.instructions}</AssignmentMarkdown></details>
     {a.feedback && <aside className="mentor-feedback"><b>Mentor feedback</b><p>{a.feedback}</p>{a.score != null && <strong>{a.score} / {a.maxScore} points</strong>}</aside>}
     {a.submittedAt && <p>Last submitted: {new Date(a.submittedAt).toLocaleString()}</p>}
     {a.fileName && <AttachmentDownload id={a.submissionId} name={a.fileName} />}
@@ -56,3 +56,4 @@ export default function AssignmentCard({ assignment: a, onSubmitted }) {
     </form>
   </section>;
 }
+import AssignmentMarkdown, { AssignmentInstructions } from './AssignmentMarkdown.jsx';

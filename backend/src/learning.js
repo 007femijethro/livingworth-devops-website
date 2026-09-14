@@ -67,6 +67,19 @@ async function modulesFor(pool, studentId = null, staff = false) {
 }
 
 export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
+  app.get('/api/assignments/pending-count', requireAuth, async (req, res, next) => {
+    try {
+      if (req.user.role === 'student') {
+        const modules = await modulesFor(pool, req.user.id);
+        const count = modules.flatMap(module => module.assignments)
+          .filter(assignment => !assignment.submissionId || assignment.submissionStatus === 'needs_correction').length;
+        return res.json({ count });
+      }
+      if (!['admin', 'mentor'].includes(req.user.role)) return res.status(403).json({ message: 'Access denied.' });
+      const [rows] = await pool.query("SELECT COUNT(*) AS count FROM assignment_submissions WHERE status = 'submitted'");
+      res.json({ count: Number(rows[0].count) });
+    } catch (error) { next(error); }
+  });
   app.get('/api/student/learning', requireAuth, async (req, res, next) => {
     try {
       if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });

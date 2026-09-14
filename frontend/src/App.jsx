@@ -27,6 +27,7 @@ async function api(path, options = {}) {
     }
     throw new Error(data.message || "Something went wrong.");
   }
+  if (options.method && options.method !== 'GET' && /assignment|submission|learning/.test(path)) window.dispatchEvent(new Event('lw-assignments-changed'));
   return data;
 }
 
@@ -913,6 +914,25 @@ function Register({ navigate }) {
 }
 
 function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forceSecurity = false }) {
+  const [assignmentCount, setAssignmentCount] = useState(0);
+  useEffect(() => {
+    if (forceSecurity || localStorage.getItem('lw_demo_admin')) return;
+    let mounted = true;
+    let fetching = false;
+    async function refresh() {
+      if (fetching || document.hidden) return;
+      fetching = true;
+      try { const data = await api('/assignments/pending-count'); if (mounted) setAssignmentCount(data.count); }
+      catch { /* Retain the last known count during a temporary connection failure. */ }
+      finally { fetching = false; }
+    }
+    refresh();
+    const timer = setInterval(refresh, 30000);
+    window.addEventListener('lw-assignments-changed', refresh);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { mounted = false; clearInterval(timer); window.removeEventListener('lw-assignments-changed', refresh); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, [role, active, forceSecurity]);
   const items = forceSecurity ? ["Security"] :
     role === "admin"
       ? ["Overview", "Applications", "Students", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
@@ -932,6 +952,7 @@ function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forc
             onClick={() => onSelect(item)}
           >
             <span>{item}</span>{item === "Announcements" && unreadAnnouncements > 0 && <b className="nav-count">{unreadAnnouncements}</b>}
+            {item === 'Assignments' && assignmentCount > 0 && <b className="nav-count" aria-label={`${assignmentCount} ${role === 'student' ? 'assignments to submit or correct' : 'submissions awaiting review'}`} title={role === 'student' ? 'Assignments to submit or correct' : 'Submissions awaiting review'}>{assignmentCount}</b>}
           </button>
         ))}
       </nav>
@@ -1396,9 +1417,9 @@ function LearningCenter({ mode, demo = false }) {
           {selectedModule === module.id && <div className="module-editor">
             <form className="edit-module-form" onSubmit={(event) => saveEdit(event, `/staff/learning/modules/${module.id}`)}><h4>Edit module details</h4><label>Week number<input name="weekNumber" type="number" min="1" max="52" defaultValue={module.weekNumber} required /></label><label>Module title<input name="title" defaultValue={module.title} required /></label><label>Summary<textarea name="summary" rows="3" defaultValue={module.summary || ""} /></label><button className="button light-border">Save module changes</button></form>
             <div className="module-resources"><h4>Current learning materials ({module.materials.length})</h4>{module.materials.length === 0 && <small>No learning materials yet.</small>}{module.materials.map((material, index) => <div className="editable-content" key={material.id}>{editing === `material-${material.id}` ? <form onSubmit={(event) => saveEdit(event, `/staff/learning/materials/${material.id}`)}><label>Title<input name="title" defaultValue={material.title} required /></label><MaterialFields initialType={material.materialType} material={material} /><div className="edit-buttons"><button className="button light-border">Save</button><button type="button" onClick={() => setEditing("")}>Cancel</button></div></form> : <><div><b>{material.title}</b><small>{material.materialType === "note" ? `${material.lessonContent?.slice(0, 80)}${material.lessonContent?.length > 80 ? "…" : ""}` : material.materialType}</small></div><div className="content-actions"><button aria-label={`Move ${material.title} up`} disabled={index === 0} onClick={() => move("materials", module.materials, index, -1)}>↑</button><button aria-label={`Move ${material.title} down`} disabled={index === module.materials.length - 1} onClick={() => move("materials", module.materials, index, 1)}>↓</button><button onClick={() => setEditing(`material-${material.id}`)}>Edit</button><button className="delete-content" onClick={() => deleteMaterial(material)}>Delete</button></div></>}</div>)}</div>
-            <div className="module-resources"><h4>Current assignments</h4>{module.assignments.length === 0 && <small>No assignments yet.</small>}{module.assignments.map((assignment, index) => <div className="editable-content" key={assignment.id}>{editing === `assignment-${assignment.id}` ? <form onSubmit={(event) => saveEdit(event, `/staff/learning/assignments/${assignment.id}`)}><label>Title<input name="title" defaultValue={assignment.title} required /></label><label>Instructions<textarea name="instructions" rows="3" defaultValue={assignment.instructions} required /></label><label>Deadline<input name="dueAt" type="datetime-local" defaultValue={new Date(assignment.dueAt).toISOString().slice(0, 16)} required /></label><label>Maximum score<input name="maxScore" type="number" min="1" max="1000" defaultValue={assignment.maxScore} required /></label><div className="edit-buttons"><button className="button light-border">Save</button><button type="button" onClick={() => setEditing("")}>Cancel</button></div></form> : <><div><b>{assignment.title}</b><small>Due {new Date(assignment.dueAt).toLocaleString()}</small></div><div className="content-actions"><button disabled={index === 0} onClick={() => move("assignments", module.assignments, index, -1)}>↑</button><button disabled={index === module.assignments.length - 1} onClick={() => move("assignments", module.assignments, index, 1)}>↓</button><button onClick={() => setEditing(`assignment-${assignment.id}`)}>Edit</button></div></>}</div>)}</div>
+            <div className="module-resources"><h4>Current assignments</h4>{module.assignments.length === 0 && <small>No assignments yet.</small>}{module.assignments.map((assignment, index) => <div className="editable-content" key={assignment.id}>{editing === `assignment-${assignment.id}` ? <form onSubmit={(event) => saveEdit(event, `/staff/learning/assignments/${assignment.id}`)}><label>Title<input name="title" defaultValue={assignment.title} required /></label><AssignmentInstructions defaultValue={assignment.instructions} /><label>Deadline<input name="dueAt" type="datetime-local" defaultValue={new Date(assignment.dueAt).toISOString().slice(0, 16)} required /></label><label>Maximum score<input name="maxScore" type="number" min="1" max="1000" defaultValue={assignment.maxScore} required /></label><div className="edit-buttons"><button className="button light-border">Save</button><button type="button" onClick={() => setEditing("")}>Cancel</button></div></form> : <><div><b>{assignment.title}</b><small>Due {new Date(assignment.dueAt).toLocaleString()}</small></div><div className="content-actions"><button disabled={index === 0} onClick={() => move("assignments", module.assignments, index, -1)}>↑</button><button disabled={index === module.assignments.length - 1} onClick={() => move("assignments", module.assignments, index, 1)}>↓</button><button onClick={() => setEditing(`assignment-${assignment.id}`)}>Edit</button></div></>}</div>)}</div>
             <form className="combined-material-form" onSubmit={(event) => addMaterial(event, module.id)}><h4>Add learning content</h4><p className="material-help">Use one topic for everything below. Add a note, video, link or file—or add several together.</p><label>Topic or title<input name="title" placeholder="e.g. Introduction to Linux" required /></label><fieldset><legend>Lesson note</legend><label>Lesson note<textarea name="lessonContent" rows="8" placeholder="Write or paste the lesson note here…" /></label></fieldset><fieldset><legend>YouTube video</legend><label>YouTube URL<input name="videoUrl" type="url" placeholder="https://youtube.com/watch?v=…" /></label></fieldset><fieldset><legend>Resource link or file</legend><label>Resource URL<input name="resourceUrl" type="url" placeholder="https://…" /></label><label>Upload file<input name="file" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.zip" /></label><small>Maximum file size: 10 MB.</small></fieldset><button className="button light-border">Add selected content to this week</button></form>
-            <form onSubmit={(event) => addAssignment(event, module.id)}><h4>Create assignment</h4><label>Title<input name="title" required /></label><label>Instructions<textarea name="instructions" rows="4" required /></label><label>Deadline<input name="dueAt" type="datetime-local" required /></label><label>Maximum score<input name="maxScore" type="number" min="1" max="1000" defaultValue="100" required /></label><button className="button light-border">Create assignment</button></form>
+            <form onSubmit={(event) => addAssignment(event, module.id)}><h4>Create assignment</h4><label>Title<input name="title" required /></label><AssignmentInstructions /><label>Deadline<input name="dueAt" type="datetime-local" required /></label><label>Maximum score<input name="maxScore" type="number" min="1" max="1000" defaultValue="100" required /></label><button className="button light-border">Create assignment</button></form>
             <button className="button primary full" onClick={() => togglePublished(module)}>{module.published ? "Return module to draft" : "Publish module to students"}</button>
           </div>}
         </article>)}</div>
@@ -3078,3 +3099,4 @@ export default function App() {
   }
   return <Home navigate={navigate} />;
 }
+import { AssignmentInstructions } from './AssignmentMarkdown.jsx';
