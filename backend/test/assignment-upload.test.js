@@ -49,3 +49,43 @@ test('assignment upload rejects oversized files and protects attachment ownershi
     assert.equal(rejected.status, 400);
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
+
+test('named uploads require every slot and preserve untouched files on resubmission', async () => {
+  const fs = await import('node:fs/promises');
+  const path = await import('node:path');
+  const app = express(); app.use(express.json());
+  let stored = [];
+  const slots = [{ id: 'script', label: 'Bash script' }, { id: 'evidence', label: 'Screenshot' }];
+  const pool = {
+    query: async () => [[{ id: 1 }]],
+    execute: async (sql, params) => {
+      if (sql.includes('INSERT INTO assignment_submissions')) { stored = JSON.parse(params[6]); return [{ affectedRows: 1 }]; }
+      if (sql.includes('FROM assignment_submissions')) return [[{ files: stored }]];
+      if (sql.includes('learning_materials')) return [[]];
+      return [[{ id: 1, uploadSlots: slots }]];
+    }
+  };
+  registerLearningRoutes(app, pool, (req, _res, next) => { req.user = { id: 1, role: 'student' }; next(); }, (_req, _res, next) => next());
+  const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/api/student/assignments/1/submission`;
+  async function submit(ids) {
+    const data = new FormData(); data.set('fileSlots', JSON.stringify(ids));
+    ids.forEach(id => data.append('file', new Blob([id]), `${id}.txt`));
+    return fetch(url, { method: 'PUT', body: data });
+  }
+  try {
+    assert.equal((await submit(['script'])).status, 400);
+    assert.equal((await submit(['unknown', 'evidence'])).status, 400);
+    assert.equal((await submit(['evidence', 'script'])).status, 200);
+    assert.deepEqual(stored.map(f => f.label), ['Bash script', 'Screenshot']);
+    assert.equal(stored[0].name, 'script.txt');
+    const oldScript = stored[0].path, oldEvidence = stored[1].path;
+    assert.equal((await submit(['script'])).status, 200);
+    assert.equal(stored[1].path, oldEvidence);
+    assert.notEqual(stored[0].path, oldScript);
+    await assert.rejects(fs.stat(path.resolve('uploads/.assignments', oldScript)), { code: 'ENOENT' });
+  } finally {
+    await Promise.all(stored.map(f => fs.unlink(path.resolve('uploads/.assignments', f.path)).catch(() => {})));
+    server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+  }
+});
