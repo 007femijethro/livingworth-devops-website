@@ -86,11 +86,11 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       if (req.user.role === 'student') {
         const modules = await modulesFor(pool, req.user.id);
         const count = modules.flatMap(module => module.assignments)
-          .filter(assignment => !assignment.submissionId || assignment.submissionStatus === 'needs_correction').length;
+          .filter(assignment => !assignment.submissionId).length;
         return res.json({ count });
       }
       if (!['admin', 'mentor'].includes(req.user.role)) return res.status(403).json({ message: 'Access denied.' });
-      const [rows] = await pool.query("SELECT COUNT(*) AS count FROM assignment_submissions WHERE status = 'submitted'");
+      const [rows] = await pool.query("SELECT COUNT(*) AS count FROM assignment_submissions WHERE status IN ('submitted', 'needs_correction')");
       res.json({ count: Number(rows[0].count) });
     } catch (error) { next(error); }
   });
@@ -113,7 +113,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
         s.feedback, s.submitted_at AS submittedAt, a.title AS assignmentTitle, a.due_at AS dueAt,
         CASE WHEN s.submitted_at > a.due_at THEN TRUE ELSE FALSE END AS isLate
         FROM assignment_submissions s JOIN users u ON u.id = s.student_id JOIN assignments a ON a.id = s.assignment_id
-        ORDER BY CASE s.status WHEN 'submitted' THEN 1 WHEN 'needs_correction' THEN 2 ELSE 3 END, s.submitted_at DESC`);
+        ORDER BY CASE WHEN s.status IN ('submitted', 'needs_correction') THEN 1 ELSE 2 END, s.submitted_at DESC`);
       const [materialProgress] = await pool.query(`SELECT u.id AS studentId, u.full_name AS studentName, u.email,
         lm.id AS materialId, lm.title AS materialTitle, lm.material_type AS materialType,
         m.id AS moduleId, m.week_number AS weekNumber, m.title AS moduleTitle,
@@ -296,7 +296,8 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       if (submissionUrl && !/^https?:\/\//i.test(submissionUrl)) return res.status(400).json({ message: 'Enter a complete GitHub or project URL.' });
       const modules = await modulesFor(pool, req.user.id);
       if (!modules.some(module => module.assignments.some(a => Number(a.id) === Number(req.params.id)))) return res.status(404).json({ message: 'Assignment is not available yet.' });
-      const [previous] = await pool.execute('SELECT file_path AS filePath, file_name AS fileName, files FROM assignment_submissions WHERE assignment_id = ? AND student_id = ?', [req.params.id, req.user.id]);
+      const [previous] = await pool.execute('SELECT file_path AS filePath, file_name AS fileName, files, status FROM assignment_submissions WHERE assignment_id = ? AND student_id = ?', [req.params.id, req.user.id]);
+      if (previous[0]?.status === 'completed') return res.status(409).json({ message: 'This assignment already has a final result and can no longer be changed.' });
       const assignment = modules.flatMap(m => m.assignments).find(a => Number(a.id) === Number(req.params.id));
       const slots = assignment.uploadSlots || [];
       let files;
@@ -341,16 +342,15 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
 
   app.patch('/api/staff/submissions/:id/review', requireAuth, requireStaff, async (req, res, next) => {
     try {
-      const status = ['needs_correction', 'completed'].includes(req.body.status) ? req.body.status : '';
       const feedback = String(req.body.feedback || '').trim();
       const score = req.body.score === '' || req.body.score == null ? null : Number.parseInt(req.body.score, 10);
-      if (!status || !feedback) return res.status(400).json({ message: 'Choose a review result and add feedback.' });
-      if (score !== null && (score < 0 || score > 1000)) return res.status(400).json({ message: 'Enter a valid score.' });
-      const [result] = await pool.execute('UPDATE assignment_submissions SET status = ?, score = ?, feedback = ?, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ?', [status, score, feedback, req.user.id, req.params.id]);
+      if (!feedback) return res.status(400).json({ message: 'Add final feedback.' });
+      if (score === null || score < 0 || score > 1000) return res.status(400).json({ message: 'Enter the final score.' });
+      const [result] = await pool.execute("UPDATE assignment_submissions SET status = 'completed', score = ?, feedback = ?, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ?", [score, feedback, req.user.id, req.params.id]);
       if (!result.affectedRows) return res.status(404).json({ message: 'Submission not found.' });
       const [submissions] = await pool.execute('SELECT student_id AS studentId FROM assignment_submissions WHERE id = ?', [req.params.id]);
-      if (submissions.length) await notifyUser(pool, submissions[0].studentId, { title: 'Assignment reviewed', message: feedback, category: 'review', actionTarget: 'Learning' });
-      res.json({ message: status === 'completed' ? 'Submission marked complete.' : 'Correction requested.' });
+      if (submissions.length) await notifyUser(pool, submissions[0].studentId, { title: 'Final assignment result', message: feedback.slice(0, 500), category: 'review', actionTarget: 'Learning' });
+      res.json({ message: 'Final result published.' });
     } catch (error) { next(error); }
   });
 }

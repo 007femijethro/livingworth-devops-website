@@ -29,7 +29,7 @@ export default function AssignmentCard({ assignment: a, onSubmitted }) {
   const slots = a.uploadSlots || [];
   const selected = slots.length ? slots.flatMap(s => files[s.id] || []) : Object.values(files).flat();
   const oversized = selected.some(f => f.size > 15 * 1024 * 1024);
-  const labels = { submitted: 'Awaiting review', completed: 'Completed', needs_correction: 'Changes requested' };
+  const labels = { submitted: 'Awaiting final result', completed: 'Final result', needs_correction: 'Awaiting final result' };
   async function submit(event) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -53,7 +53,7 @@ export default function AssignmentCard({ assignment: a, onSubmitted }) {
     {a.feedback && <aside className="mentor-feedback"><b>Mentor feedback</b><p>{a.feedback}</p>{a.score != null && <strong>{a.score} / {a.maxScore} points</strong>}</aside>}
     {a.submittedAt && <p>Last submitted: {new Date(a.submittedAt).toLocaleString()}</p>}
     <SubmissionFiles submission={a} id={a.submissionId} />
-    <form onSubmit={submit} className="assignment-submit-form">
+    {a.submissionStatus !== 'completed' && <form onSubmit={submit} className="assignment-submit-form">
       <h4>{a.submissionId ? 'Update your submission' : 'Submit your work'}</h4>
       <p>{slots.length ? 'The requested file names show what your mentor expects. Upload any that are ready, or submit without attachments and add them later.' : 'You may add a link, attach up to five files, include both, or submit without attachments.'}{a.submissionId ? ' Resubmitting sends your work for a new review.' : ''}</p>
       <label>GitHub or project link<input name="submissionUrl" type="url" defaultValue={a.submissionUrl || ''} placeholder="https://github.com/your-project" /></label>
@@ -67,7 +67,7 @@ export default function AssignmentCard({ assignment: a, onSubmitted }) {
       <button className="button primary" disabled={busy || oversized}>{busy ? 'Submitting…' : a.submissionId ? 'Resubmit for review' : 'Submit assignment'}</button>
       {oversized && <p role="alert">File is too large. Choose a file of 15 MB or less.</p>}
       <p role="status" className={`form-message ${error ? '' : 'success'}`}>{message}</p>
-    </form>
+    </form>}
   </section>;
 }
 import AssignmentMarkdown, { AssignmentInstructions } from './AssignmentMarkdown.jsx';

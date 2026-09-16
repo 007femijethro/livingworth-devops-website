@@ -23,7 +23,7 @@ test('assignment badge counts student actions and staff reviews separately', asy
   await new Promise(resolve => server.once('listening', resolve));
   const url = `http://127.0.0.1:${server.address().port}/api/assignments/pending-count`;
   try {
-    assert.deepEqual(await (await fetch(url)).json(), { count: 2 });
+    assert.deepEqual(await (await fetch(url)).json(), { count: 1 });
     assert.deepEqual(await (await fetch(url, { headers: { 'x-test-role': 'mentor' } })).json(), { count: 3 });
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
