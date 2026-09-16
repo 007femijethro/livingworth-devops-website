@@ -98,10 +98,32 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
     try {
       if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
       const modules = await modulesFor(pool, req.user.id, false);
-      const [[published]] = await pool.query('SELECT COUNT(*) AS total FROM learning_modules WHERE published = TRUE');
+      const [publishedResult, scoreResult] = await Promise.all([
+        pool.query('SELECT COUNT(*) AS total FROM learning_modules WHERE published = TRUE'),
+        pool.execute(`SELECT COUNT(*) AS gradedCount,
+          COALESCE(SUM(s.score), 0) AS earnedPoints,
+          COALESCE(SUM(a.max_score), 0) AS possiblePoints
+          FROM assignment_submissions s
+          JOIN assignments a ON a.id = s.assignment_id
+          WHERE s.student_id = ? AND s.status = 'completed' AND s.score IS NOT NULL`, [req.user.id])
+      ]);
+      const published = publishedResult[0][0];
+      const scoreRow = scoreResult[0][0];
       const assignments = modules.flatMap(module => module.assignments);
       const completed = assignments.filter(assignment => assignment.submissionStatus === 'completed').length;
-      res.json({ modules, lockedWeeks: Math.max(0, Number(published.total) - modules.length), progress: { completed, total: assignments.length, percentage: assignments.length ? Math.round(completed / assignments.length * 100) : 0 } });
+      const earnedPoints = Number(scoreRow.earnedPoints || 0);
+      const possiblePoints = Number(scoreRow.possiblePoints || 0);
+      res.json({
+        modules,
+        lockedWeeks: Math.max(0, Number(published.total) - modules.length),
+        progress: { completed, total: assignments.length, percentage: assignments.length ? Math.round(completed / assignments.length * 100) : 0 },
+        scoreSummary: {
+          gradedCount: Number(scoreRow.gradedCount || 0),
+          earnedPoints,
+          possiblePoints,
+          percentage: possiblePoints ? Math.round((earnedPoints / possiblePoints) * 100) : null
+        }
+      });
     } catch (error) { next(error); }
   });
 
