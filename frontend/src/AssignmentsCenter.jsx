@@ -12,6 +12,7 @@ export default function AssignmentsCenter({ staff = false, demo = false }) {
   const [view, setView] = useState('assignments');
   const [status, setStatus] = useState('');
   const [editing, setEditing] = useState(null);
+  const [scoreSummary, setScoreSummary] = useState(null);
   async function request(path, options = {}) {
     const response = await fetch(`/api${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('lw_token')}` } });
     const data = await response.json();
@@ -21,7 +22,7 @@ export default function AssignmentsCenter({ staff = false, demo = false }) {
   }
   async function load() {
     if (demo) { setLoading(false); return; }
-    try { const data = await request(staff ? '/staff/learning' : '/student/learning'); setModules(data.modules); setSubmissions(data.submissions || []); }
+    try { const data = await request(staff ? '/staff/learning' : '/student/learning'); setModules(data.modules); setSubmissions(data.submissions || []); setScoreSummary(data.scoreSummary || null); }
     catch (error) { setMessage(error.message); } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, [staff, demo]);
@@ -42,6 +43,16 @@ export default function AssignmentsCenter({ staff = false, demo = false }) {
     {demo && <p>Assignment management is unavailable in offline preview.</p>}
     {message && <p role="status">{message}</p>}
     {staff && <div className="learning-tabs"><button onClick={() => setView('assignments')} className={view === 'assignments' ? 'active' : ''}>Assignments ({assignments.length})</button><button onClick={() => setView('reviews')} className={view === 'reviews' ? 'active' : ''}>Submissions ({submissions.filter(s => s.status !== 'completed').length} awaiting final result)</button></div>}
+    {!staff && !loading && scoreSummary && <section className="assignment-score-summary" aria-labelledby="assignment-score-heading">
+      <div className="assignment-score-heading"><div><p className="eyebrow">My performance</p><h3 id="assignment-score-heading">Overall assignment score</h3></div><strong>{scoreSummary.percentage == null ? '—' : `${scoreSummary.percentage}%`}</strong></div>
+      <div className="assignment-score-track" aria-label={scoreSummary.percentage == null ? 'No assignments graded yet' : `${scoreSummary.percentage}% overall assignment score`}><span style={{ width: `${scoreSummary.percentage || 0}%` }} /></div>
+      <div className="assignment-score-metrics">
+        <div><span>Points earned</span><b>{scoreSummary.earnedPoints} / {scoreSummary.possiblePoints}</b></div>
+        <div><span>Assignments graded</span><b>{scoreSummary.gradedCount}</b></div>
+        <div><span>Calculation</span><b>{scoreSummary.gradedCount ? 'Final results only' : 'Awaiting results'}</b></div>
+      </div>
+      {!scoreSummary.gradedCount && <p>Your overall score will appear after your mentor publishes your first final result.</p>}
+    </section>}
     {loading ? <p role="status">Loading assignments…</p> : view === 'assignments' ? <>
       {staff && <details className="assignment-card"><summary>Create assignment</summary><form className="assignment-submit-form" onSubmit={e => save(e, null, 'POST')}><label>Week<select name="moduleId" required><option value="">Choose a week</option>{modules.map(m => <option key={m.id} value={m.id}>Week {m.weekNumber} · {m.title}{m.published ? '' : ' (draft)'}</option>)}</select></label><label>Title<input name="title" required maxLength="180" /></label><AssignmentInstructions /><UploadSlots /><label>Deadline (your local time)<input name="dueAt" type="datetime-local" required /></label><label>Maximum points<input name="maxScore" type="number" min="1" max="1000" defaultValue="100" required /></label><button className="button primary" disabled={busy || demo || !modules.length}>{busy ? 'Saving…' : 'Create assignment'}</button>{!modules.length && <p>Create a week in Learning first.</p>}</form></details>}
       <label className="assignment-filter">Filter by week<select value={week} onChange={e => setWeek(e.target.value)}><option value="">All available weeks</option>{modules.map(m => <option key={m.id} value={m.id}>Week {m.weekNumber} · {m.title}</option>)}</select></label>
