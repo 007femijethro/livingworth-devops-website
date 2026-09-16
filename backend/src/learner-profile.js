@@ -37,7 +37,7 @@ export function registerLearnerProfileRoutes(app, pool, requireAuth, requireStaf
           m.week_number AS weekNumber, m.title AS moduleTitle, COALESCE(mp.status, 'not_started') AS status,
           mp.updated_at AS updatedAt FROM learning_materials lm JOIN learning_modules m ON m.id = lm.module_id
           LEFT JOIN material_progress mp ON mp.material_id = lm.id AND mp.student_id = ?
-          WHERE m.published = TRUE ORDER BY m.display_order, m.week_number, lm.display_order, lm.id`, [studentId]),
+          WHERE m.published = TRUE AND lm.visible = TRUE ORDER BY m.display_order, m.week_number, lm.display_order, lm.id`, [studentId]),
         pool.execute(`SELECT qa.id, q.title, qa.attempt_no AS attemptNo, qa.correct_count AS correctCount,
           qa.total_questions AS totalQuestions,
           ROUND(qa.correct_count * 100 / NULLIF(qa.total_questions, 0)) AS percentage,

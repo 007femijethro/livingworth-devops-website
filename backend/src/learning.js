@@ -51,8 +51,8 @@ async function modulesFor(pool, studentId = null, staff = false) {
       ? await pool.execute(`SELECT lm.id, lm.title, lm.material_type AS materialType, lm.resource_url AS resourceUrl,
           lm.lesson_content AS lessonContent, lm.original_name AS originalName, COALESCE(mp.status, 'not_started') AS progressStatus
           FROM learning_materials lm LEFT JOIN material_progress mp ON mp.material_id = lm.id AND mp.student_id = ?
-          WHERE lm.module_id = ? ORDER BY lm.display_order, lm.created_at, lm.id`, [studentId, module.id])
-      : await pool.execute('SELECT id, title, material_type AS materialType, resource_url AS resourceUrl, lesson_content AS lessonContent, original_name AS originalName FROM learning_materials WHERE module_id = ? ORDER BY display_order, created_at, id', [module.id]);
+          WHERE lm.module_id = ? AND lm.visible = TRUE ORDER BY lm.display_order, lm.created_at, lm.id`, [studentId, module.id])
+      : await pool.execute('SELECT id, title, material_type AS materialType, resource_url AS resourceUrl, lesson_content AS lessonContent, original_name AS originalName, visible FROM learning_materials WHERE module_id = ? ORDER BY display_order, created_at, id', [module.id]);
     const [assignments] = studentId
       ? await pool.execute(
           `SELECT a.id, a.title, a.instructions, a.due_at AS dueAt, a.max_score AS maxScore, a.upload_slots AS uploadSlots,
@@ -137,7 +137,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
         FROM assignment_submissions s JOIN users u ON u.id = s.student_id JOIN assignments a ON a.id = s.assignment_id
         ORDER BY CASE WHEN s.status IN ('submitted', 'needs_correction') THEN 1 ELSE 2 END, s.submitted_at DESC`);
       const [materialProgress] = await pool.query(`SELECT u.id AS studentId, u.full_name AS studentName, u.email,
-        lm.id AS materialId, lm.title AS materialTitle, lm.material_type AS materialType,
+        lm.id AS materialId, lm.title AS materialTitle, lm.material_type AS materialType, lm.visible,
         m.id AS moduleId, m.week_number AS weekNumber, m.title AS moduleTitle,
         COALESCE(mp.status, 'not_started') AS status, mp.updated_at AS updatedAt
         FROM users u CROSS JOIN learning_materials lm JOIN learning_modules m ON m.id = lm.module_id
@@ -191,6 +191,15 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const [result] = await pool.execute('UPDATE learning_materials SET title = ?, material_type = ?, resource_url = ?, lesson_content = ? WHERE id = ?', [title, materialType, materialType === 'note' ? '' : resourceUrl, materialType === 'note' ? lessonContent : null, req.params.id]);
       if (!result.affectedRows) return res.status(404).json({ message: 'Learning material not found.' });
       res.json({ message: 'Learning material updated.' });
+    } catch (error) { next(error); }
+  });
+
+  app.patch('/api/staff/learning/materials/:id/visibility', requireAuth, requireStaff, async (req, res, next) => {
+    try {
+      if (typeof req.body.visible !== 'boolean') return res.status(400).json({ message: 'Choose whether this material should be visible.' });
+      const [result] = await pool.execute('UPDATE learning_materials SET visible = ? WHERE id = ?', [req.body.visible, req.params.id]);
+      if (!result.affectedRows) return res.status(404).json({ message: 'Learning material not found.' });
+      res.json({ message: req.body.visible ? 'Learning material is now visible to students.' : 'Learning material hidden from students.' });
     } catch (error) { next(error); }
   });
 
@@ -354,7 +363,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const status = ['not_started', 'in_progress', 'done'].includes(req.body.status) ? req.body.status : '';
       if (!status) return res.status(400).json({ message: 'Choose a valid progress status.' });
       const [materials] = await pool.execute(`SELECT lm.id FROM learning_materials lm JOIN learning_modules m ON m.id = lm.module_id
-        WHERE lm.id = ? AND m.published = TRUE`, [req.params.id]);
+        WHERE lm.id = ? AND m.published = TRUE AND lm.visible = TRUE`, [req.params.id]);
       if (!materials.length) return res.status(404).json({ message: 'Learning material not found.' });
       await pool.execute(`INSERT INTO material_progress (material_id, student_id, status) VALUES (?, ?, ?)
         ON CONFLICT (material_id, student_id) DO UPDATE SET status = EXCLUDED.status, updated_at = CURRENT_TIMESTAMP`, [req.params.id, req.user.id, status]);
