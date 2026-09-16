@@ -308,14 +308,12 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
         files = slots.map(slot => {
           const file = incoming.find(f => f.slotId === slot.id) || attachments(previous[0]).find(f => f.slotId === slot.id);
           return file ? { ...file, label: slot.label } : null;
-        });
-        if (files.some(f => !f)) return res.status(400).json({ message: 'Upload every requested file before submitting.' });
+        }).filter(Boolean);
       } else {
         files = req.files?.length ? req.files.map(file => ({ path: file.filename, name: file.originalname })) : attachments(previous[0]);
       }
       const filePath = files[0]?.path || null;
       const fileName = files[0]?.name || null;
-      if (!submissionUrl && !filePath) return res.status(400).json({ message: 'Attach a file or add a project link before submitting.' });
       await pool.execute(`INSERT INTO assignment_submissions (assignment_id, student_id, submission_url, note, file_path, file_name, files)
         VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (assignment_id, student_id) DO UPDATE SET submission_url = EXCLUDED.submission_url, note = EXCLUDED.note, file_path = EXCLUDED.file_path, file_name = EXCLUDED.file_name, files = EXCLUDED.files,
         status = 'submitted', score = NULL, feedback = NULL, submitted_at = CURRENT_TIMESTAMP`,

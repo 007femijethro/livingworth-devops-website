@@ -38,7 +38,6 @@ export default function AssignmentCard({ assignment: a, onSubmitted }) {
     selected.forEach(file => data.append('file', file));
     if (slots.length) data.set('fileSlots', JSON.stringify(slots.filter(s => files[s.id]?.length).map(s => s.id)));
     if (oversized || selected.length > 5) { setError(true); setMessage('Upload up to five files, each 15 MB or smaller.'); return; }
-    if (!data.get('submissionUrl')?.trim() && !selected.length && !a.fileName && !a.files?.length) { setError(true); setMessage('Add a project link or attach a file.'); return; }
     setBusy(true); setMessage('Submitting your work…'); setError(false);
     try {
       const response = await fetch(`/api/student/assignments/${a.id}/submission`, { method: 'PUT', headers: { Authorization: `Bearer ${localStorage.getItem('lw_token')}` }, body: data });
@@ -56,10 +55,10 @@ export default function AssignmentCard({ assignment: a, onSubmitted }) {
     <SubmissionFiles submission={a} id={a.submissionId} />
     <form onSubmit={submit} className="assignment-submit-form">
       <h4>{a.submissionId ? 'Update your submission' : 'Submit your work'}</h4>
-      <p>{slots.length ? 'Upload each requested file below. You can also add a project link.' : 'Add a link, attach up to five files, or include both.'}{a.submissionId ? ' Resubmitting sends your work for a new review.' : ''}</p>
+      <p>{slots.length ? 'The requested file names show what your mentor expects. Upload any that are ready, or submit without attachments and add them later.' : 'You may add a link, attach up to five files, include both, or submit without attachments.'}{a.submissionId ? ' Resubmitting sends your work for a new review.' : ''}</p>
       <label>GitHub or project link<input name="submissionUrl" type="url" defaultValue={a.submissionUrl || ''} placeholder="https://github.com/your-project" /></label>
       {(slots.length ? slots : [{ id: 'optional', label: 'Attach your work' }]).map(slot => <label key={slot.id} className="assignment-upload">{slot.label}
-        <input type="file" multiple={!slots.length} required={!!slots.length && !a.files?.some(f => f.slotId === slot.id)} accept=".pdf,.doc,.docx,.txt,.zip,.png,.jpg,.jpeg,.sh,.yaml,.yml,.json" onChange={e => setFiles(current => ({ ...current, [slot.id]: Array.from(e.target.files) }))} />
+        <input type="file" multiple={!slots.length} accept=".pdf,.doc,.docx,.txt,.zip,.png,.jpg,.jpeg,.sh,.yaml,.yml,.json" onChange={e => setFiles(current => ({ ...current, [slot.id]: Array.from(e.target.files) }))} />
         <small>Maximum 15 MB per file. PDF, Word, text, images, scripts, YAML, JSON or ZIP.</small>
         {(files[slot.id] || []).map((file, i) => <strong key={i}>{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</strong>)}
         {a.submissionId && <small>{slots.length ? 'An existing file in this slot is kept unless replaced.' : 'Selecting files replaces your previous attachment set. Select all files you want to submit.'}</small>}

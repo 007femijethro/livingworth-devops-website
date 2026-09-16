@@ -50,7 +50,7 @@ test('assignment upload rejects oversized files and protects attachment ownershi
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
 
-test('named uploads require every slot and preserve untouched files on resubmission', async () => {
+test('named uploads allow empty or partial submissions and preserve untouched files on resubmission', async () => {
   const fs = await import('node:fs/promises');
   const path = await import('node:path');
   const app = express(); app.use(express.json());
@@ -74,9 +74,12 @@ test('named uploads require every slot and preserve untouched files on resubmiss
     return fetch(url, { method: 'PUT', body: data });
   }
   try {
-    assert.equal((await submit(['script'])).status, 400);
+    assert.equal((await submit([])).status, 200);
+    assert.deepEqual(stored, []);
+    assert.equal((await submit(['script'])).status, 200);
+    assert.deepEqual(stored.map(f => f.label), ['Bash script']);
     assert.equal((await submit(['unknown', 'evidence'])).status, 400);
-    assert.equal((await submit(['evidence', 'script'])).status, 200);
+    assert.equal((await submit(['evidence'])).status, 200);
     assert.deepEqual(stored.map(f => f.label), ['Bash script', 'Screenshot']);
     assert.equal(stored[0].name, 'script.txt');
     const oldScript = stored[0].path, oldEvidence = stored[1].path;
