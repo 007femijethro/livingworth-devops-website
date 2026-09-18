@@ -328,7 +328,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const modules = await modulesFor(pool, req.user.id);
       if (!modules.some(module => module.assignments.some(a => Number(a.id) === Number(req.params.id)))) return res.status(404).json({ message: 'Assignment is not available yet.' });
       const [previous] = await pool.execute('SELECT file_path AS filePath, file_name AS fileName, files, status FROM assignment_submissions WHERE assignment_id = ? AND student_id = ?', [req.params.id, req.user.id]);
-      if (previous[0]?.status === 'completed') return res.status(409).json({ message: 'This assignment already has a final result and can no longer be changed.' });
+      if (['completed', 'rejected'].includes(previous[0]?.status)) return res.status(409).json({ message: 'This assignment already has a final result and can no longer be changed.' });
       const assignment = modules.flatMap(m => m.assignments).find(a => Number(a.id) === Number(req.params.id));
       const slots = assignment.uploadSlots || [];
       let files;
@@ -368,6 +368,19 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       await pool.execute(`INSERT INTO material_progress (material_id, student_id, status) VALUES (?, ?, ?)
         ON CONFLICT (material_id, student_id) DO UPDATE SET status = EXCLUDED.status, updated_at = CURRENT_TIMESTAMP`, [req.params.id, req.user.id, status]);
       res.json({ message: 'Learning progress updated.' });
+    } catch (error) { next(error); }
+  });
+
+  app.patch('/api/staff/submissions/:id/reject', requireAuth, requireStaff, async (req, res, next) => {
+    try {
+      const reason = String(req.body.reason || '').trim();
+      if (!reason || reason.length > 500) return res.status(400).json({ message: 'Enter a rejection reason (1–500 characters).' });
+      const [rows] = await pool.execute('SELECT s.student_id AS studentId, s.status, a.title FROM assignment_submissions s JOIN assignments a ON a.id = s.assignment_id WHERE s.id = ?', [req.params.id]);
+      if (!rows.length) return res.status(404).json({ message: 'Submission not found.' });
+      const [result] = await pool.execute("UPDATE assignment_submissions SET status = 'rejected', score = NULL, feedback = ?, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ? AND status <> 'rejected'", [reason, req.user.id, req.params.id]);
+      if (!result.affectedRows) return res.status(409).json({ message: 'This submission has already been rejected.' });
+      await notifyUser(pool, rows[0].studentId, { title: 'Assignment rejected', message: reason, emailMessage: `Your submission for “${rows[0].title}” was rejected. Reason: ${reason}`, category: 'review', actionTarget: 'Assignments' });
+      res.json({ message: 'Assignment rejected. The reason is available in the student portal; email delivery follows your email settings.' });
     } catch (error) { next(error); }
   });
 

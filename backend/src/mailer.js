@@ -123,6 +123,6 @@ export function sendStudentNotification(account, notification) {
   return send({
     to: account.email,
     subject: notification.title,
-    html: `<h2>${escapeHtml(notification.title)}</h2><p>Hello ${escapeHtml(account.fullName)},</p><p>${escapeHtml(notification.message)}</p><p>Sign in to your Livingworth Academy student portal to view the update.</p><p>Livingworth Academy</p>`
+    html: `<h2>${escapeHtml(notification.title)}</h2><p>Hello ${escapeHtml(account.fullName)},</p><p>${escapeHtml(notification.emailMessage || notification.message)}</p><p>Sign in to your Livingworth Academy student portal to view the update.</p><p>Livingworth Academy</p>`
   });
 }
