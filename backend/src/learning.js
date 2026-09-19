@@ -73,7 +73,7 @@ async function modulesFor(pool, studentId = null, staff = false) {
       const hasLearningWork = materials.length > 0 || assignments.length > 0;
       module.isComplete = hasLearningWork
         && materials.every(material => material.progressStatus === 'done')
-        && assignments.filter(assignment => assignment.assignmentType !== 'manual').every(assignment => Boolean(assignment.submissionId));
+        && assignments.filter(assignment => assignment.assignmentType !== 'manual').every(assignment => Boolean(assignment.closedAt || assignment.submissionId));
       visibleModules.push(module);
       if (!module.isComplete) break;
     }
