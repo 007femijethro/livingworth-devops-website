@@ -29,7 +29,7 @@ export default function AssignmentCard({ assignment: a, onSubmitted }) {
   const slots = a.uploadSlots || [];
   const selected = slots.length ? slots.flatMap(s => files[s.id] || []) : Object.values(files).flat();
   const oversized = selected.some(f => f.size > 15 * 1024 * 1024);
-  const labels = { rejected: 'Rejected', submitted: 'Awaiting final result', completed: 'Final result', needs_correction: 'Awaiting final result' };
+  const labels = { rejected: 'Rejected', submitted: 'Awaiting final result', completed: 'Final result', needs_correction: 'Awaiting final result', unavailable: 'Unavailable' };
   async function submit(event) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -47,13 +47,15 @@ export default function AssignmentCard({ assignment: a, onSubmitted }) {
     } catch (e) { setError(true); setMessage(e.message); } finally { setBusy(false); }
   }
   return <section className="student-assignment assignment-card">
-    <header className="assignment-title"><div><span>Practical assignment</span><h4>{a.title}</h4></div><b className={`work-status ${a.submissionStatus || 'not-started'}`}>{labels[a.submissionStatus] || 'Not submitted'}</b></header>
-    <div className="assignment-meta"><span>Due {new Date(a.dueAt).toLocaleString()}</span><span>{a.maxScore} points</span>{a.isLate && <b>Submitted late</b>}</div>
+    <header className="assignment-title"><div><span>{a.assignmentType === 'manual' ? 'Submit to mentor via DM' : 'Practical assignment'}</span><h4>{a.title}</h4></div><b className={`work-status ${a.submissionStatus || (a.closedAt ? 'closed' : 'not-started')}`}>{labels[a.submissionStatus] || (a.closedAt ? 'Closed' : 'Not submitted')}</b></header>
+    <div className="assignment-meta"><span>Due {new Date(a.dueAt).toLocaleString()}</span><span>{a.maxScore} points</span><span>{a.assignmentType === 'manual' ? 'DM submission' : 'Portal submission'}</span>{a.isLate && <b>Submitted late</b>}</div>
     <details open className="assignment-brief"><summary>Assignment instructions</summary><AssignmentMarkdown>{a.instructions}</AssignmentMarkdown></details>
-    {a.feedback && <aside className="mentor-feedback"><b>{a.submissionStatus === 'rejected' ? 'Rejection reason' : 'Mentor feedback'}</b><p>{a.feedback}</p>{a.score != null && <strong>{a.score} / {a.maxScore} points</strong>}</aside>}
+    {a.feedback && <aside className="mentor-feedback"><b>{a.submissionStatus === 'rejected' ? 'Rejection reason' : a.submissionStatus === 'unavailable' ? 'Result' : 'Mentor feedback'}</b><p>{a.feedback}</p>{a.score != null && <strong>{a.score} / {a.maxScore} points</strong>}</aside>}
     {a.submittedAt && <p>Last submitted: {new Date(a.submittedAt).toLocaleString()}</p>}
     <SubmissionFiles submission={a} id={a.submissionId} />
-    {!['completed', 'rejected'].includes(a.submissionStatus) && <form onSubmit={submit} className="assignment-submit-form">
+    {a.assignmentType === 'manual' && !['completed', 'unavailable'].includes(a.submissionStatus) && <aside className="assignment-manual-notice"><strong>Send this work directly to your mentor.</strong><p>Your mentor will record your score here after reviewing it. You do not need to upload anything in the portal.</p></aside>}
+    {a.assignmentType === 'portal' && a.closedAt && !['completed', 'rejected'].includes(a.submissionStatus) && <aside className="assignment-closed-notice"><strong>This assignment is closed.</strong><p>It is no longer accepting submissions. Contact your mentor if you need help.</p></aside>}
+    {a.assignmentType === 'portal' && !a.closedAt && !['completed', 'rejected', 'unavailable'].includes(a.submissionStatus) && <form onSubmit={submit} className="assignment-submit-form">
       <h4>{a.submissionId ? 'Update your submission' : 'Submit your work'}</h4>
       <p>{slots.length ? 'The requested file names show what your mentor expects. Upload any that are ready, or submit without attachments and add them later.' : 'You may add a link, attach up to five files, include both, or submit without attachments.'}{a.submissionId ? ' Resubmitting sends your work for a new review.' : ''}</p>
       <label>GitHub or project link<input name="submissionUrl" type="url" defaultValue={a.submissionUrl || ''} placeholder="https://github.com/your-project" /></label>

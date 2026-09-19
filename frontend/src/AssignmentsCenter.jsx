@@ -40,6 +40,47 @@ function AssignmentLeaderboard({ assignments, submissions }) {
   </section>;
 }
 
+function ManualResults({ assignment, students, submissions, request, reload, demo }) {
+  const existing = new Map(submissions.filter(item => Number(item.assignmentId) === Number(assignment.id)).map(item => [Number(item.studentId), item]));
+  const initialRows = () => Object.fromEntries(students.map(student => {
+    const result = existing.get(Number(student.id));
+    return [student.id, { outcome: result?.status === 'completed' ? 'scored' : result?.status === 'unavailable' ? 'unavailable' : 'pending', score: result?.score ?? '', feedback: result?.feedback || '' }];
+  }));
+  const [rows, setRows] = useState(initialRows);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  useEffect(() => { setRows(initialRows()); }, [assignment.id, students.length, submissions]);
+  function update(studentId, field, value) { setRows(current => ({ ...current, [studentId]: { ...current[studentId], [field]: value } })); }
+  function markRemainingUnavailable() {
+    setRows(current => Object.fromEntries(Object.entries(current).map(([id, row]) => [id, row.outcome === 'pending' ? { ...row, outcome: 'unavailable', score: '' } : row])));
+  }
+  async function save(event) {
+    event.preventDefault();
+    const results = students.filter(student => rows[student.id]?.outcome !== 'pending').map(student => ({ studentId: student.id, ...rows[student.id] }));
+    if (!results.length) { setMessage('Enter a score or mark at least one student unavailable.'); return; }
+    setBusy(true); setMessage('');
+    try {
+      const data = await request(`/staff/learning/assignments/${assignment.id}/manual-results`, { method: 'PUT', body: JSON.stringify({ results }) });
+      setMessage(data.message); await reload();
+    } catch (error) { setMessage(error.message); } finally { setBusy(false); }
+  }
+  return <details className="manual-results"><summary>Enter DM scores ({existing.size}/{students.length} recorded)</summary>
+    <form onSubmit={save}>
+      <div className="manual-results-actions"><p>Choose Scored for work received in your DM. Choose Unavailable when the student did not submit.</p><button type="button" className="button light-border" onClick={markRemainingUnavailable}>Mark remaining unavailable</button></div>
+      <div className="manual-results-table">
+        {students.map(student => <div className="manual-result-row" key={student.id}>
+          <div><strong>{student.fullName}</strong><small>{student.email}</small></div>
+          <label>Result<select value={rows[student.id]?.outcome || 'pending'} onChange={event => update(student.id, 'outcome', event.target.value)}><option value="pending">Not recorded</option><option value="scored">Scored</option><option value="unavailable">Unavailable</option></select></label>
+          <label>Score<input type="number" min="0" max={assignment.maxScore} value={rows[student.id]?.score ?? ''} disabled={rows[student.id]?.outcome !== 'scored'} required={rows[student.id]?.outcome === 'scored'} onChange={event => update(student.id, 'score', event.target.value)} placeholder={`/${assignment.maxScore}`} /></label>
+          <label>Feedback<input value={rows[student.id]?.feedback || ''} onChange={event => update(student.id, 'feedback', event.target.value)} placeholder="Optional feedback" /></label>
+        </div>)}
+      </div>
+      {message && <p role="status">{message}</p>}
+      <button className="button primary" disabled={busy || demo}>{busy ? 'Saving…' : 'Save recorded results'}</button>
+    </form>
+  </details>;
+}
+
 export default function AssignmentsCenter({ staff = false, demo = false }) {
   const [modules, setModules] = useState([]);
   const [submissions, setSubmissions] = useState([]);
@@ -53,6 +94,8 @@ export default function AssignmentsCenter({ staff = false, demo = false }) {
   const [search, setSearch] = useState('');
   const [assignmentFilter, setAssignmentFilter] = useState('');
   const [scoreSummary, setScoreSummary] = useState(null);
+  const [students, setStudents] = useState([]);
+  const [createType, setCreateType] = useState('portal');
   async function request(path, options = {}) {
     const response = await fetch(`/api${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('lw_token')}` } });
     const data = await response.json();
@@ -62,15 +105,16 @@ export default function AssignmentsCenter({ staff = false, demo = false }) {
   }
   async function load() {
     if (demo) { setLoading(false); return; }
-    try { const data = await request(staff ? '/staff/learning' : '/student/learning'); setModules(data.modules); setSubmissions(data.submissions || []); setScoreSummary(data.scoreSummary || null); }
+    try { const data = await request(staff ? '/staff/learning' : '/student/learning'); setModules(data.modules); setSubmissions(data.submissions || []); setScoreSummary(data.scoreSummary || null); setStudents(data.students || []); }
     catch (error) { setMessage(error.message); } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, [staff, demo]);
   const assignments = modules.flatMap(m => m.assignments.map(a => ({ ...a, moduleId: m.id, weekNumber: m.weekNumber, published: m.published })));
   const query = search.trim().toLowerCase();
   const visible = assignments.filter(a => (!week || String(a.moduleId) === week) && (!query || a.title.toLowerCase().includes(query)));
-  const awaiting = submissions.filter(s => !['completed', 'rejected'].includes(s.status)).length;
-  const filteredSubmissions = submissions.filter(s => (!status || (status === 'awaiting' ? !['completed', 'rejected'].includes(s.status) : s.status === status)) && (!assignmentFilter || String(s.assignmentId) === assignmentFilter) && (!query || `${s.studentName} ${s.email} ${s.assignmentTitle}`.toLowerCase().includes(query)));
+  const portalSubmissions = submissions.filter(s => s.assignmentType !== 'manual');
+  const awaiting = portalSubmissions.filter(s => !['completed', 'rejected'].includes(s.status)).length;
+  const filteredSubmissions = portalSubmissions.filter(s => (!status || (status === 'awaiting' ? !['completed', 'rejected'].includes(s.status) : s.status === status)) && (!assignmentFilter || String(s.assignmentId) === assignmentFilter) && (!query || `${s.studentName} ${s.email} ${s.assignmentTitle}`.toLowerCase().includes(query)));
   function changeView(next) { setView(next); setSearch(''); }
   async function save(event, path, method) {
     event.preventDefault(); const form = event.currentTarget;
@@ -81,12 +125,17 @@ export default function AssignmentsCenter({ staff = false, demo = false }) {
     catch (error) { setMessage(error.message); } finally { setBusy(false); }
   }
   function localDate(value) { const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
+  async function toggleClosed(assignment) {
+    setBusy(true); setMessage('');
+    try { const data = await request(`/staff/learning/assignments/${assignment.id}/status`, { method: 'PATCH', body: JSON.stringify({ closed: !assignment.closedAt }) }); setMessage(data.message); await load(); }
+    catch (error) { setMessage(error.message); } finally { setBusy(false); }
+  }
   return <section className="learning-center assignments-center">
     <div className="learning-head"><div><p className="eyebrow">Assignment workspace</p><h2>{staff ? 'Manage assignments' : 'My assignments'}</h2><p>{staff ? 'Create weekly tasks, update instructions and review student submissions.' : 'Find your tasks, submit your work and see mentor feedback. More assignments unlock as you complete each week.'}</p></div></div>
     {demo && <p>Assignment management is unavailable in offline preview.</p>}
     {message && <p role="status">{message}</p>}
     {!loading && staff && <div className="assignment-overview"><div><span>Assignments</span><strong>{assignments.length}</strong></div><div><span>Awaiting review</span><strong>{awaiting}</strong></div><div><span>Published results</span><strong>{submissions.filter(s => s.status === 'completed').length}</strong></div></div>}
-    {staff && <div className="learning-tabs" aria-label="Assignment sections"><button onClick={() => changeView('assignments')} className={view === 'assignments' ? 'active' : ''}>Assignments ({assignments.length})</button><button onClick={() => changeView('reviews')} className={view === 'reviews' ? 'active' : ''}>Submissions ({submissions.filter(s => !['completed', 'rejected'].includes(s.status)).length} awaiting final result)</button><button onClick={() => changeView('leaderboard')} className={view === 'leaderboard' ? 'active' : ''}>Leaderboard</button></div>}
+    {staff && <div className="learning-tabs" aria-label="Assignment sections"><button onClick={() => changeView('assignments')} className={view === 'assignments' ? 'active' : ''}>Assignments ({assignments.length})</button><button onClick={() => changeView('reviews')} className={view === 'reviews' ? 'active' : ''}>Submissions ({awaiting} awaiting final result)</button><button onClick={() => changeView('leaderboard')} className={view === 'leaderboard' ? 'active' : ''}>Leaderboard</button></div>}
     {view !== 'leaderboard' && <label className="assignment-search">{view === 'reviews' ? 'Search students or assignments' : 'Search assignments'}<input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder={view === 'reviews' ? 'Student name, email or assignment…' : 'Find an assignment…'} /></label>}
     {!staff && !loading && scoreSummary && <section className="assignment-score-summary" aria-labelledby="assignment-score-heading">
       <div className="assignment-score-heading"><div><p className="eyebrow">My performance</p><h3 id="assignment-score-heading">Overall assignment score</h3></div><strong>{scoreSummary.percentage == null ? '—' : `${scoreSummary.percentage}%`}</strong></div>
@@ -99,10 +148,10 @@ export default function AssignmentsCenter({ staff = false, demo = false }) {
       {!scoreSummary.gradedCount && <p>Your overall score will appear after your mentor publishes your first final result.</p>}
     </section>}
     {loading ? <p role="status">Loading assignments…</p> : view === 'assignments' ? <>
-      {staff && <details className="assignment-card"><summary>Create assignment</summary><form className="assignment-submit-form" onSubmit={e => save(e, null, 'POST')}><label>Week<select name="moduleId" required><option value="">Choose a week</option>{modules.map(m => <option key={m.id} value={m.id}>Week {m.weekNumber} · {m.title}{m.published ? '' : ' (draft)'}</option>)}</select></label><label>Title<input name="title" required maxLength="180" /></label><AssignmentInstructions /><UploadSlots /><label>Deadline (your local time)<input name="dueAt" type="datetime-local" required /></label><label>Maximum points<input name="maxScore" type="number" min="1" max="1000" defaultValue="100" required /></label><button className="button primary" disabled={busy || demo || !modules.length}>{busy ? 'Saving…' : 'Create assignment'}</button>{!modules.length && <p>Create a week in Learning first.</p>}</form></details>}
+      {staff && <details className="assignment-card"><summary>Create assignment</summary><form className="assignment-submit-form" onSubmit={e => save(e, null, 'POST')}><label>Assignment type<select name="assignmentType" value={createType} onChange={e => setCreateType(e.target.value)}><option value="portal">Portal submission — student uploads work here</option><option value="manual">DM submission — mentor records every result</option></select></label><label>Week<select name="moduleId" required><option value="">Choose a week</option>{modules.map(m => <option key={m.id} value={m.id}>Week {m.weekNumber} · {m.title}{m.published ? '' : ' (draft)'}</option>)}</select></label><label>Title<input name="title" required maxLength="180" /></label><AssignmentInstructions />{createType === 'portal' && <UploadSlots />}<label>Deadline (your local time)<input name="dueAt" type="datetime-local" required /></label><label>Maximum points<input name="maxScore" type="number" min="1" max="1000" defaultValue="100" required /></label>{createType === 'manual' && <p>Students will be told to submit this work through DM. Afterward, open this assignment and record each student as Scored or Unavailable.</p>}<button className="button primary" disabled={busy || demo || !modules.length}>{busy ? 'Saving…' : 'Create assignment'}</button>{!modules.length && <p>Create a week in Learning first.</p>}</form></details>}
       <label className="assignment-filter">Filter by week<select value={week} onChange={e => setWeek(e.target.value)}><option value="">All available weeks</option>{modules.map(m => <option key={m.id} value={m.id}>Week {m.weekNumber} · {m.title}</option>)}</select></label>
       {!visible.length && <p className="empty">No assignments available for this selection.</p>}
-      {visible.map(a => <div key={a.id}><p className="eyebrow">Week {a.weekNumber}{staff && !a.published ? ' · Draft week' : ''}</p>{staff ? <article className="assignment-card"><h3>{a.title}</h3><p>Due {new Date(a.dueAt).toLocaleString()} · {a.maxScore} points</p>{editing === a.id ? <form className="assignment-submit-form" onSubmit={e => save(e, `/staff/learning/assignments/${a.id}`, 'PATCH')}><label>Title<input name="title" defaultValue={a.title} required /></label><AssignmentInstructions defaultValue={a.instructions} /><UploadSlots defaultValue={a.uploadSlots || []} /><label>Deadline (your local time)<input name="dueAt" type="datetime-local" defaultValue={localDate(a.dueAt)} required /></label><label>Maximum points<input name="maxScore" type="number" min="1" max="1000" defaultValue={a.maxScore} required /></label><button className="button primary" disabled={busy || demo}>Save changes</button><button type="button" className="button light-border" disabled={busy} onClick={() => setEditing(null)}>Cancel</button></form> : <><details className="assignment-brief"><summary>Read instructions</summary><AssignmentMarkdown>{a.instructions}</AssignmentMarkdown></details><button className="button primary" disabled={demo} onClick={() => setEditing(a.id)}>Edit assignment</button></>}</article> : <AssignmentCard assignment={a} onSubmitted={load} />}</div>)}
+      {visible.map(a => <div key={a.id}><p className="eyebrow">Week {a.weekNumber}{staff && !a.published ? ' · Draft week' : ''}</p>{staff ? <article className="assignment-card"><div className="assignment-admin-heading"><div><h3>{a.title}</h3><p>Due {new Date(a.dueAt).toLocaleString()} · {a.maxScore} points</p></div><div><span className="assignment-type-badge">{a.assignmentType === 'manual' ? 'DM / manual score' : 'Portal submission'}</span><span className={`work-status ${a.closedAt ? 'closed' : 'open'}`}>{a.closedAt ? 'Closed' : 'Open'}</span></div></div>{editing === a.id ? <form className="assignment-submit-form" onSubmit={e => save(e, `/staff/learning/assignments/${a.id}`, 'PATCH')}><label>Title<input name="title" defaultValue={a.title} required /></label><AssignmentInstructions defaultValue={a.instructions} />{a.assignmentType === 'portal' && <UploadSlots defaultValue={a.uploadSlots || []} />}<label>Deadline (your local time)<input name="dueAt" type="datetime-local" defaultValue={localDate(a.dueAt)} required /></label><label>Maximum points<input name="maxScore" type="number" min="1" max="1000" defaultValue={a.maxScore} required /></label><button className="button primary" disabled={busy || demo}>Save changes</button><button type="button" className="button light-border" disabled={busy} onClick={() => setEditing(null)}>Cancel</button></form> : <><details className="assignment-brief"><summary>Read instructions</summary><AssignmentMarkdown>{a.instructions}</AssignmentMarkdown></details><div className="assignment-admin-actions"><button className="button primary" disabled={demo} onClick={() => setEditing(a.id)}>Edit assignment</button><button className="button light-border" disabled={busy || demo} onClick={() => toggleClosed(a)}>{a.closedAt ? 'Reopen assignment' : 'Close assignment'}</button></div>{a.assignmentType === 'manual' && <ManualResults assignment={a} students={students} submissions={submissions} request={request} reload={load} demo={demo} />}</>}</article> : <AssignmentCard assignment={a} onSubmitted={load} />}</div>)}
     </> : view === 'reviews' ? <>
       <div className="assignment-toolbar"><label className="assignment-filter">Assignment<select value={assignmentFilter} onChange={e => setAssignmentFilter(e.target.value)}><option value="">All assignments</option>{assignments.map(a => <option key={a.id} value={a.id}>Week {a.weekNumber} · {a.title}</option>)}</select></label><label className="assignment-filter">Result status<select value={status} onChange={e => setStatus(e.target.value)}><option value="">All submissions</option><option value="awaiting">Awaiting final result</option><option value="completed">Final result published</option><option value="rejected">Rejected</option></select></label></div><p className="assignment-result-count" role="status">{filteredSubmissions.length} submission{filteredSubmissions.length === 1 ? '' : 's'} shown</p>
       {!filteredSubmissions.length && <p className="empty">No submissions match this status.</p>}

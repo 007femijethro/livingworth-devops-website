@@ -56,6 +56,7 @@ async function modulesFor(pool, studentId = null, staff = false) {
     const [assignments] = studentId
       ? await pool.execute(
           `SELECT a.id, a.title, a.instructions, a.due_at AS dueAt, a.max_score AS maxScore, a.upload_slots AS uploadSlots,
+            a.assignment_type AS assignmentType, a.closed_at AS closedAt,
             s.id AS submissionId, s.submission_url AS submissionUrl, s.note AS submissionNote, s.file_name AS fileName, s.files,
             s.status AS submissionStatus, s.score, s.feedback, s.submitted_at AS submittedAt,
             CASE WHEN s.id IS NOT NULL AND s.submitted_at > a.due_at THEN TRUE ELSE FALSE END AS isLate
@@ -63,7 +64,7 @@ async function modulesFor(pool, studentId = null, staff = false) {
            WHERE a.module_id = ? ORDER BY a.display_order, a.due_at, a.id`, [studentId, module.id]
         )
       : await pool.execute(
-          'SELECT id, title, instructions, due_at AS dueAt, max_score AS maxScore, upload_slots AS uploadSlots FROM assignments WHERE module_id = ? ORDER BY display_order, due_at, id',
+          'SELECT id, title, instructions, due_at AS dueAt, max_score AS maxScore, upload_slots AS uploadSlots, assignment_type AS assignmentType, closed_at AS closedAt FROM assignments WHERE module_id = ? ORDER BY display_order, due_at, id',
           [module.id]
         );
     module.materials = materials;
@@ -72,7 +73,7 @@ async function modulesFor(pool, studentId = null, staff = false) {
       const hasLearningWork = materials.length > 0 || assignments.length > 0;
       module.isComplete = hasLearningWork
         && materials.every(material => material.progressStatus === 'done')
-        && assignments.every(assignment => Boolean(assignment.submissionId));
+        && assignments.filter(assignment => assignment.assignmentType !== 'manual').every(assignment => Boolean(assignment.submissionId));
       visibleModules.push(module);
       if (!module.isComplete) break;
     }
@@ -86,7 +87,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       if (req.user.role === 'student') {
         const modules = await modulesFor(pool, req.user.id);
         const count = modules.flatMap(module => module.assignments)
-          .filter(assignment => !assignment.submissionId).length;
+          .filter(assignment => assignment.assignmentType !== 'manual' && !assignment.closedAt && !assignment.submissionId).length;
         return res.json({ count });
       }
       if (!['admin', 'mentor'].includes(req.user.role)) return res.status(403).json({ message: 'Access denied.' });
@@ -98,25 +99,33 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
     try {
       if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
       const modules = await modulesFor(pool, req.user.id, false);
-      const [publishedResult, scoreResult] = await Promise.all([
+      const [publishedResult, scoreResult, progressResult] = await Promise.all([
         pool.query('SELECT COUNT(*) AS total FROM learning_modules WHERE published = TRUE'),
         pool.execute(`SELECT COUNT(*) AS gradedCount,
           COALESCE(SUM(s.score), 0) AS earnedPoints,
           COALESCE(SUM(a.max_score), 0) AS possiblePoints
           FROM assignment_submissions s
           JOIN assignments a ON a.id = s.assignment_id
-          WHERE s.student_id = ? AND s.status = 'completed' AND s.score IS NOT NULL`, [req.user.id])
+          JOIN learning_modules m ON m.id = a.module_id
+          WHERE s.student_id = ? AND s.status = 'completed' AND s.score IS NOT NULL AND m.published = TRUE`, [req.user.id]),
+        pool.execute(`SELECT COUNT(a.id) AS total,
+          COALESCE(SUM(CASE WHEN s.status = 'completed' THEN 1 ELSE 0 END), 0) AS completed,
+          COALESCE(SUM(CASE WHEN s.status = 'unavailable' THEN 1 ELSE 0 END), 0) AS unavailable
+          FROM assignments a JOIN learning_modules m ON m.id = a.module_id
+          LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.student_id = ?
+          WHERE m.published = TRUE`, [req.user.id])
       ]);
       const published = publishedResult[0][0];
       const scoreRow = scoreResult[0][0];
-      const assignments = modules.flatMap(module => module.assignments);
-      const completed = assignments.filter(assignment => assignment.submissionStatus === 'completed').length;
+      const progressRow = progressResult[0][0];
+      const total = Number(progressRow.total || 0);
+      const completed = Number(progressRow.completed || 0);
       const earnedPoints = Number(scoreRow.earnedPoints || 0);
       const possiblePoints = Number(scoreRow.possiblePoints || 0);
       res.json({
         modules,
         lockedWeeks: Math.max(0, Number(published.total) - modules.length),
-        progress: { completed, total: assignments.length, percentage: assignments.length ? Math.round(completed / assignments.length * 100) : 0 },
+        progress: { completed, total, unavailable: Number(progressRow.unavailable || 0), percentage: total ? Math.round(completed / total * 100) : 0 },
         scoreSummary: {
           gradedCount: Number(scoreRow.gradedCount || 0),
           earnedPoints,
@@ -132,7 +141,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const modules = await modulesFor(pool, null, true);
       const [submissions] = await pool.query(`SELECT s.id, s.assignment_id AS assignmentId, s.student_id AS studentId,
         u.full_name AS studentName, u.email, s.submission_url AS submissionUrl, s.note, s.status, s.score, s.file_name AS fileName, s.files,
-        s.feedback, s.submitted_at AS submittedAt, a.title AS assignmentTitle, a.due_at AS dueAt,
+        s.feedback, s.submitted_at AS submittedAt, a.title AS assignmentTitle, a.due_at AS dueAt, a.assignment_type AS assignmentType,
         CASE WHEN s.submitted_at > a.due_at THEN TRUE ELSE FALSE END AS isLate
         FROM assignment_submissions s JOIN users u ON u.id = s.student_id JOIN assignments a ON a.id = s.assignment_id
         ORDER BY CASE WHEN s.status IN ('submitted', 'needs_correction') THEN 1 ELSE 2 END, s.submitted_at DESC`);
@@ -144,7 +153,8 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
         LEFT JOIN material_progress mp ON mp.student_id = u.id AND mp.material_id = lm.id
         WHERE u.role = 'student' AND u.status = 'approved'
         ORDER BY u.full_name, m.display_order, lm.display_order`);
-      res.json({ modules, submissions, materialProgress });
+      const [students] = await pool.query("SELECT id, full_name AS fullName, email FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name, id");
+      res.json({ modules, submissions, materialProgress, students });
     } catch (error) { next(error); }
   });
 
@@ -231,6 +241,54 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
     } catch (error) { next(error); }
   });
 
+  app.patch('/api/staff/learning/assignments/:id/status', requireAuth, requireStaff, async (req, res, next) => {
+    try {
+      if (typeof req.body.closed !== 'boolean') return res.status(400).json({ message: 'Choose whether the assignment is open or closed.' });
+      const [result] = await pool.execute('UPDATE assignments SET closed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id = ?', [req.body.closed, req.params.id]);
+      if (!result.affectedRows) return res.status(404).json({ message: 'Assignment not found.' });
+      res.json({ message: req.body.closed ? 'Assignment closed. Students can no longer submit it.' : 'Assignment reopened for students.' });
+    } catch (error) { next(error); }
+  });
+
+  app.put('/api/staff/learning/assignments/:id/manual-results', requireAuth, requireStaff, async (req, res, next) => {
+    const connection = await pool.getConnection();
+    try {
+      const [assignments] = await connection.execute('SELECT title, max_score AS maxScore, assignment_type AS assignmentType FROM assignments WHERE id = ?', [req.params.id]);
+      const assignment = assignments[0];
+      if (!assignment) return res.status(404).json({ message: 'Assignment not found.' });
+      if (assignment.assignmentType !== 'manual') return res.status(409).json({ message: 'Manual results are only available for DM assignments.' });
+      const results = Array.isArray(req.body.results) ? req.body.results : [];
+      if (!results.length) return res.status(400).json({ message: 'Add at least one student result.' });
+      const ids = results.map(result => Number(result.studentId));
+      if (ids.some(id => !Number.isInteger(id) || id < 1) || new Set(ids).size !== ids.length) return res.status(400).json({ message: 'Choose valid students.' });
+      const placeholders = ids.map(() => '?').join(',');
+      const [students] = await connection.execute(`SELECT id FROM users WHERE role = 'student' AND status = 'approved' AND id IN (${placeholders})`, ids);
+      if (students.length !== ids.length) return res.status(400).json({ message: 'One or more students are not approved students.' });
+      const normalized = results.map(result => {
+        const outcome = result.outcome === 'unavailable' ? 'unavailable' : result.outcome === 'scored' ? 'completed' : '';
+        const score = outcome === 'completed' ? Number.parseInt(result.score, 10) : null;
+        if (!outcome || (outcome === 'completed' && (!Number.isInteger(score) || score < 0 || score > Number(assignment.maxScore)))) throw new Error(`Scores must be between 0 and ${assignment.maxScore}, or marked unavailable.`);
+        const feedback = String(result.feedback || '').trim().slice(0, 1000) || (outcome === 'completed' ? 'Result recorded by your mentor for work submitted via DM.' : 'No work was received for this assignment.');
+        return { studentId: Number(result.studentId), status: outcome, score, feedback };
+      });
+      await connection.beginTransaction();
+      for (const result of normalized) {
+        await connection.execute(`INSERT INTO assignment_submissions
+          (assignment_id, student_id, submission_url, note, status, score, feedback, reviewed_at, reviewed_by)
+          VALUES (?, ?, '', 'Submitted directly to mentor', ?, ?, ?, CURRENT_TIMESTAMP, ?)
+          ON CONFLICT (assignment_id, student_id) DO UPDATE SET status = EXCLUDED.status, score = EXCLUDED.score,
+          feedback = EXCLUDED.feedback, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = EXCLUDED.reviewed_by`,
+          [req.params.id, result.studentId, result.status, result.score, result.feedback, req.user.id]);
+      }
+      await connection.commit();
+      res.json({ message: `${normalized.length} manual result${normalized.length === 1 ? '' : 's'} saved.` });
+    } catch (error) {
+      await connection.rollback();
+      if (error.message.startsWith('Scores must')) return res.status(400).json({ message: error.message });
+      next(error);
+    } finally { connection.release(); }
+  });
+
   app.patch('/api/staff/learning/order', requireAuth, requireStaff, async (req, res, next) => {
     const tables = { modules: 'learning_modules', materials: 'learning_materials', assignments: 'assignments' };
     const table = tables[req.body.entity];
@@ -293,12 +351,14 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
   app.post('/api/staff/learning/modules/:id/assignments', requireAuth, requireStaff, async (req, res, next) => {
     try {
       const title = String(req.body.title || '').trim();
-      const instructions = String(req.body.instructions || '').trim();
+      const assignmentType = req.body.assignmentType === 'manual' ? 'manual' : 'portal';
+      const instructions = String(req.body.instructions || '').trim() || (assignmentType === 'manual' ? 'Submit this assignment directly to your mentor through DM.' : '');
       const dueAt = String(req.body.dueAt || '');
       const maxScore = Math.min(1000, Math.max(1, Number.parseInt(req.body.maxScore, 10) || 100));
       if (!title || !instructions || !dueAt) return res.status(400).json({ message: 'Add a title, instructions and deadline.' });
-      const slots = readSlots(req, res); if (!slots) return;
-      await pool.execute('INSERT INTO assignments (module_id, title, instructions, due_at, max_score, created_by, upload_slots, display_order) SELECT ?, ?, ?, ?, ?, ?, ?::jsonb, COALESCE(MAX(display_order), 0) + 1 FROM assignments WHERE module_id = ?', [req.params.id, title, instructions, dueAt, maxScore, req.user.id, JSON.stringify(slots), req.params.id]);
+      const slots = assignmentType === 'portal' ? readSlots(req, res) : [];
+      if (!slots) return;
+      await pool.execute('INSERT INTO assignments (module_id, title, instructions, due_at, max_score, created_by, upload_slots, assignment_type, display_order) SELECT ?, ?, ?, ?, ?, ?, ?::jsonb, ?, COALESCE(MAX(display_order), 0) + 1 FROM assignments WHERE module_id = ?', [req.params.id, title, instructions, dueAt, maxScore, req.user.id, JSON.stringify(slots), assignmentType, req.params.id]);
       await notifyStudents(pool, { title: `New assignment: ${title}`, message: `A new assignment is due ${new Date(dueAt).toLocaleString('en-GB')}.`, category: 'assignment', actionTarget: 'Learning' });
       res.status(201).json({ message: 'Assignment created.' });
     } catch (error) { next(error); }
@@ -330,6 +390,8 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const [previous] = await pool.execute('SELECT file_path AS filePath, file_name AS fileName, files, status FROM assignment_submissions WHERE assignment_id = ? AND student_id = ?', [req.params.id, req.user.id]);
       if (['completed', 'rejected'].includes(previous[0]?.status)) return res.status(409).json({ message: 'This assignment already has a final result and can no longer be changed.' });
       const assignment = modules.flatMap(m => m.assignments).find(a => Number(a.id) === Number(req.params.id));
+      if (assignment.assignmentType === 'manual') return res.status(409).json({ message: 'This assignment must be submitted directly to your mentor.' });
+      if (assignment.closedAt) return res.status(409).json({ message: 'This assignment is closed and no longer accepts submissions.' });
       const slots = assignment.uploadSlots || [];
       let files;
       if (slots.length) {

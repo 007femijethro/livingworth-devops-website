@@ -1470,7 +1470,7 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
     module.assignments.map((assignment) => ({ ...assignment, moduleTitle: module.title, weekNumber: module.weekNumber })),
   ) || [];
   const outstanding = assignments
-    .filter((assignment) => assignment.submissionStatus !== "completed")
+    .filter((assignment) => assignment.assignmentType === "portal" && !assignment.closedAt && !["completed", "rejected", "unavailable"].includes(assignment.submissionStatus))
     .sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt));
   const quizAverage = data.quizzes?.length
     ? Math.round(data.quizzes.reduce((total, quiz) => total + Number(quiz.percentage || 0), 0) / data.quizzes.length)
@@ -1487,7 +1487,7 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
         {data.announcements.announcements[0] && <button className="dashboard-announcement" onClick={() => onNavigate("Announcements")}><span>{data.announcements.announcements[0].category}</span><div><strong>{data.announcements.announcements[0].title}</strong><p>{data.announcements.announcements[0].message}</p></div><b>View update</b></button>}
         <div className="progress-metrics">
           <button onClick={() => onNavigate("Attendance")}><span>Attendance</span><strong>{data.attendance.summary.percentage}%</strong><small>{data.attendance.summary.attended} of {data.attendance.summary.total} counted sessions</small></button>
-          <button onClick={() => onNavigate("Assignments")}><span>Assignments</span><strong>{data.learning.progress.percentage}%</strong><small>{data.learning.progress.completed} of {data.learning.progress.total} completed</small></button>
+          <button onClick={() => onNavigate("Assignments")}><span>Assignments completed</span><strong>{data.learning.progress.completed}/{data.learning.progress.total}</strong><small>Overall score: {data.learning.scoreSummary.percentage == null ? "Awaiting results" : `${data.learning.scoreSummary.percentage}%`}</small></button>
           <button onClick={() => onNavigate("Live quiz")}><span>Quiz average</span><strong>{quizAverage}%</strong><small>{data.quizzes.length} completed attempt{data.quizzes.length === 1 ? "" : "s"}</small></button>
           <article><span>Next class</span><strong>{nextClass ? new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Lagos" }).format(nextClass) : "—"}</strong><small>8:00 p.m. GMT+1</small></article>
         </div>
