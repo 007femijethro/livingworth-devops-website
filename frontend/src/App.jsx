@@ -1283,9 +1283,12 @@ function MaterialFields({ initialType = "link", material = null, resourceRequire
 }
 
 function StudentMaterial({ material, onProgress }) {
+  function markOpened() {
+    if ((material.progressStatus || "not_started") === "not_started") onProgress(material.id, "in_progress");
+  }
   const content = material.materialType === "note"
-    ? <details className="student-lesson-note"><summary><span><small>Lesson note</small><b>{material.title}</b></span><strong>View lesson note</strong></summary><div>{material.lessonContent}</div></details>
-    : <a className={youtubeThumbnail(material.resourceUrl) ? "video-material" : ""} href={material.resourceUrl} target="_blank" rel="noreferrer">{youtubeThumbnail(material.resourceUrl) ? <img src={youtubeThumbnail(material.resourceUrl)} alt="" /> : <b>{material.materialType === "video" ? "▶" : "↗"}</b>}<span>{material.title}<small>{material.originalName || material.materialType}</small></span></a>;
+    ? <details className="student-lesson-note" onToggle={(event) => { if (event.currentTarget.open) markOpened(); }}><summary><span><small>Lesson note</small><b>{material.title}</b></span><strong>View lesson note</strong></summary><div>{material.lessonContent}</div></details>
+    : <a className={youtubeThumbnail(material.resourceUrl) ? "video-material" : ""} href={material.resourceUrl} target="_blank" rel="noreferrer" onClick={markOpened}>{youtubeThumbnail(material.resourceUrl) ? <img src={youtubeThumbnail(material.resourceUrl)} alt="" /> : <b>{material.materialType === "video" ? "▶" : "↗"}</b>}<span>{material.title}<small>{material.originalName || material.materialType}</small></span></a>;
   return <div className={`material-with-progress ${material.progressStatus}`}>{content}<label>My progress<select value={material.progressStatus || "not_started"} onChange={(event) => onProgress(material.id, event.target.value)}><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="done">Done</option></select></label></div>;
 }
 
