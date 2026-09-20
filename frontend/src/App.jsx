@@ -936,9 +936,9 @@ function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forc
   }, [role, active, forceSecurity]);
   const items = forceSecurity ? ["Security"] :
     role === "admin"
-      ? ["Overview", "Applications", "Students", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
+      ? ["Overview", "Applications", "Students", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
       : role === "mentor"
-        ? ["Overview", "Students", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
+        ? ["Overview", "Students", "Leaderboard", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
         : ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Attendance", "Live quiz", "Security"];
   return (
     <aside className="sidebar" aria-label={`${role} portal navigation`}>
@@ -1846,7 +1846,7 @@ function QuizResults({ mode, onLive }) {
     } catch (error) { setMessage(error.message); }
     finally { setDeletingAttemptId(null); }
   }
-  if (selected) return <section className="quiz-results"><div className="quiz-mode-tabs"><button onClick={() => setSelected(null)}>← Quiz history</button></div><div className="result-detail-head"><div><p className="eyebrow">Answer review</p><h2>{selected.title}</h2><p>Attempt {selected.attemptNo} · {selected.correctCount}/{selected.totalQuestions} correct · Average response {(selected.averageResponseMs / 1000).toFixed(1)}s</p></div><strong>{Math.round(selected.correctCount * 100 / selected.totalQuestions)}%</strong></div><div className="answer-review">{selected.answers.map((answer) => <article key={answer.sequenceNo} className={answer.isCorrect ? "right" : "wrong"}><div><span>Question {answer.sequenceNo} · {answer.materialTitle}</span><h3>{answer.prompt}</h3></div><p>Your answer: <b>{answer.options[answer.answerIndex]}</b></p><p>Correct answer: <b>{answer.options[answer.correctIndex]}</b></p><small>{(answer.responseMs / 1000).toFixed(1)} seconds</small></article>)}</div></section>;
+  if (selected) return <section className="quiz-results"><div className="quiz-mode-tabs"><button onClick={() => setSelected(null)}>← Quiz history</button></div><div className="result-detail-head"><div><p className="eyebrow">Answer review</p><h2>{selected.title}</h2><p>Attempt {selected.attemptNo} · {selected.correctCount}/{selected.totalQuestions} correct · Average response {(selected.averageResponseMs / 1000).toFixed(1)}s</p></div><strong>{Math.round(selected.correctCount * 100 / selected.totalQuestions)}/100</strong></div><div className="answer-review">{selected.answers.map((answer) => <article key={answer.sequenceNo} className={answer.isCorrect ? "right" : "wrong"}><div><span>Question {answer.sequenceNo} · {answer.materialTitle}</span><h3>{answer.prompt}</h3></div><p>Your answer: <b>{answer.options[answer.answerIndex]}</b></p><p>Correct answer: <b>{answer.options[answer.correctIndex]}</b></p><small>{(answer.responseMs / 1000).toFixed(1)} seconds</small></article>)}</div></section>;
   return <section className="quiz-results">
     <div className="quiz-mode-tabs"><button onClick={onLive}>Live quiz</button><button className="active">Results & history</button></div>
     <div className="quiz-heading"><div><p className="eyebrow">Quiz performance</p><h2>{staff ? "Class results and insights" : "My quiz history"}</h2></div>{staff && <button className="button light-border" onClick={exportResults}>Export CSV</button>}</div>
@@ -1854,11 +1854,11 @@ function QuizResults({ mode, onLive }) {
     {staff ? <>
       <form className="quiz-result-filters" onSubmit={(event) => { event.preventDefault(); load(); }}><label>Quiz<select value={quizId} onChange={(event) => setQuizId(event.target.value)}><option value="">All quizzes</option>{quizzes.map((quiz) => <option key={quiz.id} value={quiz.id}>{quiz.title}</option>)}</select></label><label>Student<input value={student} onChange={(event) => setStudent(event.target.value)} placeholder="Name or email" /></label><button className="button primary">Search</button></form>
       <div className="quiz-result-metrics">{[["Students", results.summary.participants || 0], ["Attempts", results.summary.attempts || 0], ["Class average", `${results.summary.average || 0}%`], ["Pass rate", `${results.summary.passRate || 0}%`], ["Highest", `${results.summary.highest || 0}%`], ["Unanswered", results.summary.unanswered || 0]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}</div>
-      {results.leaderboard?.length > 0 && <div className="leaderboard result-leaderboard"><h3>Class leaderboard</h3>{results.leaderboard.map((attempt, index) => <div key={attempt.id}><b>#{index + 1}</b><span>{attempt.studentName}</span><span className="leaderboard-result"><small>{attempt.correctCount}/{attempt.totalQuestions} correct · {attempt.percentage}%</small><strong>{Number(attempt.score || 0).toLocaleString()} pts</strong></span></div>)}</div>}
+      {results.leaderboard?.length > 0 && <div className="leaderboard result-leaderboard"><h3>Class leaderboard</h3>{results.leaderboard.map((attempt, index) => <div key={attempt.id}><b>#{index + 1}</b><span>{attempt.studentName}</span><span className="leaderboard-result"><small>{attempt.correctCount}/{attempt.totalQuestions} correct · {Number(attempt.score || 0).toLocaleString()} game points</small><strong>{attempt.percentage}/100</strong></span></div>)}</div>}
       {results.topics.length > 0 && <div className="topic-performance"><h3>Performance by topic</h3>{results.topics.map((topic) => <div key={topic.topic}><span>{topic.topic}</span><div><i style={{ width: `${topic.percentage}%` }} /></div><strong>{topic.percentage}%</strong></div>)}</div>}
       {results.hardestQuestions?.length > 0 && <div className="hardest-questions"><h3>Hardest questions</h3><p>Unanswered responses count as incorrect.</p>{results.hardestQuestions.map((question, index) => <article key={question.id}><b>#{index + 1}</b><div><strong>{question.prompt}</strong><span>{question.topic} · {question.correct}/{question.attempts} correct · {question.unanswered} unanswered</span></div><i>{question.percentage}%</i></article>)}</div>}
-      <div className="result-table">{results.attempts.length === 0 ? <div className="empty">No completed quiz results yet.</div> : results.attempts.map((attempt) => <article key={attempt.id} className={!attempt.passed ? "support-needed" : ""}><div><h3>{attempt.studentName}</h3><p>{attempt.title} · Attempt {attempt.attemptNo}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct{attempt.unansweredCount ? ` · ${attempt.unansweredCount} unanswered` : ""}</span><strong>{attempt.percentage}%</strong>{!attempt.passed && <b>Needs support</b>}<button type="button" className="delete-participation" disabled={deletingAttemptId === attempt.id} onClick={() => deleteParticipation(attempt)}>{deletingAttemptId === attempt.id ? "Deleting…" : "Delete participation"}</button></article>)}</div>
-    </> : <div className="student-result-list">{results.length === 0 ? <div className="empty">Your completed quizzes will appear here.</div> : results.map((attempt) => <article key={attempt.id}><div><h3>{attempt.title}</h3><p>Attempt {attempt.attemptNo} · {new Date(attempt.completedAt).toLocaleString()}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct</span><strong>{attempt.percentage}%</strong><button className="profile-button" onClick={() => openResult(attempt.id)}>Review answers</button></article>)}</div>}
+      <div className="result-table">{results.attempts.length === 0 ? <div className="empty">No completed quiz results yet.</div> : results.attempts.map((attempt) => <article key={attempt.id} className={!attempt.passed ? "support-needed" : ""}><div><h3>{attempt.studentName}</h3><p>{attempt.title} · Attempt {attempt.attemptNo}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct{attempt.unansweredCount ? ` · ${attempt.unansweredCount} unanswered` : ""}</span><strong>{attempt.percentage}/100</strong>{!attempt.passed && <b>Needs support</b>}<button type="button" className="delete-participation" disabled={deletingAttemptId === attempt.id} onClick={() => deleteParticipation(attempt)}>{deletingAttemptId === attempt.id ? "Deleting…" : "Delete participation"}</button></article>)}</div>
+    </> : <div className="student-result-list">{results.length === 0 ? <div className="empty">Your completed quizzes will appear here.</div> : results.map((attempt) => <article key={attempt.id}><div><h3>{attempt.title}</h3><p>Attempt {attempt.attemptNo} · {new Date(attempt.completedAt).toLocaleString()}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct</span><strong>{attempt.percentage}/100</strong><button className="profile-button" onClick={() => openResult(attempt.id)}>Review answers</button></article>)}</div>}
   </section>;
 }
 
@@ -2485,7 +2485,7 @@ function QuizCenter({ mode, demo = false }) {
             <div key={p.studentId}>
               <b>#{p.position || i + 1}</b>
               <span>{p.fullName}</span>
-              <span className="leaderboard-result"><small>{p.correctCount}/{p.totalQuestions} correct</small><strong>{Number(p.score || 0).toLocaleString()} pts</strong></span>
+              <span className="leaderboard-result"><small>{p.correctCount}/{p.totalQuestions} correct · {Number(p.score || 0).toLocaleString()} game points</small><strong>{p.totalQuestions ? Math.round(p.correctCount * 100 / p.totalQuestions) : 0}/100</strong></span>
             </div>
           ))}
         </div>
@@ -2650,6 +2650,38 @@ function StudentDirectory({ demo = false, canDelete = false }) {
       <button type="button" className="button primary full" onClick={() => setSelectedId(student.id)}>View full profile</button>
     </article>)}</div>
     {selectedId && <LearnerProfilePanel studentId={selectedId} onClose={() => setSelectedId(null)} onDeleted={canDelete ? (notice) => { setSelectedId(null); setMessage(notice); load(); } : undefined} />}
+  </section>;
+}
+
+function OverallLeaderboard({ demo = false }) {
+  const [data, setData] = useState(null);
+  const [search, setSearch] = useState("");
+  const [message, setMessage] = useState(demo ? "Connect the backend to view the live leaderboard." : "Loading academy leaderboard…");
+  useEffect(() => {
+    if (!demo) api("/staff/overall-leaderboard").then((result) => { setData(result); setMessage(""); }).catch((error) => setMessage(error.message));
+  }, [demo]);
+  if (!data) return <section className="overall-leaderboard"><div className="progress-loading">{message}</div></section>;
+  const ranks = new Map(data.leaderboard.map((student, index) => [student.id, student.overallScore == null ? null : index + 1]));
+  const query = search.trim().toLowerCase();
+  const students = data.leaderboard.filter((student) => !query || `${student.fullName} ${student.email}`.toLowerCase().includes(query));
+  const grade = (score) => score == null ? "—" : `${score}/100`;
+  return <section className="overall-leaderboard">
+    <div className="overall-leaderboard-heading"><div><p className="eyebrow">Academy performance</p><h2>Overall leaderboard</h2><p>Quiz, assignment and attendance results combined into one transparent score.</p></div><strong>{data.summary.classAverage == null ? "—" : `${data.summary.classAverage}/100`}<span>class average</span></strong></div>
+    <div className="overall-summary"><article><span>Approved students</span><strong>{data.summary.students}</strong></article><article><span>Students with results</span><strong>{data.summary.ranked}</strong></article><article><span>Scoring categories</span><strong>3</strong></article></div>
+    <details className="leaderboard-method"><summary>How the overall score is calculated</summary><ul><li><b>Quiz:</b> {data.scoring.quiz}.</li><li><b>Assignments:</b> {data.scoring.assignment}.</li><li><b>Attendance:</b> {data.scoring.attendance}.</li><li><b>Overall:</b> {data.scoring.overall}. Students with fewer than three categories are marked provisional and ranked after complete records.</li></ul></details>
+    <label className="leaderboard-search">Find student<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or email…" /></label>
+    <p className="directory-result-count">Showing {students.length} of {data.leaderboard.length} students</p>
+    {students.length === 0 ? <div className="empty">No students match this search.</div> : <div className="overall-leaderboard-table">
+      <div className="overall-table-head"><span>Rank</span><span>Student</span><span>Quiz grade</span><span>Assignment grade</span><span>Attendance</span><span>Overall</span></div>
+      {students.map((student) => <article key={student.id}>
+        <b className={`overall-rank rank-${ranks.get(student.id)}`}>{ranks.get(student.id) ? `#${ranks.get(student.id)}` : "—"}</b>
+        <div className="overall-student"><strong>{student.fullName}</strong><small>{student.email}</small><em>{student.categoriesCounted === 3 ? "Complete · 3/3 categories" : `Provisional · ${student.categoriesCounted}/3 categories`}</em></div>
+        <span data-label="Quiz">{grade(student.quizScore)}<small>{student.quizCount} quiz{student.quizCount === 1 ? "" : "zes"}</small></span>
+        <span data-label="Assignments">{grade(student.assignmentScore)}<small>{student.assignmentCount} graded</small></span>
+        <span data-label="Attendance">{grade(student.attendanceScore)}<small>{student.attendanceCount} session{student.attendanceCount === 1 ? "" : "s"}</small></span>
+        <strong className="overall-grade">{grade(student.overallScore)}</strong>
+      </article>)}
+    </div>}
   </section>;
 }
 
@@ -2937,6 +2969,7 @@ function AdminDashboard({ user, logout }) {
         {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} onViewLearner={user.demo ? null : setProfileStudentId} demo={user.demo} />}
         {active === "Applications" && applications}
         {active === "Students" && <StudentDirectory demo={user.demo} canDelete={!user.demo} />}
+        {active === "Leaderboard" && <OverallLeaderboard demo={user.demo} />}
         {active === "Stories" && <StaffStoriesCenter demo={user.demo} />}
         {active === "Announcements" && <AnnouncementsCenter mode="staff" demo={user.demo} />}
         {active === "Mentors" &&
@@ -3031,6 +3064,7 @@ function MentorDashboard({ user, logout }) {
         {active === "Stories" && <StaffStoriesCenter />}
         {active === "Security" && <SecurityCenter role="mentor" />}
         {active === "Students" && <StudentDirectory />}
+        {active === "Leaderboard" && <OverallLeaderboard />}
         {active === "Attendance" && <AttendanceCenter mode="staff" />}
         {active === "Learning" && <LearningCenter mode="staff" />}
         {active === "Assignments" && <AssignmentsCenter staff />}

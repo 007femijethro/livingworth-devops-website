@@ -1,4 +1,72 @@
 export function registerAnalyticsRoutes(app, pool, requireAuth, requireStaff) {
+  app.get('/api/staff/overall-leaderboard', requireAuth, requireStaff, async (_req, res, next) => {
+    try {
+      const [[students], [quizAttempts], [assignmentResults], [attendanceRows]] = await Promise.all([
+        pool.query("SELECT id, full_name AS fullName, email FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name, id"),
+        pool.query(`SELECT student_id AS studentId, quiz_id AS quizId, correct_count AS correctCount, total_questions AS totalQuestions
+          FROM quiz_attempts WHERE status = 'completed' AND total_questions > 0`),
+        pool.query(`SELECT s.student_id AS studentId, s.score, a.max_score AS maxScore
+          FROM assignment_submissions s JOIN assignments a ON a.id = s.assignment_id
+          WHERE s.status = 'completed' AND s.score IS NOT NULL AND a.max_score > 0`),
+        pool.query("SELECT student_id AS studentId, status FROM attendance")
+      ]);
+
+      const quizByStudent = new Map();
+      for (const attempt of quizAttempts) {
+        const studentId = Number(attempt.studentId);
+        const quizzes = quizByStudent.get(studentId) || new Map();
+        const score = Math.round(Number(attempt.correctCount) * 100 / Number(attempt.totalQuestions));
+        quizzes.set(Number(attempt.quizId), Math.max(score, quizzes.get(Number(attempt.quizId)) ?? 0));
+        quizByStudent.set(studentId, quizzes);
+      }
+      const assignmentsByStudent = new Map();
+      for (const result of assignmentResults) {
+        const studentId = Number(result.studentId);
+        const totals = assignmentsByStudent.get(studentId) || { earned: 0, possible: 0, count: 0 };
+        totals.earned += Number(result.score || 0); totals.possible += Number(result.maxScore || 0); totals.count += 1;
+        assignmentsByStudent.set(studentId, totals);
+      }
+      const attendanceByStudent = new Map();
+      for (const record of attendanceRows) {
+        const studentId = Number(record.studentId);
+        const totals = attendanceByStudent.get(studentId) || { attended: 0, counted: 0 };
+        if (record.status !== 'excused') {
+          totals.counted += 1;
+          if (['present', 'late'].includes(record.status)) totals.attended += 1;
+        }
+        attendanceByStudent.set(studentId, totals);
+      }
+
+      const leaderboard = students.map(student => {
+        const quizzes = quizByStudent.get(Number(student.id));
+        const assignment = assignmentsByStudent.get(Number(student.id));
+        const attendance = attendanceByStudent.get(Number(student.id));
+        const quizScore = quizzes?.size ? Math.round([...quizzes.values()].reduce((sum, score) => sum + score, 0) / quizzes.size) : null;
+        const assignmentScore = assignment?.possible ? Math.round(assignment.earned * 100 / assignment.possible) : null;
+        const attendanceScore = attendance?.counted ? Math.round(attendance.attended * 100 / attendance.counted) : null;
+        const available = [quizScore, assignmentScore, attendanceScore].filter(score => score !== null);
+        return {
+          id: Number(student.id), fullName: student.fullName, email: student.email,
+          quizScore, quizCount: quizzes?.size || 0,
+          assignmentScore, assignmentCount: assignment?.count || 0,
+          attendanceScore, attendanceCount: attendance?.counted || 0,
+          categoriesCounted: available.length,
+          overallScore: available.length ? Math.round(available.reduce((sum, score) => sum + score, 0) / available.length) : null
+        };
+      }).sort((left, right) => right.categoriesCounted - left.categoriesCounted
+        || (right.overallScore ?? -1) - (left.overallScore ?? -1) || left.fullName.localeCompare(right.fullName));
+      const ranked = leaderboard.filter(student => student.overallScore !== null);
+      res.json({
+        scoring: { quiz: 'Best attempt per quiz, averaged', assignment: 'Points earned divided by points possible', attendance: 'Present or late divided by counted sessions', overall: 'Equal average of available categories' },
+        summary: {
+          students: students.length, ranked: ranked.length,
+          classAverage: ranked.length ? Math.round(ranked.reduce((sum, student) => sum + student.overallScore, 0) / ranked.length) : null
+        },
+        leaderboard
+      });
+    } catch (error) { next(error); }
+  });
+
   app.get('/api/staff/dashboard', requireAuth, requireStaff, async (_req, res, next) => {
     try {
       const [[studentCount], [attendance], [today], [quiz], [topics], [assignmentCounts], [learners], [announcements]] = await Promise.all([

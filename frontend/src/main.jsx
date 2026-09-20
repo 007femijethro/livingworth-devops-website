@@ -17,6 +17,7 @@ import './accessibility.css';
 import './stories.css';
 import './homepage.css';
 import './assignments.css';
+import './overall-leaderboard.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode><App /></React.StrictMode>
