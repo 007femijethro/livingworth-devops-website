@@ -358,7 +358,20 @@ async function finalizeAttempts(pool, state) {
 }
 
 export function configureQuizSockets(io, pool, verifyToken) {
-  io.use((socket, next) => { try { socket.user = verifyToken(socket.handshake.auth?.token); next(); } catch { next(new Error('Authentication required')); } });
+  io.use(async (socket, next) => {
+    try {
+      socket.user = verifyToken(socket.handshake.auth?.token);
+      const [accounts] = await pool.execute('SELECT role, status, session_version AS sessionVersion FROM users WHERE id = ?', [socket.user.id]);
+      const account = accounts[0];
+      if (!account) throw new Error('Authentication required');
+      if (socket.user.role === 'student' && account.status !== 'approved') throw new Error('Approved student access required');
+      if (Number(socket.user.sessionVersion || 0) !== Number(account.sessionVersion || 0)) throw new Error('Authentication required');
+      socket.user.role = account.role;
+      socket.user.status = account.status;
+      socket.user.sessionVersion = Number(account.sessionVersion || 0);
+      next();
+    } catch { next(new Error('Authentication required')); }
+  });
 
   const questionPayload = state => {
     const question = state.questions[state.index];
