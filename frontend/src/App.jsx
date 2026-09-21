@@ -1445,20 +1445,29 @@ function LearningCenter({ mode, demo = false }) {
   );
 }
 
-function nextClassSession() {
-  const now = new Date();
+const CLASS_MEETING_URL = "https://meet.google.com/paj-rthm-woe";
+
+function classSessionStatus(now = new Date()) {
+  const todayStart = new Date(now);
+  todayStart.setUTCHours(19, 0, 0, 0);
+  const todayEnd = new Date(todayStart);
+  todayEnd.setUTCHours(20, 0, 0, 0);
+  if ([1, 3, 5].includes(todayStart.getUTCDay()) && now >= todayStart && now < todayEnd) {
+    return { isLive: true, date: todayStart };
+  }
   for (let offset = 0; offset < 8; offset += 1) {
     const candidate = new Date(now);
     candidate.setUTCDate(now.getUTCDate() + offset);
     candidate.setUTCHours(19, 0, 0, 0);
-    if ([1, 3, 5].includes(candidate.getUTCDay()) && candidate > now) return candidate;
+    if ([1, 3, 5].includes(candidate.getUTCDay()) && candidate > now) return { isLive: false, date: candidate };
   }
-  return null;
+  return { isLive: false, date: null };
 }
 
 function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
   const [data, setData] = useState({ learning: null, attendance: null, quizzes: null, announcements: null });
   const [message, setMessage] = useState("Loading your progress…");
+  const [clock, setClock] = useState(() => new Date());
   useEffect(() => {
     Promise.all([api("/student/learning"), api("/student/attendance"), api("/student/quiz-results"), api("/announcements")])
       .then(([learning, attendance, quizzes, announcements]) => {
@@ -1468,7 +1477,12 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
       })
       .catch((error) => setMessage(error.message));
   }, []);
-  const nextClass = nextClassSession();
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(new Date()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const classSession = classSessionStatus(clock);
+  const nextClass = classSession.date;
   const assignments = data.learning?.modules.flatMap((module) =>
     module.assignments.map((assignment) => ({ ...assignment, moduleTitle: module.title, weekNumber: module.weekNumber })),
   ) || [];
@@ -1492,14 +1506,14 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
           <button onClick={() => onNavigate("Attendance")}><span>Attendance</span><strong>{data.attendance.summary.percentage}%</strong><small>{data.attendance.summary.attended} of {data.attendance.summary.total} counted sessions</small></button>
           <button onClick={() => onNavigate("Assignments")}><span>Assignments completed</span><strong>{data.learning.progress.completed}/{data.learning.progress.total}</strong><small>Overall score: {data.learning.scoreSummary.percentage == null ? "Awaiting results" : `${data.learning.scoreSummary.percentage}%`}</small></button>
           <button onClick={() => onNavigate("Live quiz")}><span>Quiz average</span><strong>{quizAverage}%</strong><small>{data.quizzes.length} completed attempt{data.quizzes.length === 1 ? "" : "s"}</small></button>
-          <article><span>Next class</span><strong>{nextClass ? new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Lagos" }).format(nextClass) : "—"}</strong><small>8:00 p.m. GMT+1</small></article>
+          <article className={classSession.isLive ? "class-live-metric" : ""}><span>{classSession.isLive ? "Class status" : "Next class"}</span><strong>{classSession.isLive ? "Live now" : nextClass ? new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Lagos" }).format(nextClass) : "—"}</strong><small>{classSession.isLive ? "Join the meeting now" : "8:00 p.m. GMT+1"}</small></article>
         </div>
         <div className="progress-columns">
-          <section className="next-class-card">
-            <span className="progress-kicker">Next live session</span>
-            <h2>{nextClass ? new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "Africa/Lagos" }).format(nextClass) : "Class schedule"}</h2>
+          <section className={`next-class-card ${classSession.isLive ? "live" : ""}`}>
+            <span className="progress-kicker">{classSession.isLive ? <><i aria-hidden="true" /> Meeting is live</> : "Next live session"}</span>
+            <h2>{classSession.isLive ? "Class is live — join now" : nextClass ? new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "Africa/Lagos" }).format(nextClass) : "Class schedule"}</h2>
             <p>Live DevOps class · 8:00–9:00 p.m. GMT+1</p>
-            <button className="button gold" onClick={() => onNavigate("Learning")}>Open learning workspace</button>
+            <a className="button gold" href={CLASS_MEETING_URL} target="_blank" rel="noreferrer">{classSession.isLive ? "Join live meeting" : "Join meeting"}</a>
           </section>
           <section className="attention-card">
             <div className="progress-section-title"><div><span>Assignments</span><h2>Needs your attention</h2></div><button onClick={() => onNavigate("Assignments")}>View all</button></div>
