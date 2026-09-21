@@ -369,6 +369,9 @@ app.patch('/api/admin/students/:id/expel', requireAuth, requireAdmin, async (req
     await connection.execute('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL', [studentId]);
     await connection.execute('UPDATE email_change_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL', [studentId]);
     await connection.commit();
+    for (const socket of io.sockets.sockets.values()) {
+      if (socket.user?.role === 'student' && Number(socket.user.id) === studentId) socket.disconnect(true);
+    }
     res.json({ message: `${students[0].fullName} has been expelled. Login access and future notifications are blocked.` });
   } catch (error) {
     await connection.rollback();
