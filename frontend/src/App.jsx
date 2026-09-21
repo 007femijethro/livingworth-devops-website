@@ -22,7 +22,11 @@ async function api(path, options = {}) {
     data = {};
   }
   if (!response.ok) {
-    if (response.status === 401 && data.message?.startsWith("Your student session has expired")) {
+    if (response.status === 401 && (
+      data.message?.startsWith("Your student session has expired") ||
+      data.message?.startsWith("Your account has been expelled") ||
+      data.message?.startsWith("Your student account is no longer active")
+    )) {
       localStorage.removeItem("lw_token");
       window.dispatchEvent(new CustomEvent("lw-session-expired", { detail: data.message }));
     }
@@ -2769,6 +2773,7 @@ function AdminDashboard({ user, logout }) {
     pending: 0,
     approved: 0,
     rejected: 0,
+    expelled: 0,
   });
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [page, setPage] = useState(1);
@@ -2797,6 +2802,7 @@ function AdminDashboard({ user, logout }) {
         pending: all.filter((student) => student.status === "pending").length,
         approved: all.filter((student) => student.status === "approved").length,
         rejected: all.filter((student) => student.status === "rejected").length,
+        expelled: all.filter((student) => student.status === "expelled").length,
       });
       setPagination({ page: 1, pages: 1, total: filtered.length });
       return;
@@ -2839,6 +2845,39 @@ function AdminDashboard({ user, logout }) {
       setMessage(e.message);
     }
   }
+  async function expelStudent(student) {
+    const reason = window.prompt(`Enter the reason for expelling ${student.fullName}. This is required for the academy record.`);
+    if (reason === null) return;
+    if (!reason.trim()) {
+      setMessage("Add a reason before expelling this student.");
+      return;
+    }
+    if (!window.confirm(`Expel ${student.fullName}? They will be logged out, blocked from signing in and excluded from all future notifications. Their academic records will be retained.`)) return;
+    try {
+      const data = await api(`/admin/students/${student.id}/expel`, {
+        method: "PATCH",
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      setMessage(data.message);
+      setSelectedApplicant(null);
+      loadApplications();
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+
+  async function reinstateStudent(student) {
+    if (!window.confirm(`Reinstate ${student.fullName}? They will be able to sign in and receive notifications again.`)) return;
+    try {
+      const data = await api(`/admin/students/${student.id}/reinstate`, { method: "PATCH" });
+      setMessage(data.message);
+      setSelectedApplicant(null);
+      loadApplications();
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+
   function confirmDecision(student, status) {
     const action = status === "approved" ? "approve" : "return to pending review";
     if (window.confirm(`Are you sure you want to ${action} ${student.fullName}?`)) {
@@ -2896,6 +2935,7 @@ function AdminDashboard({ user, logout }) {
           ["Pending", applicationSummary.pending, "pending"],
           ["Approved", applicationSummary.approved, "approved"],
           ["Rejected", applicationSummary.rejected, "rejected"],
+          ["Expelled", applicationSummary.expelled, "expelled"],
         ].map(([label, count, value]) => (
           <button
             key={label}
@@ -2967,6 +3007,9 @@ function AdminDashboard({ user, logout }) {
             {selectedApplicant.rejectionReason && selectedApplicant.status === "rejected" && (
               <div className="rejection-record"><b>Rejection reason</b><p>{selectedApplicant.rejectionReason}</p></div>
             )}
+            {selectedApplicant.expelledReason && selectedApplicant.status === "expelled" && (
+              <div className="expulsion-record"><b>Expulsion reason</b><p>{selectedApplicant.expelledReason}</p><small>Expelled {selectedApplicant.expelledAt ? new Date(selectedApplicant.expelledAt).toLocaleString() : "recently"}</small></div>
+            )}
             {selectedApplicant.status === "pending" ? (
             <div className="applicant-decisions">
                 <button className="button approve-button" onClick={() => confirmDecision(selectedApplicant, "approved")}>Approve application</button>
@@ -2974,7 +3017,20 @@ function AdminDashboard({ user, logout }) {
                 <button className="button reject-button" disabled={!rejectionReason.trim()} onClick={() => { if (window.confirm(`Reject ${selectedApplicant.fullName}'s application?`)) decide(selectedApplicant, "rejected", rejectionReason); }}>Reject application</button>
               </div>
             ) : (
-              <div className="approved-account-actions"><button className="button light-border full" onClick={() => confirmDecision(selectedApplicant, "pending")}>Return to pending review</button>{selectedApplicant.status === "approved" && <><button className="button light-border full" disabled={user.demo} onClick={() => { setProfileStudentId(selectedApplicant.id); setSelectedApplicant(null); }}>View progress report</button><button className="button primary full" onClick={() => resetUserPassword(selectedApplicant.id, selectedApplicant.fullName)}>Set temporary password</button></>}</div>
+              <div className="approved-account-actions">
+                {selectedApplicant.status === "expelled" ? (
+                  <button className="button approve-button full" disabled={user.demo} onClick={() => reinstateStudent(selectedApplicant)}>Reinstate student</button>
+                ) : (
+                  <>
+                    <button className="button light-border full" onClick={() => confirmDecision(selectedApplicant, "pending")}>Return to pending review</button>
+                    {selectedApplicant.status === "approved" && <>
+                      <button className="button light-border full" disabled={user.demo} onClick={() => { setProfileStudentId(selectedApplicant.id); setSelectedApplicant(null); }}>View progress report</button>
+                      <button className="button primary full" onClick={() => resetUserPassword(selectedApplicant.id, selectedApplicant.fullName)}>Set temporary password</button>
+                      <button className="button expel-button full" disabled={user.demo} onClick={() => expelStudent(selectedApplicant)}>Expel student</button>
+                    </>}
+                  </>
+                )}
+              </div>
             )}
           </section>
         </div>

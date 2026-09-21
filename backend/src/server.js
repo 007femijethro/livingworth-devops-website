@@ -135,6 +135,9 @@ app.post('/api/auth/login', async (req, res, next) => {
     if (!['student', 'staff'].includes(portal)) return res.status(400).json({ message: 'Choose Student or Staff login.' });
     const correctPortal = portal === 'student' ? user.role === 'student' : ['mentor', 'admin'].includes(user.role);
     if (!correctPortal) return res.status(403).json({ message: `This account belongs in the ${user.role === 'student' ? 'Student' : 'Staff'} login.` });
+    if (user.role === 'student' && user.status === 'expelled') {
+      return res.status(403).json({ message: 'Your account has been expelled from Livingworth Academy. Please contact the Lead Mentor.' });
+    }
     if (user.role === 'student' && user.status !== 'approved') {
       return res.status(403).json({ message: user.status === 'pending' ? 'Your registration is awaiting administrator approval.' : 'Your registration was not approved.' });
     }
@@ -166,8 +169,10 @@ app.post('/api/auth/reset-password', async (req, res, next) => {
     const password = String(req.body.password || '');
     if (password.length < 8) return res.status(400).json({ message: 'Password must contain at least 8 characters.' });
     await connection.beginTransaction();
-    const [tokens] = await connection.execute(`SELECT id, user_id AS userId FROM password_reset_tokens
-      WHERE token_hash = ? AND used_at IS NULL AND expires_at > NOW() FOR UPDATE`, [tokenHash]);
+    const [tokens] = await connection.execute(`SELECT prt.id, prt.user_id AS userId FROM password_reset_tokens prt
+      JOIN users u ON u.id = prt.user_id
+      WHERE prt.token_hash = ? AND prt.used_at IS NULL AND prt.expires_at > NOW()
+        AND u.status = 'approved' FOR UPDATE`, [tokenHash]);
     if (!tokens.length) { await connection.rollback(); return res.status(400).json({ message: 'This reset link is invalid or has expired.' }); }
     const passwordHash = await bcrypt.hash(password, 12);
     await connection.execute('UPDATE users SET password_hash = ?, failed_login_attempts = 0, locked_until = NULL, must_change_password = FALSE WHERE id = ?', [passwordHash, tokens[0].userId]);
@@ -261,7 +266,7 @@ app.get('/api/auth/me', requireAuth, async (req, res, next) => {
 app.get('/api/admin/students', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const search = String(req.query.search || '').trim().slice(0, 100);
-    const status = ['pending', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : '';
+    const status = ['pending', 'approved', 'rejected', 'expelled'].includes(req.query.status) ? req.query.status : '';
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = 10;
     const where = ["role = 'student'"];
@@ -283,12 +288,13 @@ app.get('/api/admin/students', requireAuth, requireAdmin, async (req, res, next)
         country, state_city AS stateCity, employment_status AS employmentStatus, educational_level AS educationalLevel,
         course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience,
         experience_level AS experienceLevel, learning_goal AS learningGoal, status,
-        rejection_reason AS rejectionReason, created_at AS createdAt, updated_at AS updatedAt
+        rejection_reason AS rejectionReason, expelled_reason AS expelledReason, expelled_at AS expelledAt,
+        created_at AS createdAt, updated_at AS updatedAt
        FROM users WHERE ${where.join(' AND ')}
-       ORDER BY CASE status WHEN 'pending' THEN 1 WHEN 'approved' THEN 2 ELSE 3 END, created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+       ORDER BY CASE status WHEN 'pending' THEN 1 WHEN 'approved' THEN 2 WHEN 'rejected' THEN 3 ELSE 4 END, created_at DESC LIMIT ${limit} OFFSET ${offset}`,
       params
     );
-    const summary = { total: 0, pending: 0, approved: 0, rejected: 0 };
+    const summary = { total: 0, pending: 0, approved: 0, rejected: 0, expelled: 0 };
     for (const row of totals) { summary[row.status] = Number(row.count); summary.total += Number(row.count); }
     res.json({ students, summary, pagination: { page: currentPage, pages, total, limit } });
   } catch (error) { next(error); }
@@ -297,7 +303,7 @@ app.get('/api/admin/students', requireAuth, requireAdmin, async (req, res, next)
 app.get('/api/admin/students/export', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const search = String(req.query.search || '').trim().slice(0, 100);
-    const status = ['pending', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : '';
+    const status = ['pending', 'approved', 'rejected', 'expelled'].includes(req.query.status) ? req.query.status : '';
     const where = ["role = 'student'"];
     const params = [];
     if (status) { where.push('status = ?'); params.push(status); }
@@ -308,10 +314,10 @@ app.get('/api/admin/students/export', requireAuth, requireAdmin, async (req, res
     }
     const [rows] = await pool.execute(
       `SELECT full_name, email, phone, gender, country, state_city, employment_status, educational_level,
-        course_choice, learning_mode, tech_experience, status, rejection_reason, created_at
+        course_choice, learning_mode, tech_experience, status, rejection_reason, expelled_reason, expelled_at, created_at
        FROM users WHERE ${where.join(' AND ')} ORDER BY created_at DESC`, params
     );
-    const columns = ['full_name','email','phone','gender','country','state_city','employment_status','educational_level','course_choice','learning_mode','tech_experience','status','rejection_reason','created_at'];
+    const columns = ['full_name','email','phone','gender','country','state_city','employment_status','educational_level','course_choice','learning_mode','tech_experience','status','rejection_reason','expelled_reason','expelled_at','created_at'];
     const csvCell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
     const csv = [columns.join(','), ...rows.map(row => columns.map(column => csvCell(row[column])).join(','))].join('\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -334,6 +340,54 @@ app.patch('/api/admin/students/:id/status', requireAuth, requireAdmin, async (re
     const [students] = await pool.execute("SELECT full_name AS fullName, email FROM users WHERE id = ?", [req.params.id]);
     if (students[0] && status !== 'pending') void sendApplicationDecision(students[0], status, rejectionReason);
     res.json({ message: `Student ${status}.` });
+  } catch (error) { next(error); }
+});
+
+app.patch('/api/admin/students/:id/expel', requireAuth, requireAdmin, async (req, res, next) => {
+  const connection = await pool.getConnection();
+  try {
+    const studentId = Number.parseInt(req.params.id, 10);
+    const reason = String(req.body.reason || '').trim().slice(0, 500);
+    if (!studentId) return res.status(400).json({ message: 'Choose a valid student.' });
+    if (!reason) return res.status(400).json({ message: 'Add a reason before expelling this student.' });
+    await connection.beginTransaction();
+    const [students] = await connection.execute(
+      "SELECT full_name AS fullName, status FROM users WHERE id = ? AND role = 'student' FOR UPDATE",
+      [studentId]
+    );
+    if (!students.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Student not found.' });
+    }
+    if (students[0].status !== 'approved') {
+      await connection.rollback();
+      return res.status(409).json({ message: 'Only an active student can be expelled.' });
+    }
+    await connection.execute(`UPDATE users SET status = 'expelled', expelled_reason = ?, expelled_at = CURRENT_TIMESTAMP,
+      rejection_reason = NULL, session_version = session_version + 1, failed_login_attempts = 0,
+      locked_until = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [reason, studentId]);
+    await connection.execute('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL', [studentId]);
+    await connection.execute('UPDATE email_change_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL', [studentId]);
+    await connection.commit();
+    res.json({ message: `${students[0].fullName} has been expelled. Login access and future notifications are blocked.` });
+  } catch (error) {
+    await connection.rollback();
+    next(error);
+  } finally {
+    connection.release();
+  }
+});
+
+app.patch('/api/admin/students/:id/reinstate', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const studentId = Number.parseInt(req.params.id, 10);
+    if (!studentId) return res.status(400).json({ message: 'Choose a valid student.' });
+    const [result] = await pool.execute(`UPDATE users SET status = 'approved', expelled_reason = NULL,
+      expelled_at = NULL, failed_login_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND role = 'student' AND status = 'expelled'`, [studentId]);
+    if (!result.affectedRows) return res.status(404).json({ message: 'Expelled student not found.' });
+    const [students] = await pool.execute('SELECT full_name AS fullName FROM users WHERE id = ?', [studentId]);
+    res.json({ message: `${students[0]?.fullName || 'Student'} has been reinstated and can log in again.` });
   } catch (error) { next(error); }
 });
 
