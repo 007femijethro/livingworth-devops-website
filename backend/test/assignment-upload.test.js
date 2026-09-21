@@ -12,6 +12,7 @@ test('assignment badge counts student actions and staff reviews separately', asy
       assert.equal(params[1], 1, 'locked second week must not be loaded');
       return [[
         { submissionId: null },
+        { submissionId: 9, submissionStatus: 'rejected' },
         { submissionId: 10, submissionStatus: 'needs_correction' },
         { submissionId: 11, submissionStatus: 'submitted' },
         { submissionId: 12, submissionStatus: 'completed' }
@@ -23,7 +24,7 @@ test('assignment badge counts student actions and staff reviews separately', asy
   await new Promise(resolve => server.once('listening', resolve));
   const url = `http://127.0.0.1:${server.address().port}/api/assignments/pending-count`;
   try {
-    assert.deepEqual(await (await fetch(url)).json(), { count: 1 });
+    assert.deepEqual(await (await fetch(url)).json(), { count: 2 });
     assert.deepEqual(await (await fetch(url, { headers: { 'x-test-role': 'mentor' } })).json(), { count: 3 });
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
@@ -91,4 +92,32 @@ test('named uploads allow empty or partial submissions and preserve untouched fi
     await Promise.all(stored.map(f => fs.unlink(path.resolve('uploads/.assignments', f.path)).catch(() => {})));
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
   }
+});
+
+test('a rejected assignment can be redone even after the assignment is closed', async () => {
+  const app = express(); app.use(express.json());
+  let resubmitted = false;
+  const pool = {
+    query: async () => [[{ id: 1 }]],
+    execute: async sql => {
+      if (sql.includes('learning_materials')) return [[]];
+      if (sql.includes('FROM assignments a LEFT JOIN')) return [[{ id: 1, assignmentType: 'portal', closedAt: '2026-09-20T20:00:00Z', uploadSlots: [], submissionId: 4, submissionStatus: 'rejected' }]];
+      if (sql.includes('FROM assignment_submissions')) return [[{ status: 'rejected', files: [] }]];
+      if (sql.includes('INSERT INTO assignment_submissions')) {
+        assert.match(sql, /status = 'submitted'/);
+        assert.match(sql, /reviewed_at = NULL/);
+        assert.match(sql, /reviewed_by = NULL/);
+        resubmitted = true;
+        return [{ affectedRows: 1 }];
+      }
+      throw new Error(sql);
+    }
+  };
+  registerLearningRoutes(app, pool, (req, _res, next) => { req.user = { id: 1, role: 'student' }; next(); }, (_req, _res, next) => next());
+  const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/student/assignments/1/submission`, { method: 'PUT', body: new FormData() });
+    assert.equal(response.status, 200);
+    assert.equal(resubmitted, true);
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });

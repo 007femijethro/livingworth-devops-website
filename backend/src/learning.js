@@ -87,7 +87,9 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       if (req.user.role === 'student') {
         const modules = await modulesFor(pool, req.user.id);
         const count = modules.flatMap(module => module.assignments)
-          .filter(assignment => assignment.assignmentType !== 'manual' && !assignment.closedAt && !assignment.submissionId).length;
+          .filter(assignment => assignment.assignmentType !== 'manual'
+            && (!assignment.closedAt || assignment.submissionStatus === 'rejected')
+            && (!assignment.submissionId || assignment.submissionStatus === 'rejected')).length;
         return res.json({ count });
       }
       if (!['admin', 'mentor'].includes(req.user.role)) return res.status(403).json({ message: 'Access denied.' });
@@ -388,10 +390,10 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const modules = await modulesFor(pool, req.user.id);
       if (!modules.some(module => module.assignments.some(a => Number(a.id) === Number(req.params.id)))) return res.status(404).json({ message: 'Assignment is not available yet.' });
       const [previous] = await pool.execute('SELECT file_path AS filePath, file_name AS fileName, files, status FROM assignment_submissions WHERE assignment_id = ? AND student_id = ?', [req.params.id, req.user.id]);
-      if (['completed', 'rejected'].includes(previous[0]?.status)) return res.status(409).json({ message: 'This assignment already has a final result and can no longer be changed.' });
+      if (previous[0]?.status === 'completed') return res.status(409).json({ message: 'This assignment already has a final result and can no longer be changed.' });
       const assignment = modules.flatMap(m => m.assignments).find(a => Number(a.id) === Number(req.params.id));
       if (assignment.assignmentType === 'manual') return res.status(409).json({ message: 'This assignment must be submitted directly to your mentor.' });
-      if (assignment.closedAt) return res.status(409).json({ message: 'This assignment is closed and no longer accepts submissions.' });
+      if (assignment.closedAt && previous[0]?.status !== 'rejected') return res.status(409).json({ message: 'This assignment is closed and no longer accepts submissions.' });
       const slots = assignment.uploadSlots || [];
       let files;
       if (slots.length) {
@@ -410,7 +412,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const fileName = files[0]?.name || null;
       await pool.execute(`INSERT INTO assignment_submissions (assignment_id, student_id, submission_url, note, file_path, file_name, files)
         VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (assignment_id, student_id) DO UPDATE SET submission_url = EXCLUDED.submission_url, note = EXCLUDED.note, file_path = EXCLUDED.file_path, file_name = EXCLUDED.file_name, files = EXCLUDED.files,
-        status = 'submitted', score = NULL, feedback = NULL, submitted_at = CURRENT_TIMESTAMP`,
+        status = 'submitted', score = NULL, feedback = NULL, reviewed_at = NULL, reviewed_by = NULL, submitted_at = CURRENT_TIMESTAMP`,
         [req.params.id, req.user.id, submissionUrl, String(req.body.note || '').trim(), filePath, fileName, JSON.stringify(files)]);
       saved = true;
       await Promise.all(attachments(previous[0]).filter(old => !files.some(f => f.path === old.path)).map(file => fs.promises.unlink(path.join(assignmentDirectory, path.basename(file.path))).catch(() => {})));
@@ -441,8 +443,8 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       if (!rows.length) return res.status(404).json({ message: 'Submission not found.' });
       const [result] = await pool.execute("UPDATE assignment_submissions SET status = 'rejected', score = NULL, feedback = ?, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ? AND status <> 'rejected'", [reason, req.user.id, req.params.id]);
       if (!result.affectedRows) return res.status(409).json({ message: 'This submission has already been rejected.' });
-      await notifyUser(pool, rows[0].studentId, { title: 'Assignment rejected', message: reason, emailMessage: `Your submission for “${rows[0].title}” was rejected. Reason: ${reason}`, category: 'review', actionTarget: 'Assignments' });
-      res.json({ message: 'Assignment rejected. The reason is available in the student portal; email delivery follows your email settings.' });
+      await notifyUser(pool, rows[0].studentId, { title: 'Assignment needs to be redone', message: `${reason} Open Assignments to redo and resubmit your work.`, emailMessage: `Your submission for “${rows[0].title}” needs to be redone. Reason: ${reason}. Sign in to your student portal, open Assignments, and submit the corrected work for another review.`, category: 'review', actionTarget: 'Assignments' });
+      res.json({ message: 'Assignment rejected for correction. The student can now redo and resubmit it; email delivery follows your email settings.' });
     } catch (error) { next(error); }
   });
 
