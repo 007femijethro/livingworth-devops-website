@@ -939,7 +939,7 @@ function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forc
       ? ["Overview", "Applications", "Students", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
       : role === "mentor"
         ? ["Overview", "Students", "Leaderboard", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
-        : ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Attendance", "Live quiz", "Security"];
+        : ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Leaderboard", "Attendance", "Live quiz", "Security"];
   return (
     <aside className="sidebar" aria-label={`${role} portal navigation`}>
       <Logo />
@@ -1792,6 +1792,7 @@ function StudentDashboard({ user, logout }) {
         {active === "Attendance" && <AttendanceCenter mode="student" />}
         {active === "Learning" && <LearningCenter mode="student" />}
         {active === "Assignments" && <AssignmentsCenter />}
+        {active === "Leaderboard" && <StudentOverallLeaderboard user={user} />}
         {active === "Live quiz" && <QuizCenter mode="student" />}
         {active === "Security" && <SecurityCenter role="student" currentEmail={user.email} />}
       </section>
@@ -2682,6 +2683,35 @@ function OverallLeaderboard({ demo = false }) {
         <strong className="overall-grade">{grade(student.overallScore)}</strong>
       </article>)}
     </div>}
+  </section>;
+}
+
+function StudentOverallLeaderboard({ user }) {
+  const [data, setData] = useState(null);
+  const [message, setMessage] = useState("Loading leaderboard…");
+  useEffect(() => {
+    api("/student/overall-leaderboard").then((result) => { setData(result); setMessage(""); }).catch((error) => setMessage(error.message));
+  }, []);
+  if (!data) return <section className="overall-leaderboard student-overall-leaderboard"><div className="progress-loading">{message}</div></section>;
+  const ownBelowTopTen = data.currentStudent?.rank > 10;
+  const grade = (score) => score == null ? "—" : `${score}/100`;
+  const renderRow = (student) => <article key={`${student.id}-${student.rank}`} className={student.isCurrentStudent ? "current-student-rank" : ""}>
+    <b className={`overall-rank rank-${student.rank}`}>#{student.rank}</b>
+    <div className="overall-student"><strong>{student.isCurrentStudent ? `${student.fullName} (You)` : student.fullName}</strong>{student.isCurrentStudent && <small>{user.email}</small>}<em>{student.categoriesCounted === 3 ? "Complete · 3/3 categories" : `Provisional · ${student.categoriesCounted}/3 categories`}</em></div>
+    <span data-label="Quiz">{grade(student.quizScore)}<small>{student.quizCount} quiz{student.quizCount === 1 ? "" : "zes"}</small></span>
+    <span data-label="Assignments">{grade(student.assignmentScore)}<small>{student.assignmentCount} graded</small></span>
+    <span data-label="Attendance">{grade(student.attendanceScore)}<small>{student.attendanceCount} session{student.attendanceCount === 1 ? "" : "s"}</small></span>
+    <strong className="overall-grade">{grade(student.overallScore)}</strong>
+  </article>;
+  return <section className="overall-leaderboard student-overall-leaderboard">
+    <div className="overall-leaderboard-heading"><div><p className="eyebrow">Academy performance</p><h2>Student leaderboard</h2><p>See the top 10 and your own position across quizzes, assignments and attendance.</p></div><strong>{data.currentStudent ? `#${data.currentStudent.rank}` : "—"}<span>your position</span></strong></div>
+    <details className="leaderboard-method"><summary>How the overall score is calculated</summary><ul><li><b>Quiz:</b> {data.scoring.quiz}.</li><li><b>Assignments:</b> {data.scoring.assignment}.</li><li><b>Attendance:</b> {data.scoring.attendance}.</li><li><b>Overall:</b> {data.scoring.overall}.</li></ul></details>
+    {!data.topTen.length ? <div className="empty">No ranked results are available yet.</div> : <div className="overall-leaderboard-table">
+      <div className="overall-table-head"><span>Rank</span><span>Student</span><span>Quiz grade</span><span>Assignment grade</span><span>Attendance</span><span>Overall</span></div>
+      {data.topTen.map(renderRow)}
+      {ownBelowTopTen && <><div className="leaderboard-hidden-ranks" aria-label={`${data.hiddenCount} hidden leaderboard position${data.hiddenCount === 1 ? "" : "s"}`}><span aria-hidden="true">•••</span><strong>{data.hiddenCount ? `${data.hiddenCount} private position${data.hiddenCount === 1 ? "" : "s"}` : "Private positions"}</strong><small>Student identities below the top 10 are hidden.</small></div>{renderRow(data.currentStudent)}</>}
+    </div>}
+    {!data.currentStudent && data.topTen.length > 0 && <p className="form-message">Complete a quiz, assignment or attendance record to receive a leaderboard position.</p>}
   </section>;
 }
 

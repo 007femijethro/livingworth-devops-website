@@ -43,3 +43,28 @@ test('overall leaderboard normalizes quiz, assignment and attendance scores over
     assert.equal(data.leaderboard[1].categoriesCounted, 1);
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
+
+test('student leaderboard returns the top 10 and the signed-in student without exposing lower-ranked students', async () => {
+  const app = express();
+  const students = Array.from({ length: 12 }, (_, index) => ({ id: index + 1, fullName: `Student ${index + 1}`, email: `student${index + 1}@example.com` }));
+  const pool = { query: async sql => {
+    if (sql.includes("FROM users WHERE role = 'student'")) return [students];
+    if (sql.includes('FROM quiz_attempts')) return [students.map((student, index) => ({ studentId: student.id, quizId: 10, correctCount: 12 - index, totalQuestions: 12 }))];
+    if (sql.includes('FROM assignment_submissions') || sql.includes('FROM attendance')) return [[]];
+    throw new Error(sql);
+  }};
+  registerAnalyticsRoutes(app, pool, (req, _res, next) => { req.user = { id: 12, role: 'student' }; next(); }, (_req, _res, next) => next());
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/student/overall-leaderboard`);
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.topTen.length, 10);
+    assert.equal(data.topTen.at(-1).fullName, 'Student 10');
+    assert.equal(data.currentStudent.fullName, 'Student 12');
+    assert.equal(data.currentStudent.rank, 12);
+    assert.equal(data.hiddenCount, 1);
+    assert.equal(JSON.stringify(data).includes('Student 11'), false);
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});

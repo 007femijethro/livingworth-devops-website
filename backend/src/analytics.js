@@ -1,7 +1,5 @@
-export function registerAnalyticsRoutes(app, pool, requireAuth, requireStaff) {
-  app.get('/api/staff/overall-leaderboard', requireAuth, requireStaff, async (_req, res, next) => {
-    try {
-      const [[students], [quizAttempts], [assignmentResults], [attendanceRows]] = await Promise.all([
+async function buildOverallLeaderboard(pool) {
+  const [[students], [quizAttempts], [assignmentResults], [attendanceRows]] = await Promise.all([
         pool.query("SELECT id, full_name AS fullName, email FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name, id"),
         pool.query(`SELECT student_id AS studentId, quiz_id AS quizId, correct_count AS correctCount, total_questions AS totalQuestions
           FROM quiz_attempts WHERE status = 'completed' AND total_questions > 0`),
@@ -11,23 +9,23 @@ export function registerAnalyticsRoutes(app, pool, requireAuth, requireStaff) {
         pool.query("SELECT student_id AS studentId, status FROM attendance")
       ]);
 
-      const quizByStudent = new Map();
-      for (const attempt of quizAttempts) {
+  const quizByStudent = new Map();
+  for (const attempt of quizAttempts) {
         const studentId = Number(attempt.studentId);
         const quizzes = quizByStudent.get(studentId) || new Map();
         const score = Math.round(Number(attempt.correctCount) * 100 / Number(attempt.totalQuestions));
         quizzes.set(Number(attempt.quizId), Math.max(score, quizzes.get(Number(attempt.quizId)) ?? 0));
         quizByStudent.set(studentId, quizzes);
-      }
-      const assignmentsByStudent = new Map();
-      for (const result of assignmentResults) {
+  }
+  const assignmentsByStudent = new Map();
+  for (const result of assignmentResults) {
         const studentId = Number(result.studentId);
         const totals = assignmentsByStudent.get(studentId) || { earned: 0, possible: 0, count: 0 };
         totals.earned += Number(result.score || 0); totals.possible += Number(result.maxScore || 0); totals.count += 1;
         assignmentsByStudent.set(studentId, totals);
-      }
-      const attendanceByStudent = new Map();
-      for (const record of attendanceRows) {
+  }
+  const attendanceByStudent = new Map();
+  for (const record of attendanceRows) {
         const studentId = Number(record.studentId);
         const totals = attendanceByStudent.get(studentId) || { attended: 0, counted: 0 };
         if (record.status !== 'excused') {
@@ -35,9 +33,9 @@ export function registerAnalyticsRoutes(app, pool, requireAuth, requireStaff) {
           if (['present', 'late'].includes(record.status)) totals.attended += 1;
         }
         attendanceByStudent.set(studentId, totals);
-      }
+  }
 
-      const leaderboard = students.map(student => {
+  const leaderboard = students.map(student => {
         const quizzes = quizByStudent.get(Number(student.id));
         const assignment = assignmentsByStudent.get(Number(student.id));
         const attendance = attendanceByStudent.get(Number(student.id));
@@ -53,16 +51,39 @@ export function registerAnalyticsRoutes(app, pool, requireAuth, requireStaff) {
           categoriesCounted: available.length,
           overallScore: available.length ? Math.round(available.reduce((sum, score) => sum + score, 0) / available.length) : null
         };
-      }).sort((left, right) => right.categoriesCounted - left.categoriesCounted
-        || (right.overallScore ?? -1) - (left.overallScore ?? -1) || left.fullName.localeCompare(right.fullName));
-      const ranked = leaderboard.filter(student => student.overallScore !== null);
+  }).sort((left, right) => right.categoriesCounted - left.categoriesCounted
+    || (right.overallScore ?? -1) - (left.overallScore ?? -1) || left.fullName.localeCompare(right.fullName));
+  const ranked = leaderboard.filter(student => student.overallScore !== null);
+  return {
+    scoring: { quiz: 'Best attempt per quiz, averaged', assignment: 'Points earned divided by points possible', attendance: 'Present or late divided by counted sessions', overall: 'Equal average of available categories' },
+    summary: {
+      students: students.length, ranked: ranked.length,
+      classAverage: ranked.length ? Math.round(ranked.reduce((sum, student) => sum + student.overallScore, 0) / ranked.length) : null
+    },
+    leaderboard
+  };
+}
+
+export function registerAnalyticsRoutes(app, pool, requireAuth, requireStaff) {
+  app.get('/api/staff/overall-leaderboard', requireAuth, requireStaff, async (_req, res, next) => {
+    try {
+      res.json(await buildOverallLeaderboard(pool));
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/student/overall-leaderboard', requireAuth, async (req, res, next) => {
+    try {
+      if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
+      const data = await buildOverallLeaderboard(pool);
+      const ranked = data.leaderboard.filter(student => student.overallScore !== null);
+      const position = ranked.findIndex(student => student.id === Number(req.user.id));
+      const currentStudent = position >= 0 ? { ...ranked[position], rank: position + 1, isCurrentStudent: true } : null;
       res.json({
-        scoring: { quiz: 'Best attempt per quiz, averaged', assignment: 'Points earned divided by points possible', attendance: 'Present or late divided by counted sessions', overall: 'Equal average of available categories' },
-        summary: {
-          students: students.length, ranked: ranked.length,
-          classAverage: ranked.length ? Math.round(ranked.reduce((sum, student) => sum + student.overallScore, 0) / ranked.length) : null
-        },
-        leaderboard
+        scoring: data.scoring,
+        summary: { ranked: data.summary.ranked },
+        topTen: ranked.slice(0, 10).map((student, index) => ({ ...student, rank: index + 1, isCurrentStudent: student.id === Number(req.user.id) })),
+        currentStudent,
+        hiddenCount: currentStudent?.rank > 10 ? currentStudent.rank - 11 : 0
       });
     } catch (error) { next(error); }
   });
