@@ -293,7 +293,39 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
       answered,
       unanswered: Math.max(0, possibleAnswers - answered)
     };
-    const leaderboard = [...attempts].sort((a, b) => Number(b.percentage) - Number(a.percentage) || b.score - a.score).slice(0, 10);
+    const leaderboard = quizId
+      ? [...attempts].sort((a, b) => Number(b.percentage) - Number(a.percentage) || Number(b.score) - Number(a.score)).slice(0, 10)
+      : [...attempts.reduce((students, attempt) => {
+          const current = students.get(attempt.studentId) || {
+            id: `student-${attempt.studentId}`,
+            studentId: attempt.studentId,
+            studentName: attempt.studentName,
+            email: attempt.email,
+            attemptCount: 0,
+            quizIds: new Set(),
+            correctCount: 0,
+            totalQuestions: 0,
+            score: 0,
+            combined: true
+          };
+          current.attemptCount += 1;
+          current.quizIds.add(attempt.quizId);
+          current.correctCount += Number(attempt.correctCount || 0);
+          current.totalQuestions += Number(attempt.totalQuestions || 0);
+          current.score += Number(attempt.score || 0);
+          students.set(attempt.studentId, current);
+          return students;
+        }, new Map()).values()]
+        .map(studentResult => ({
+          ...studentResult,
+          quizCount: studentResult.quizIds.size,
+          quizIds: undefined,
+          percentage: studentResult.totalQuestions
+            ? Math.round(studentResult.correctCount * 100 / studentResult.totalQuestions)
+            : 0
+        }))
+        .sort((a, b) => b.score - a.score || b.percentage - a.percentage || b.correctCount - a.correctCount)
+        .slice(0, 10);
     return { attempts, summary, topics, hardestQuestions, leaderboard };
   }
   app.get('/api/staff/quiz-results', requireAuth, requireStaff, async (req, res, next) => {
