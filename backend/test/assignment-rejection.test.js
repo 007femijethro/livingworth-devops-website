@@ -28,7 +28,7 @@ test('rejection requires a reason and preserves it in the student notification',
     assert.equal((await reject('x'.repeat(501))).status, 400);
     assert.equal(rejected, false);
     assert.equal((await reject('Missing the required script.')).status, 200);
-    assert.deepEqual(notifications[0], [7, 'Assignment needs to be redone', 'Missing the required script. Open Assignments to redo and resubmit your work.', 'review', 'Assignments']);
+    assert.deepEqual(notifications[0], [7, 'Assignment needs to be redone', 'Missing the required script. Open Assignments to redo and resubmit your work.', 'review', 'Assignments', 7]);
     assert.equal((await reject('Missing the required script.')).status, 409);
     assert.equal(notifications.length, 1);
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }

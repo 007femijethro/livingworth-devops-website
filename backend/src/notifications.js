@@ -7,10 +7,16 @@ export async function notifyStudents(pool, notification) {
 }
 
 export async function notifyUser(pool, userId, notification) {
-  await pool.execute('INSERT INTO notifications (user_id, title, message, category, action_target) VALUES (?, ?, ?, ?, ?)',
-    [userId, notification.title, notification.message, notification.category, notification.actionTarget || null]);
-  const [students] = await pool.execute('SELECT full_name AS fullName, email FROM users WHERE id = ?', [userId]);
-  if (students.length) await sendStudentNotification(students[0], notification);
+  await pool.execute(`INSERT INTO notifications (user_id, title, message, category, action_target)
+    SELECT ?, ?, ?, ?, ? WHERE EXISTS (
+      SELECT 1 FROM users WHERE id = ? AND role = 'student' AND status = 'approved'
+    )`,
+  [userId, notification.title, notification.message, notification.category, notification.actionTarget || null, userId]);
+  const [students] = await pool.execute(
+    "SELECT full_name AS fullName, email FROM users WHERE id = ? AND role = 'student' AND status = 'approved'",
+    [userId]
+  );
+  if (students[0]) await sendStudentNotification(students[0], notification);
 }
 
 export function registerNotificationRoutes(app, pool, requireAuth) {
