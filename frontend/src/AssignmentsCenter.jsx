@@ -105,7 +105,7 @@ export default function AssignmentsCenter({ staff = false, demo = false }) {
   }
   async function load() {
     if (demo) { setLoading(false); return; }
-    try { const data = await request(staff ? '/staff/learning' : '/student/learning'); setModules(data.modules); setSubmissions(data.submissions || []); setScoreSummary(data.scoreSummary || null); setStudents(data.students || []); }
+    try { const data = await request(staff ? '/staff/learning' : '/student/learning?assignments=all'); setModules(data.modules); setSubmissions(data.submissions || []); setScoreSummary(data.scoreSummary || null); setStudents(data.students || []); }
     catch (error) { setMessage(error.message); } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, [staff, demo]);
@@ -131,7 +131,7 @@ export default function AssignmentsCenter({ staff = false, demo = false }) {
     catch (error) { setMessage(error.message); } finally { setBusy(false); }
   }
   return <section className="learning-center assignments-center">
-    <div className="learning-head"><div><p className="eyebrow">Assignment workspace</p><h2>{staff ? 'Manage assignments' : 'My assignments'}</h2><p>{staff ? 'Create weekly tasks, update instructions and review student submissions.' : 'Find your tasks, submit your work and see mentor feedback. More assignments unlock as you complete each week.'}</p></div></div>
+    <div className="learning-head"><div><p className="eyebrow">Assignment workspace</p><h2>{staff ? 'Manage assignments' : 'My assignments'}</h2><p>{staff ? 'Create weekly tasks, update instructions and review student submissions.' : 'Find every published assignment, submit your work and see mentor feedback.'}</p></div></div>
     {demo && <p>Assignment management is unavailable in offline preview.</p>}
     {message && <p role="status">{message}</p>}
     {!loading && staff && <div className="assignment-overview"><div><span>Assignments</span><strong>{assignments.length}</strong></div><div><span>Awaiting review</span><strong>{awaiting}</strong></div><div><span>Published results</span><strong>{submissions.filter(s => s.status === 'completed').length}</strong></div></div>}
