@@ -83,6 +83,7 @@ function Header({ navigate }) {
         <a href="#projects">Projects</a>
       </nav>
       <div className="nav-actions">
+        <button className="text-btn verify-header-button" onClick={() => navigate("verify-certificate")}>Verify certificate</button>
         <button className="text-btn" onClick={() => navigate("student-login")}>
           <span className="login-label-full">Portal login</span>
           <span className="login-label-short">Login</span>
@@ -940,10 +941,10 @@ function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forc
   }, [role, active, forceSecurity]);
   const items = forceSecurity ? ["Security"] :
     role === "admin"
-      ? ["Overview", "Applications", "Students", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
+      ? ["Overview", "Applications", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
       : role === "mentor"
-        ? ["Overview", "Students", "Leaderboard", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
-        : ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Leaderboard", "Attendance", "Live quiz", "Security"];
+        ? ["Overview", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
+        : ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live quiz", "Security"];
   return (
     <aside className="sidebar" aria-label={`${role} portal navigation`}>
       <Logo />
@@ -1762,6 +1763,112 @@ function StaffStoriesCenter({ demo = false }) {
   </section>;
 }
 
+
+function printCertificate(event) {
+  const entry = event.currentTarget.closest(".certificate-entry");
+  document.body.classList.add("printing-certificate");
+  entry?.classList.add("printing");
+  window.print();
+  entry?.classList.remove("printing");
+  document.body.classList.remove("printing-certificate");
+}
+
+function CertificateDocument({ certificate }) {
+  const valid = certificate.status === "valid";
+  return <article className="certificate-document">
+    <div className="certificate-border">
+      <img src="/livingworth-logo.jpeg" alt="Livingworth Academy" />
+      <p className="certificate-kicker">Livingworth Academy</p>
+      <h2>Certificate of Completion</h2>
+      <p>This certificate is proudly presented to</p>
+      <h3>{certificate.studentName}</h3>
+      <p>for successfully completing</p>
+      <h4>{certificate.courseTitle}</h4>
+      <p className="certificate-date">Completed {new Date(certificate.completionDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
+      <div className="certificate-signatures"><span><b>{certificate.issuedBy}</b><small>Lead Mentor</small></span><span><b>{new Date(certificate.issuedAt).toLocaleDateString("en-GB")}</b><small>Date issued</small></span></div>
+      <footer><span>Certificate ID: <b>{certificate.certificateNumber}</b></span><span className={valid ? "certificate-valid" : "certificate-revoked"}>{valid ? "Verified credential" : "Revoked credential"}</span></footer>
+    </div>
+  </article>;
+}
+
+function CertificateVerification({ navigate, initialNumber = "" }) {
+  const [number, setNumber] = useState(initialNumber);
+  const [certificate, setCertificate] = useState(null);
+  const [message, setMessage] = useState("");
+  async function verify(value = number) {
+    const code = String(value || "").trim().toUpperCase();
+    if (!code) { setMessage("Enter a certificate ID."); return; }
+    try {
+      const result = await api(`/certificates/verify/${encodeURIComponent(code)}`);
+      setCertificate(result); setMessage("");
+      window.history.replaceState({}, "", `?verify=${encodeURIComponent(code)}`);
+    } catch (error) { setCertificate(null); setMessage(error.message); }
+  }
+  useEffect(() => { if (initialNumber) verify(initialNumber); }, []);
+  return <main className="certificate-verification-page">
+    <header><Logo /><button className="text-btn" onClick={() => navigate("home")}>Return home</button></header>
+    <section className="certificate-verification-panel">
+      <p className="eyebrow">Credential verification</p><h1>Verify a Livingworth certificate</h1>
+      <p>Enter the certificate ID printed at the bottom of the certificate.</p>
+      <form onSubmit={(event) => { event.preventDefault(); verify(); }}><input value={number} onChange={(event) => setNumber(event.target.value.toUpperCase())} placeholder="LWA-2026-XXXXXXXXXX" aria-label="Certificate ID" /><button className="button primary">Verify certificate</button></form>
+      {message && <p className="certificate-error" role="alert">{message}</p>}
+      {certificate && <><div className={certificate.status === "valid" ? "verification-result valid" : "verification-result revoked"}><strong>{certificate.status === "valid" ? "✓ Valid certificate" : "✕ Revoked certificate"}</strong><span>{certificate.studentName} · {certificate.courseTitle}</span><small>Certificate ID {certificate.certificateNumber}</small></div><div className="certificate-entry"><CertificateDocument certificate={certificate} />{certificate.status === "valid" && <div className="certificate-actions"><button className="button primary" onClick={printCertificate}>Print / Save PDF</button></div>}</div></>}
+    </section>
+  </main>;
+}
+
+function StudentCertificates() {
+  const [certificates, setCertificates] = useState([]);
+  const [message, setMessage] = useState("");
+  useEffect(() => { api("/student/certificates").then(setCertificates).catch(error => setMessage(error.message)); }, []);
+  return <section className="certificates-center"><div className="certificates-heading"><p className="eyebrow">Your achievements</p><h2>My certificates</h2><p>View, print or save your issued Livingworth Academy certificates.</p></div>
+    {message && <p className="form-message">{message}</p>}
+    {certificates.length === 0 ? <div className="empty">No certificate has been issued to you yet.</div> : certificates.map(certificate => <div className="certificate-entry" key={certificate.id}><CertificateDocument certificate={certificate}/><div className="certificate-actions"><a className="button light-border" href={`/?verify=${encodeURIComponent(certificate.certificateNumber)}`} target="_blank" rel="noreferrer">Open verification page</a><button className="button primary" onClick={printCertificate}>Print / Save PDF</button></div></div>)}
+  </section>;
+}
+
+function StaffCertificates({ demo = false }) {
+  const [certificates, setCertificates] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function load() {
+    if (demo) return;
+    try {
+      const [certificateData, studentData] = await Promise.all([api("/staff/certificates"), api("/staff/students")]);
+      setCertificates(certificateData); setStudents(studentData);
+    } catch (error) { setMessage(error.message); }
+  }
+  useEffect(() => { load(); }, [demo]);
+  async function issue(event) {
+    event.preventDefault(); setBusy(true);
+    try {
+      const form = event.currentTarget;
+      const data = await api("/staff/certificates", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      form.reset(); setMessage(data.message); await load();
+    } catch (error) { setMessage(error.message); } finally { setBusy(false); }
+  }
+  async function revoke(certificate) {
+    const reason = window.prompt(`Reason for revoking ${certificate.certificateNumber}:`);
+    if (reason === null) return;
+    if (!reason.trim()) { setMessage("Enter a reason for revocation."); return; }
+    if (!window.confirm("Revoke this certificate? The public verification page will show it as revoked.")) return;
+    try { const data = await api(`/staff/certificates/${certificate.id}/revoke`, { method: "PATCH", body: JSON.stringify({ reason }) }); setMessage(data.message); await load(); }
+    catch (error) { setMessage(error.message); }
+  }
+  function copyLink(certificate) {
+    navigator.clipboard.writeText(`${window.location.origin}/?verify=${encodeURIComponent(certificate.certificateNumber)}`);
+    setMessage("Verification link copied.");
+  }
+  if (demo) return <div className="empty">Connect the backend to issue and verify certificates.</div>;
+  return <section className="certificates-center">
+    <div className="certificates-heading"><p className="eyebrow">Academy credentials</p><h2>Certificates</h2><p>Issue verifiable certificates to approved students and manage existing credentials.</p></div>
+    <form className="certificate-issue-form" onSubmit={issue}><label>Student<select name="studentId" required><option value="">Choose approved student</option>{students.map(student => <option key={student.id} value={student.id}>{student.fullName} · {student.email}</option>)}</select></label><label>Course completed<input name="courseTitle" defaultValue="DevOps Engineering Bootcamp" maxLength="180" required /></label><label>Completion date<input name="completionDate" type="date" max={new Date().toISOString().slice(0, 10)} required /></label><button className="button primary" disabled={busy}>{busy ? "Issuing…" : "Issue certificate"}</button></form>
+    <p className="form-message success">{message}</p>
+    <div className="certificate-admin-list">{certificates.length === 0 ? <div className="empty">No certificates issued yet.</div> : certificates.map(certificate => <article key={certificate.id}><div><strong>{certificate.studentName}</strong><span>{certificate.courseTitle}</span><small>{certificate.certificateNumber} · issued {new Date(certificate.issuedAt).toLocaleDateString()}</small></div><b className={certificate.status === "valid" ? "certificate-valid" : "certificate-revoked"}>{certificate.status}</b><button className="button light-border" onClick={() => copyLink(certificate)}>Copy verification link</button>{certificate.status === "valid" && <button className="button certificate-revoke-button" onClick={() => revoke(certificate)}>Revoke</button>}</article>)}</div>
+  </section>;
+}
+
 function StudentDashboard({ user, logout }) {
   const [active, setActive] = useState(user.mustChangePassword ? "Security" : "Overview");
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
@@ -1810,6 +1917,7 @@ function StudentDashboard({ user, logout }) {
         {active === "Attendance" && <AttendanceCenter mode="student" />}
         {active === "Learning" && <LearningCenter mode="student" />}
         {active === "Assignments" && <AssignmentsCenter />}
+        {active === "Certificates" && <StudentCertificates />}
         {active === "Leaderboard" && <StudentOverallLeaderboard user={user} />}
         {active === "Live quiz" && <QuizCenter mode="student" />}
         {active === "Security" && <SecurityCenter role="student" currentEmail={user.email} />}
@@ -3069,6 +3177,7 @@ function AdminDashboard({ user, logout }) {
         {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} onViewLearner={user.demo ? null : setProfileStudentId} demo={user.demo} />}
         {active === "Applications" && applications}
         {active === "Students" && <StudentDirectory demo={user.demo} canDelete={!user.demo} />}
+        {active === "Certificates" && <StaffCertificates demo={user.demo} />}
         {active === "Leaderboard" && <OverallLeaderboard demo={user.demo} />}
         {active === "Stories" && <StaffStoriesCenter demo={user.demo} />}
         {active === "Announcements" && <AnnouncementsCenter mode="staff" demo={user.demo} />}
@@ -3164,6 +3273,7 @@ function MentorDashboard({ user, logout }) {
         {active === "Stories" && <StaffStoriesCenter />}
         {active === "Security" && <SecurityCenter role="mentor" />}
         {active === "Students" && <StudentDirectory />}
+        {active === "Certificates" && <StaffCertificates />}
         {active === "Leaderboard" && <OverallLeaderboard />}
         {active === "Attendance" && <AttendanceCenter mode="staff" />}
         {active === "Learning" && <LearningCenter mode="staff" />}
@@ -3176,8 +3286,10 @@ function MentorDashboard({ user, logout }) {
 }
 
 export default function App() {
-  const resetToken = new URLSearchParams(window.location.search).get("reset") || "";
-  const [page, setPage] = useState(resetToken ? "reset-password" : "home");
+  const query = new URLSearchParams(window.location.search);
+  const resetToken = query.get("reset") || "";
+  const verificationNumber = query.get("verify") || "";
+  const [page, setPage] = useState(resetToken ? "reset-password" : verificationNumber ? "verify-certificate" : "home");
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authNotice, setAuthNotice] = useState("");
@@ -3202,7 +3314,7 @@ export default function App() {
     return () => window.removeEventListener("lw-session-expired", expired);
   }, []);
   useEffect(() => {
-    if (resetToken) { setLoading(false); return; }
+    if (resetToken || verificationNumber) { setLoading(false); return; }
     if (localStorage.getItem("lw_demo_admin")) {
       setUser({
         id: "demo-admin",
@@ -3229,6 +3341,7 @@ export default function App() {
   }, []);
   if (loading)
     return <div className="loading">Loading Livingworth Academy…</div>;
+  if (page === "verify-certificate") return <CertificateVerification navigate={navigate} initialNumber={verificationNumber} />;
   if (page === "register") return <Register navigate={navigate} />;
   if (page === "forgot-password") return <ForgotPassword navigate={navigate} />;
   if (page === "reset-password") return <ResetPassword navigate={navigate} token={resetToken} />;

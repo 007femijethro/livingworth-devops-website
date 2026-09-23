@@ -18,6 +18,7 @@ import './stories.css';
 import './homepage.css';
 import './assignments.css';
 import './overall-leaderboard.css';
+import './certificates.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode><App /></React.StrictMode>
