@@ -441,17 +441,3 @@
 @media (max-width: 700px) { .quiz-result-metrics { grid-template-columns: 1fr 1fr; } .quiz-result-filters { grid-template-columns: 1fr; } .hardest-questions article { grid-template-columns: 28px 1fr; } .hardest-questions article i { grid-column: 2; } }
 @media (max-width: 800px) { .quiz-result-metrics { grid-template-columns: 1fr 1fr; } .result-table > article, .student-result-list > article { grid-template-columns: 1fr auto; } .quiz-result-filters { grid-template-columns: 1fr; } .topic-performance > div { grid-template-columns: 100px 1fr 45px; } }
 @media (max-width: 520px) { .quiz-mode-tabs { width: 100%; } .quiz-mode-tabs button { flex: 1; } .quiz-results { padding: 20px 14px; } .quiz-result-metrics { grid-template-columns: 1fr; } .result-detail-head { align-items: flex-start; flex-direction: column; } .result-table > article, .student-result-list > article { grid-template-columns: 1fr; } .student-result-list .profile-button { width: 100%; } }
-
-
-/* Quiz result sections stay collapsed until the user opens them. */
-.quiz-result-section { margin-top: 18px; border: 1px solid #dce6ea; background: #fff; }
-.quiz-result-section > summary { padding: 17px 20px; color: #082d65; font: 800 1.05rem Manrope; cursor: pointer; list-style-position: inside; user-select: none; }
-.quiz-result-section > summary:hover { background: #f2f8fa; }
-.quiz-result-section[open] > summary { border-bottom: 1px solid #dce6ea; background: #f7fbfc; }
-.quiz-result-section > .quiz-result-metrics,
-.quiz-result-section > .result-leaderboard,
-.quiz-result-section > .topic-performance,
-.quiz-result-section > .hardest-questions,
-.quiz-result-section > .result-table,
-.quiz-result-section > .student-result-list { margin: 0; padding: 20px; }
-@media (max-width: 520px) { .quiz-result-section > summary { padding: 15px; } .quiz-result-section > .quiz-result-metrics, .quiz-result-section > .result-leaderboard, .quiz-result-section > .topic-performance, .quiz-result-section > .hardest-questions, .quiz-result-section > .result-table, .quiz-result-section > .student-result-list { padding: 14px; } }
