@@ -1764,6 +1764,15 @@ function StaffStoriesCenter({ demo = false }) {
 }
 
 
+function printCertificate(event) {
+  const entry = event.currentTarget.closest(".certificate-entry");
+  document.body.classList.add("printing-certificate");
+  entry?.classList.add("printing");
+  window.print();
+  entry?.classList.remove("printing");
+  document.body.classList.remove("printing-certificate");
+}
+
 function CertificateDocument({ certificate }) {
   const valid = certificate.status === "valid";
   return <article className="certificate-document">
@@ -1803,7 +1812,7 @@ function CertificateVerification({ navigate, initialNumber = "" }) {
       <p>Enter the certificate ID printed at the bottom of the certificate.</p>
       <form onSubmit={(event) => { event.preventDefault(); verify(); }}><input value={number} onChange={(event) => setNumber(event.target.value.toUpperCase())} placeholder="LWA-2026-XXXXXXXXXX" aria-label="Certificate ID" /><button className="button primary">Verify certificate</button></form>
       {message && <p className="certificate-error" role="alert">{message}</p>}
-      {certificate && <><div className={certificate.status === "valid" ? "verification-result valid" : "verification-result revoked"}><strong>{certificate.status === "valid" ? "✓ Valid certificate" : "✕ Revoked certificate"}</strong><span>{certificate.studentName} · {certificate.courseTitle}</span><small>Certificate ID {certificate.certificateNumber}</small></div><CertificateDocument certificate={certificate} /></>}
+      {certificate && <><div className={certificate.status === "valid" ? "verification-result valid" : "verification-result revoked"}><strong>{certificate.status === "valid" ? "✓ Valid certificate" : "✕ Revoked certificate"}</strong><span>{certificate.studentName} · {certificate.courseTitle}</span><small>Certificate ID {certificate.certificateNumber}</small></div><div className="certificate-entry"><CertificateDocument certificate={certificate} />{certificate.status === "valid" && <div className="certificate-actions"><button className="button primary" onClick={printCertificate}>Print / Save PDF</button></div>}</div></>}
     </section>
   </main>;
 }
@@ -1814,7 +1823,7 @@ function StudentCertificates() {
   useEffect(() => { api("/student/certificates").then(setCertificates).catch(error => setMessage(error.message)); }, []);
   return <section className="certificates-center"><div className="certificates-heading"><p className="eyebrow">Your achievements</p><h2>My certificates</h2><p>View, print or save your issued Livingworth Academy certificates.</p></div>
     {message && <p className="form-message">{message}</p>}
-    {certificates.length === 0 ? <div className="empty">No certificate has been issued to you yet.</div> : certificates.map(certificate => <div className="certificate-entry" key={certificate.id}><CertificateDocument certificate={certificate}/><div className="certificate-actions"><a className="button light-border" href={`/?verify=${encodeURIComponent(certificate.certificateNumber)}`} target="_blank" rel="noreferrer">Open verification page</a><button className="button primary" onClick={() => window.print()}>Print / Save PDF</button></div></div>)}
+    {certificates.length === 0 ? <div className="empty">No certificate has been issued to you yet.</div> : certificates.map(certificate => <div className="certificate-entry" key={certificate.id}><CertificateDocument certificate={certificate}/><div className="certificate-actions"><a className="button light-border" href={`/?verify=${encodeURIComponent(certificate.certificateNumber)}`} target="_blank" rel="noreferrer">Open verification page</a><button className="button primary" onClick={printCertificate}>Print / Save PDF</button></div></div>)}
   </section>;
 }
 
