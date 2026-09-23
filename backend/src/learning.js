@@ -43,11 +43,13 @@ const upload = multer({
   }
 });
 
-async function modulesFor(pool, studentId = null, staff = false) {
+async function modulesFor(pool, studentId = null, staff = false, assignmentsOnly = false) {
   const [modules] = await pool.query(`SELECT id, week_number AS weekNumber, title, summary, published FROM learning_modules ${staff ? '' : 'WHERE published = TRUE'} ORDER BY display_order, week_number`);
   const visibleModules = [];
   for (const module of modules) {
-    const [materials] = studentId
+    const [materials] = studentId && assignmentsOnly
+      ? [[]]
+      : studentId
       ? await pool.execute(`SELECT lm.id, lm.title, lm.material_type AS materialType, lm.resource_url AS resourceUrl,
           lm.lesson_content AS lessonContent, lm.original_name AS originalName, COALESCE(mp.status, 'not_started') AS progressStatus
           FROM learning_materials lm LEFT JOIN material_progress mp ON mp.material_id = lm.id AND mp.student_id = ?
@@ -75,7 +77,7 @@ async function modulesFor(pool, studentId = null, staff = false) {
         && materials.every(material => material.progressStatus === 'done')
         && assignments.filter(assignment => assignment.assignmentType !== 'manual').every(assignment => Boolean(assignment.closedAt || assignment.submissionId));
       visibleModules.push(module);
-      if (!module.isComplete) break;
+      if (!assignmentsOnly && !module.isComplete) break;
     }
   }
   return studentId ? visibleModules : modules;
@@ -85,7 +87,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
   app.get('/api/assignments/pending-count', requireAuth, async (req, res, next) => {
     try {
       if (req.user.role === 'student') {
-        const modules = await modulesFor(pool, req.user.id);
+        const modules = await modulesFor(pool, req.user.id, false, true);
         const count = modules.flatMap(module => module.assignments)
           .filter(assignment => assignment.assignmentType !== 'manual'
             && (!assignment.closedAt || assignment.submissionStatus === 'rejected')
@@ -100,7 +102,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
   app.get('/api/student/learning', requireAuth, async (req, res, next) => {
     try {
       if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
-      const modules = await modulesFor(pool, req.user.id, false);
+      const modules = await modulesFor(pool, req.user.id, false, req.query.assignments === 'all');
       const [publishedResult, scoreResult, progressResult] = await Promise.all([
         pool.query('SELECT COUNT(*) AS total FROM learning_modules WHERE published = TRUE'),
         pool.execute(`SELECT COUNT(*) AS gradedCount,
@@ -387,7 +389,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
       const submissionUrl = String(req.body.submissionUrl || '').trim();
       if (submissionUrl && !/^https?:\/\//i.test(submissionUrl)) return res.status(400).json({ message: 'Enter a complete GitHub or project URL.' });
-      const modules = await modulesFor(pool, req.user.id);
+      const modules = await modulesFor(pool, req.user.id, false, true);
       if (!modules.some(module => module.assignments.some(a => Number(a.id) === Number(req.params.id)))) return res.status(404).json({ message: 'Assignment is not available yet.' });
       const [previous] = await pool.execute('SELECT file_path AS filePath, file_name AS fileName, files, status FROM assignment_submissions WHERE assignment_id = ? AND student_id = ?', [req.params.id, req.user.id]);
       if (previous[0]?.status === 'completed') return res.status(409).json({ message: 'This assignment already has a final result and can no longer be changed.' });
