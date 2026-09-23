@@ -9,13 +9,16 @@ test('assignment badge counts student actions and staff reviews separately', asy
     query: async sql => sql.includes('COUNT(*)') ? [[{ count: '3' }]] : [[{ id: 1 }, { id: 2 }]],
     execute: async (sql, params) => {
       if (sql.includes('learning_materials')) return [[]];
-      assert.equal(params[1], 1, 'locked second week must not be loaded');
-      return [[
+      assert.ok([1, 2].includes(params[1]), 'every published week must be loaded for assignment access');
+      return params[1] === 1 ? [[
         { submissionId: null },
         { submissionId: 9, submissionStatus: 'rejected' },
         { submissionId: 10, submissionStatus: 'needs_correction' },
         { submissionId: 11, submissionStatus: 'submitted' },
         { submissionId: 12, submissionStatus: 'completed' }
+      ]] : [[
+        { submissionId: null },
+        { submissionId: 13, submissionStatus: 'completed' }
       ]];
     }
   };
@@ -24,7 +27,7 @@ test('assignment badge counts student actions and staff reviews separately', asy
   await new Promise(resolve => server.once('listening', resolve));
   const url = `http://127.0.0.1:${server.address().port}/api/assignments/pending-count`;
   try {
-    assert.deepEqual(await (await fetch(url)).json(), { count: 2 });
+    assert.deepEqual(await (await fetch(url)).json(), { count: 3 });
     assert.deepEqual(await (await fetch(url, { headers: { 'x-test-role': 'mentor' } })).json(), { count: 3 });
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
