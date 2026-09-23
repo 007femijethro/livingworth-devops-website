@@ -50,7 +50,7 @@ export default function AssignmentCard({ assignment: a, onSubmitted }) {
   return <section className="student-assignment assignment-card">
     <header className="assignment-title"><div><span>{a.assignmentType === 'manual' ? 'Submit to mentor via DM' : 'Practical assignment'}</span><h4>{a.title}</h4></div><b className={`work-status ${a.submissionStatus || (a.closedAt ? 'closed' : 'not-started')}`}>{labels[a.submissionStatus] || (a.closedAt ? 'Closed' : 'Not submitted')}</b></header>
     <div className="assignment-meta"><span>Due {new Date(a.dueAt).toLocaleString()}</span><span>{a.maxScore} points</span><span>{a.assignmentType === 'manual' ? 'DM submission' : 'Portal submission'}</span>{a.isLate && <b>Submitted late</b>}</div>
-    <details open className="assignment-brief"><summary>Assignment instructions</summary><AssignmentMarkdown>{a.instructions}</AssignmentMarkdown></details>
+    <details className="assignment-brief"><summary>Assignment instructions</summary><AssignmentMarkdown>{a.instructions}</AssignmentMarkdown></details>
     {a.feedback && <aside className={`mentor-feedback ${a.submissionStatus === 'rejected' ? 'redo-feedback' : ''}`}><b>{a.submissionStatus === 'rejected' ? 'Why this assignment needs to be redone' : a.submissionStatus === 'unavailable' ? 'Result' : 'Mentor feedback'}</b><p>{a.feedback}</p>{a.score != null && <strong>{a.score} / {a.maxScore} points</strong>}</aside>}
     {a.submittedAt && <p>Last submitted: {new Date(a.submittedAt).toLocaleString()}</p>}
     <SubmissionFiles submission={a} id={a.submissionId} />
