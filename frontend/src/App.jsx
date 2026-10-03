@@ -2620,7 +2620,7 @@ function QuizCenter({ mode, demo = false }) {
           {leaderboard.map((p, i) => (
             <div key={p.studentId}>
               <b>#{p.position || i + 1}</b>
-              <span>{p.fullName}</span>
+              <span className="live-leaderboard-name">{p.fullName}{mode === "admin" && (() => { const status = waitingRoomRoster.find(student => Number(student.id) === Number(p.studentId))?.status || "unknown"; return <i className={`leaderboard-presence-dot ${status}`} title={status === "online" ? "Connected" : status === "left" ? "Disconnected" : "Connection status unavailable"} aria-label={status === "online" ? "Connected" : status === "left" ? "Disconnected" : "Connection status unavailable"} />; })()}</span>
               <span className="leaderboard-result"><small>{p.correctCount}/{p.totalQuestions} correct · {Number(p.score || 0).toLocaleString()} game points</small><strong>{p.totalQuestions ? Math.round(p.correctCount * 100 / p.totalQuestions) : 0}/100</strong></span>
             </div>
           ))}
