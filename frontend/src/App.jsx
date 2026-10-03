@@ -2200,15 +2200,18 @@ function QuizCenter({ mode, demo = false }) {
       else leaveQuizRoom(result.message);
     });
   }
-  function answer(answerIndex = null) {
-    if (submitted || seconds <= 0) return;
+  function answer(answerIndex = null, answerIndexes = multiAnswer, answerText = typedAnswer) {
+    if (seconds <= 0 || paused || reveal !== null) return;
     socket.emit(
       "quiz:answer",
-      { quizId: room.id, questionId: question.id, answerIndex, answerIndexes: multiAnswer, answerText: typedAnswer },
+      { quizId: room.id, questionId: question.id, answerIndex, answerIndexes, answerText },
       (result) => {
         setSubmitted(result.ok);
-        if (result.ok) { setSelectedAnswer(answerIndex); playSound("locked"); }
-        setMessage(result.ok ? "Answer locked in." : result.message);
+        if (result.ok) {
+          if (!["typed", "multiple_selection"].includes(question.questionType)) setSelectedAnswer(answerIndex);
+          playSound("locked");
+        }
+        setMessage(result.ok ? `${result.updated ? "Answer updated" : "Answer saved"}. You can change it until time runs out.` : result.message);
       },
     );
   }
@@ -2583,21 +2586,21 @@ function QuizCenter({ mode, demo = false }) {
           </p>
           {mode === "admin" && <p className="live-answer-count"><b>{answerCount.answered}</b> of {answerCount.total} students answered · {answerCount.remaining} remaining</p>}
           <h3>{question.prompt}</h3>
-          {question.questionType === "typed" ? <div className="typed-answer"><input value={typedAnswer} disabled={mode !== "student" || submitted || paused || seconds <= 0} onChange={(event) => setTypedAnswer(event.target.value)} placeholder="Type your answer" /><button type="button" className="button primary" disabled={!typedAnswer.trim() || submitted || paused || seconds <= 0} onClick={() => answer(null)}>Lock answer</button>{reveal !== null && <strong>Accepted answer: {reveal.correctText}</strong>}</div> : <div className="answer-grid">
+          {question.questionType === "typed" ? <div className="typed-answer"><input value={typedAnswer} disabled={mode !== "student" || paused || seconds <= 0 || reveal !== null} onChange={(event) => setTypedAnswer(event.target.value)} placeholder="Type your answer" /><button type="button" className="button primary" disabled={!typedAnswer.trim() || paused || seconds <= 0 || reveal !== null} onClick={() => answer(null)}>{submitted ? "Update answer" : "Save answer"}</button>{reveal !== null && <strong>Accepted answer: {reveal.correctText}</strong>}</div> : <div className="answer-grid">
             {question.options.map((o, i) => (
               <button
                 key={i}
                 type="button"
-                disabled={mode !== "student" || paused || submitted || seconds <= 0}
+                disabled={mode !== "student" || paused || seconds <= 0 || reveal !== null}
                 aria-pressed={question.questionType === "multiple_selection" ? multiAnswer.includes(i) : selectedAnswer === i}
-                className={`${submitted ? "locked" : ""} ${(question.questionType === "multiple_selection" ? multiAnswer.includes(i) : selectedAnswer === i) && reveal === null ? "selected" : ""} ${(Array.isArray(reveal) ? reveal.includes(i) : reveal === i) ? "correct" : ""} ${reveal !== null && (question.questionType === "multiple_selection" ? multiAnswer.includes(i) && !reveal.includes(i) : selectedAnswer === i && reveal !== i) ? "incorrect" : ""}`}
+                className={`${(question.questionType === "multiple_selection" ? multiAnswer.includes(i) : selectedAnswer === i) && reveal === null ? "selected" : ""} ${(Array.isArray(reveal) ? reveal.includes(i) : reveal === i) ? "correct" : ""} ${reveal !== null && (question.questionType === "multiple_selection" ? multiAnswer.includes(i) && !reveal.includes(i) : selectedAnswer === i && reveal !== i) ? "incorrect" : ""}`}
                 onClick={() => question.questionType === "multiple_selection" ? setMultiAnswer(current => current.includes(i) ? current.filter(value => value !== i) : [...current, i]) : answer(i)}
               >
                 <b>{String.fromCharCode(65 + i)}</b>
                 {o}
               </button>
             ))}
-          {question.questionType === "multiple_selection" && <button type="button" className="button primary multi-lock" disabled={!multiAnswer.length || submitted || paused || seconds <= 0} onClick={() => answer(null)}>Lock selected answers</button>}</div>}
+          {question.questionType === "multiple_selection" && <button type="button" className="button primary multi-lock" disabled={!multiAnswer.length || paused || seconds <= 0 || reveal !== null} onClick={() => answer(null)}>{submitted ? "Update selections" : "Save selections"}</button>}</div>}
           {mode === "admin" && <div className="mentor-quiz-controls"><span className="navigation-mode-label">{room.navigationMode === "automatic" ? "Automatic navigation" : "Manual navigation"}</span><button type="button" onClick={togglePause} disabled={reveal !== null}>{paused ? "▶ Resume timer" : "Ⅱ Pause timer"}</button><button type="button" onClick={revealNow} disabled={reveal !== null}>Reveal answer</button><button type="button" className="next-question" onClick={nextQuestion} disabled={reveal === null}>{question.index + 1 === question.total ? "Finish quiz" : "Next question →"}</button><button type="button" className="restart-quiz" onClick={restartQuiz}>Restart quiz</button><button type="button" className="stop-quiz" onClick={closeQuizRoom}>Stop quiz &amp; go back</button></div>}
           <p>
             {mode !== "student"
@@ -2607,7 +2610,7 @@ function QuizCenter({ mode, demo = false }) {
                 : paused
                   ? "The mentor has paused this question."
                 : submitted
-                  ? `Answer ${String.fromCharCode(65 + selectedAnswer)} selected and locked in.`
+                  ? question.questionType === "typed" ? "Answer saved. You can update it before time runs out." : question.questionType === "multiple_selection" ? "Selections saved. You can update them before time runs out." : `Answer ${String.fromCharCode(65 + selectedAnswer)} selected. You can change it before time runs out.`
                   : seconds === 0
                     ? "Time is up."
                     : "Choose one answer."}
