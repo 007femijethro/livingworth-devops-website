@@ -2586,7 +2586,7 @@ function QuizCenter({ mode, demo = false }) {
           </p>
           {mode === "admin" && <p className="live-answer-count"><b>{answerCount.answered}</b> of {answerCount.total} students answered · {answerCount.remaining} remaining</p>}
           <h3>{question.prompt}</h3>
-          {question.questionType === "typed" ? <div className="typed-answer"><input value={typedAnswer} disabled={mode !== "student" || paused || seconds <= 0 || reveal !== null} onChange={(event) => setTypedAnswer(event.target.value)} placeholder="Type your answer" /><button type="button" className="button primary" disabled={!typedAnswer.trim() || paused || seconds <= 0 || reveal !== null} onClick={() => answer(null)}>{submitted ? "Update answer" : "Save answer"}</button>{reveal !== null && <strong>Accepted answer: {reveal.correctText}</strong>}</div> : <div className="answer-grid">
+          {question.questionType === "typed" ? <div className="typed-answer"><input value={typedAnswer} disabled={mode !== "student" || paused || seconds <= 0 || reveal !== null} onChange={(event) => { setTypedAnswer(event.target.value); setSubmitted(false); }} placeholder="Type your answer" /><button type="button" className="button primary" disabled={!typedAnswer.trim() || paused || seconds <= 0 || reveal !== null} onClick={() => answer(null)}>{submitted ? "Update answer" : "Save answer"}</button>{reveal !== null && <strong>Accepted answer: {reveal.correctText}</strong>}</div> : <div className="answer-grid">
             {question.options.map((o, i) => (
               <button
                 key={i}
@@ -2594,7 +2594,7 @@ function QuizCenter({ mode, demo = false }) {
                 disabled={mode !== "student" || paused || seconds <= 0 || reveal !== null}
                 aria-pressed={question.questionType === "multiple_selection" ? multiAnswer.includes(i) : selectedAnswer === i}
                 className={`${(question.questionType === "multiple_selection" ? multiAnswer.includes(i) : selectedAnswer === i) && reveal === null ? "selected" : ""} ${(Array.isArray(reveal) ? reveal.includes(i) : reveal === i) ? "correct" : ""} ${reveal !== null && (question.questionType === "multiple_selection" ? multiAnswer.includes(i) && !reveal.includes(i) : selectedAnswer === i && reveal !== i) ? "incorrect" : ""}`}
-                onClick={() => question.questionType === "multiple_selection" ? setMultiAnswer(current => current.includes(i) ? current.filter(value => value !== i) : [...current, i]) : answer(i)}
+                onClick={() => question.questionType === "multiple_selection" ? (setMultiAnswer(current => current.includes(i) ? current.filter(value => value !== i) : [...current, i]), setSubmitted(false)) : answer(i)}
               >
                 <b>{String.fromCharCode(65 + i)}</b>
                 {o}
