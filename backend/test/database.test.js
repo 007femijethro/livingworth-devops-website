@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { translateSql } from '../src/db.js';
+import { translateSql } from '../dist/db.js';
 
 test('prefixes Livingworth tables and keeps camel-case response fields', () => {
   const sql = translateSql('SELECT u.full_name AS fullName FROM users u JOIN attendance a ON a.student_id = u.id WHERE u.id = ?');

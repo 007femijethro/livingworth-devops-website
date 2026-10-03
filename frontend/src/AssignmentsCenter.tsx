@@ -1,7 +1,8 @@
-import { UploadSlots } from './AssignmentFiles.jsx';
+// @ts-nocheck
+import { UploadSlots } from './AssignmentFiles';
 import { useEffect, useState } from 'react';
-import AssignmentCard, { SubmissionFiles } from './AssignmentCard.jsx';
-import AssignmentMarkdown, { AssignmentInstructions } from './AssignmentMarkdown.jsx';
+import AssignmentCard, { SubmissionFiles } from './AssignmentCard';
+import AssignmentMarkdown, { AssignmentInstructions } from './AssignmentMarkdown';
 
 function AssignmentLeaderboard({ assignments, submissions }) {
   const [assignmentId, setAssignmentId] = useState('general');

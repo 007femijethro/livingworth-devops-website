@@ -1,8 +1,9 @@
-import { UploadSlots } from './AssignmentFiles.jsx';
+// @ts-nocheck
+import { UploadSlots } from './AssignmentFiles';
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
-import AssignmentCard, { SubmissionFiles } from './AssignmentCard.jsx';
-import AssignmentsCenter from './AssignmentsCenter.jsx';
+import AssignmentCard, { SubmissionFiles } from './AssignmentCard';
+import AssignmentsCenter from './AssignmentsCenter';
 
 async function api(path, options = {}) {
   const token = localStorage.getItem("lw_token");
@@ -3501,4 +3502,4 @@ export default function App() {
   }
   return <Home navigate={navigate} />;
 }
-import { AssignmentInstructions } from './AssignmentMarkdown.jsx';
+import { AssignmentInstructions } from './AssignmentMarkdown';

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { registerLearningRoutes } from '../src/learning.js';
+import { registerLearningRoutes } from '../dist/learning.js';
 
 test('rejection requires a reason and preserves it in the student notification', async () => {
   const app = express(); app.use(express.json());

@@ -1,3 +1,4 @@
+// @ts-nocheck
 const storyTypes = new Set(['testimony', 'success_story', 'learning_journey']);
 
 function storyInput(body) {

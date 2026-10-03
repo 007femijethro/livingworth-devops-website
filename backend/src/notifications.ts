@@ -1,3 +1,4 @@
+// @ts-nocheck
 export async function notifyStudents(pool, notification) {
   await pool.execute(`INSERT INTO notifications (user_id, title, message, category, action_target)
     SELECT id, ?, ?, ?, ? FROM users WHERE role = 'student' AND status = 'approved'`,

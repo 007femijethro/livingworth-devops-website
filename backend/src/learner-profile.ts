@@ -1,3 +1,4 @@
+// @ts-nocheck
 function number(value) {
   return Number(value || 0);
 }

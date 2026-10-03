@@ -1,3 +1,4 @@
+// @ts-nocheck
 import nodemailer from 'nodemailer';
 
 const smtpHost = process.env.SMTP_HOST?.trim();

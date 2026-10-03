@@ -1,7 +1,12 @@
 import { useState } from 'react';
 
-export function UploadSlots({ defaultValue = [] }) {
-  const [slots, setSlots] = useState(defaultValue);
+export interface UploadSlot {
+  id: string;
+  label: string;
+}
+
+export function UploadSlots({ defaultValue = [] }: { defaultValue?: UploadSlot[] }) {
+  const [slots, setSlots] = useState<UploadSlot[]>(defaultValue);
   return <fieldset className="assignment-upload"><legend>Requested files</legend>
     <p>Choose the files you want students to provide and name each one. Students may submit before every file is attached. Every file has a 15 MB limit.</p>
     <label>Number of requested files<select value={slots.length} onChange={e => {

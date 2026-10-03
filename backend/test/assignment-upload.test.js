@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { registerLearningRoutes } from '../src/learning.js';
+import { registerLearningRoutes } from '../dist/learning.js';
 
 test('assignment badge counts student actions and staff reviews separately', async () => {
   const app = express();
