@@ -571,7 +571,7 @@ export function configureQuizSockets(io, pool, verifyToken) {
         if (question.questionType === 'multiple_selection' && (!selectedIndexes.length || selectedIndexes.some(index => !Number.isInteger(index) || index < 0 || index >= question.options.length))) throw new Error('Choose one or more valid answers.');
         if (!['typed', 'multiple_selection'].includes(question.questionType) && (!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex >= question.options.length)) throw new Error('Choose a valid answer.');
         const key = `${questionId}:${socket.user.id}`;
-        if (state.questionAnswers.has(key)) throw new Error('Answer already submitted.');
+        const updated = state.questionAnswers.has(key);
         state.questionAnswers.add(key);
         const responseMs = Date.now() - state.startedAt;
         const normalized = value => String(value || '').trim().toLocaleLowerCase().replace(/\s+/g, ' ');
@@ -581,9 +581,9 @@ export function configureQuizSockets(io, pool, verifyToken) {
         const savedAnswer = question.questionType === 'typed' ? { text: selectedText } : question.questionType === 'multiple_selection' ? { indexes: selectedIndexes } : { index: selectedIndex };
         state.answers.set(key, { studentId: socket.user.id, answerIndex: savedIndex, answerIndexes: selectedIndexes, answerText: selectedText, correct, responseMs, points });
         const attemptId = await ensureAttempt(pool, state, quizId, socket.user.id);
-        await pool.execute('INSERT INTO quiz_attempt_answers (attempt_id,question_id,answer_index,answer_json,is_correct,response_ms) VALUES (?,?,?,?,?,?) ON CONFLICT (attempt_id, question_id) DO UPDATE SET answer_index=EXCLUDED.answer_index,answer_json=EXCLUDED.answer_json,is_correct=EXCLUDED.is_correct,response_ms=EXCLUDED.response_ms', [attemptId, questionId, savedIndex, JSON.stringify(savedAnswer), correct, responseMs]);
+        await pool.execute('INSERT INTO quiz_attempt_answers (attempt_id,question_id,answer_index,answer_json,is_correct,response_ms) VALUES (?,?,?,?,?,?) ON CONFLICT (attempt_id, question_id) DO UPDATE SET answer_index=EXCLUDED.answer_index,answer_json=EXCLUDED.answer_json,is_correct=EXCLUDED.is_correct,response_ms=EXCLUDED.response_ms WHERE EXCLUDED.response_ms >= quiz_attempt_answers.response_ms', [attemptId, questionId, savedIndex, JSON.stringify(savedAnswer), correct, responseMs]);
         await emitParticipation(quizId);
-        ack({ ok: true });
+        ack({ ok: true, updated, responseMs });
       } catch (error) { ack({ ok: false, message: error.message }); }
     });
 
