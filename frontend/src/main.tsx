@@ -20,6 +20,7 @@ import './assignments.css';
 import './overall-leaderboard.css';
 import './certificates.css';
 import './live-class.css';
+import './portal-redesign.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Application root element was not found.');
