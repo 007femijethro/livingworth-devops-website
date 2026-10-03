@@ -941,10 +941,10 @@ function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forc
   }, [role, active, forceSecurity]);
   const items = forceSecurity ? ["Security"] :
     role === "admin"
-      ? ["Overview", "Applications", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
+      ? ["Overview", "Applications", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"]
       : role === "mentor"
-        ? ["Overview", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live quiz", "Security"]
-        : ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live quiz", "Security"];
+        ? ["Overview", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"]
+        : ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security"];
   return (
     <aside className="sidebar" aria-label={`${role} portal navigation`}>
       <Logo />
@@ -1877,6 +1877,126 @@ function StaffCertificates({ demo = false }) {
   </section>;
 }
 
+
+let jitsiLoader;
+function loadJitsiApi() {
+  if (window.JitsiMeetExternalAPI) return Promise.resolve();
+  if (jitsiLoader) return jitsiLoader;
+  jitsiLoader = new Promise((resolve, reject) => {
+    const existing = document.getElementById("jitsi-external-api");
+    if (existing) { existing.addEventListener("load", resolve, { once: true }); existing.addEventListener("error", reject, { once: true }); return; }
+    const script = document.createElement("script");
+    script.id = "jitsi-external-api";
+    script.src = "https://meet.jit.si/external_api.js";
+    script.async = true;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("The video classroom could not load. Check your internet connection."));
+    document.head.appendChild(script);
+  });
+  return jitsiLoader;
+}
+
+function JitsiClassroom({ liveClass, user, student, onExit, onNotice }) {
+  const containerRef = useRef(null);
+  const conferenceRef = useRef(null);
+  useEffect(() => {
+    let disposed = false, heartbeat = null, joined = false;
+    loadJitsiApi().then(() => {
+      if (disposed || !containerRef.current) return;
+      const conference = new window.JitsiMeetExternalAPI("meet.jit.si", {
+        roomName: liveClass.roomName,
+        parentNode: containerRef.current,
+        width: "100%",
+        height: "100%",
+        userInfo: { displayName: user.fullName, email: user.email },
+        configOverwrite: { prejoinPageEnabled: false, startWithAudioMuted: true, startWithVideoMuted: true },
+        interfaceConfigOverwrite: { MOBILE_APP_PROMO: false }
+      });
+      conferenceRef.current = conference;
+      conference.addEventListener("videoConferenceJoined", async () => {
+        joined = true;
+        if (student) {
+          try {
+            const result = await api(`/live-classes/${liveClass.id}/join`, { method: "POST" });
+            onNotice(result.message);
+            heartbeat = setInterval(() => api(`/live-classes/${liveClass.id}/heartbeat`, { method: "POST" }).catch(() => {}), 30000);
+          } catch (error) { onNotice(error.message); }
+        } else onNotice("You joined the live classroom as a mentor.");
+      });
+      conference.addEventListener("videoConferenceLeft", () => {
+        if (student && joined) api(`/live-classes/${liveClass.id}/leave`, { method: "POST", keepalive: true }).catch(() => {});
+        onExit();
+      });
+      conference.addEventListener("readyToClose", onExit);
+    }).catch(error => onNotice(error.message));
+    return () => {
+      disposed = true;
+      clearInterval(heartbeat);
+      if (student && joined) api(`/live-classes/${liveClass.id}/leave`, { method: "POST", keepalive: true }).catch(() => {});
+      conferenceRef.current?.dispose();
+      conferenceRef.current = null;
+    };
+  }, [liveClass.id]);
+  return <section className="jitsi-classroom">
+    <header><div><p className="eyebrow">Live classroom</p><h2>{liveClass.title}</h2></div><button className="button light-border" onClick={() => { conferenceRef.current?.executeCommand("hangup"); onExit(); }}>Leave classroom</button></header>
+    <div className="jitsi-frame" ref={containerRef} />
+  </section>;
+}
+
+function LiveClassCenter({ mode, user, demo = false }) {
+  const staff = mode === "staff";
+  const [classes, setClasses] = useState([]), [activeClass, setActiveClass] = useState(null),
+    [participants, setParticipants] = useState([]), [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
+  const load = () => {
+    if (demo) return;
+    api("/live-classes").then(setClasses).catch(error => setMessage(error.message));
+  };
+  useEffect(() => { load(); const timer = setInterval(load, 20000); return () => clearInterval(timer); }, [demo]);
+  useEffect(() => {
+    if (!staff || !activeClass || activeClass.status !== "live") { setParticipants([]); return; }
+    const refresh = () => api(`/staff/live-classes/${activeClass.id}/participants`).then(setParticipants).catch(() => {});
+    refresh(); const timer = setInterval(refresh, 15000); return () => clearInterval(timer);
+  }, [staff, activeClass?.id]);
+  async function createClass(event) {
+    event.preventDefault(); setBusy(true);
+    try {
+      const form = event.currentTarget, values = Object.fromEntries(new FormData(form));
+      values.scheduledAt = new Date(values.scheduledAt).toISOString();
+      const result = await api("/staff/live-classes", { method: "POST", body: JSON.stringify(values) });
+      form.reset(); setMessage(result.message); await load();
+    } catch (error) { setMessage(error.message); } finally { setBusy(false); }
+  }
+  async function enterClass(item) {
+    try {
+      if (staff && item.status === "scheduled") {
+        const result = await api(`/staff/live-classes/${item.id}/start`, { method: "PATCH" });
+        setMessage(result.message); item = { ...item, status: "live" }; await load();
+      }
+      if (item.status !== "live") return setMessage("This class has not started.");
+      setActiveClass(item);
+    } catch (error) { setMessage(error.message); }
+  }
+  async function endClass(item) {
+    if (!window.confirm("End this live class for everyone? Attendance already recorded will be retained.")) return;
+    try { const result = await api(`/staff/live-classes/${item.id}/end`, { method: "PATCH" }); setMessage(result.message); setActiveClass(null); await load(); }
+    catch (error) { setMessage(error.message); }
+  }
+  async function deleteClass(item) {
+    if (!window.confirm(`Delete ${item.title}? Its live-class participation details will be removed.`)) return;
+    try { const result = await api(`/staff/live-classes/${item.id}`, { method: "DELETE" }); setMessage(result.message); await load(); }
+    catch (error) { setMessage(error.message); }
+  }
+  if (demo) return <div className="empty">Connect the backend to use the embedded live classroom.</div>;
+  if (activeClass) return <><JitsiClassroom liveClass={activeClass} user={user} student={!staff} onExit={() => { setActiveClass(null); load(); }} onNotice={setMessage} />{staff && <section className="live-class-participants"><h3>Attendance in this room</h3>{participants.length ? participants.map(person => <article key={person.studentId}><span className={person.connected ? "class-online" : "class-offline"} /><strong>{person.fullName}</strong><small>{person.connected ? "Connected" : "Disconnected"} · joined {new Date(person.joinedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small></article>) : <p>No student has joined through the academy yet.</p>}</section>}<p className="form-message">{message}</p></>;
+  return <section className="live-class-center">
+    <header><div><p className="eyebrow">Embedded classroom</p><h2>Live class</h2><p>Camera, microphone, screen sharing and attendance—all inside Livingworth Academy.</p></div></header>
+    {staff && <form className="live-class-form" onSubmit={createClass}><label>Class title<input name="title" placeholder="Friday DevOps live class" maxLength="180" required /></label><label>Date and time<input name="scheduledAt" type="datetime-local" required /></label><label>Duration (minutes)<input name="durationMinutes" type="number" min="15" max="240" defaultValue="60" required /></label><button className="button primary" disabled={busy}>{busy ? "Scheduling…" : "Schedule class"}</button></form>}
+    <p className="form-message success">{message}</p>
+    <div className="live-class-list">{classes.length ? classes.map(item => <article key={item.id} className={`live-class-${item.status}`}><div><span>{item.status}</span><h3>{item.title}</h3><p>{new Date(item.scheduledAt).toLocaleString()} · {item.durationMinutes} minutes</p>{staff && <small>{item.participantCount} student{item.participantCount === 1 ? "" : "s"} recorded</small>}</div><div className="live-class-actions">{item.status !== "ended" && <button className="button primary" onClick={() => enterClass(item)}>{item.status === "live" ? "Enter live class" : staff ? "Start class" : "Waiting for mentor"}</button>}{staff && item.status === "live" && <button className="button class-end" onClick={() => endClass(item)}>End class</button>}{staff && item.status !== "live" && <button className="button light-border" onClick={() => deleteClass(item)}>Delete</button>}</div></article>) : <div className="empty">{staff ? "No live classes scheduled yet." : "Your mentor has not scheduled a live class yet."}</div>}</div>
+    {!staff && <p className="live-class-attendance-note">Attendance is recorded only after the video room confirms that you joined through this page.</p>}
+  </section>;
+}
+
 function StudentDashboard({ user, logout }) {
   const [active, setActive] = useState(user.mustChangePassword ? "Security" : "Overview");
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
@@ -1927,6 +2047,7 @@ function StudentDashboard({ user, logout }) {
         {active === "Assignments" && <AssignmentsCenter />}
         {active === "Certificates" && <StudentCertificates />}
         {active === "Leaderboard" && <StudentOverallLeaderboard user={user} />}
+        {active === "Live class" && <LiveClassCenter mode="student" user={user} />}
         {active === "Live quiz" && <QuizCenter mode="student" />}
         {active === "Security" && <SecurityCenter role="student" currentEmail={user.email} />}
       </section>
@@ -3257,6 +3378,7 @@ function AdminDashboard({ user, logout }) {
         )}{" "}
         {active === "Learning" && <LearningCenter mode="staff" demo={user.demo} />}
         {active === "Assignments" && <AssignmentsCenter staff demo={user.demo} />}
+        {active === "Live class" && <LiveClassCenter mode="staff" user={user} demo={user.demo} />}
         {active === "Live quiz" && <QuizCenter mode="admin" demo={user.demo} />}
         {active === "Security" && <SecurityCenter role="admin" demo={user.demo} />}
         {profileStudentId && <LearnerProfilePanel studentId={profileStudentId} onClose={() => setProfileStudentId(null)} onDeleted={(notice) => { setProfileStudentId(null); setMessage(notice); loadApplications(); }} />}
@@ -3298,6 +3420,7 @@ function MentorDashboard({ user, logout }) {
         {active === "Attendance" && <AttendanceCenter mode="staff" />}
         {active === "Learning" && <LearningCenter mode="staff" />}
         {active === "Assignments" && <AssignmentsCenter staff />}
+        {active === "Live class" && <LiveClassCenter mode="staff" user={user} />}
         {active === "Live quiz" && <QuizCenter mode="admin" />}
         {profileStudentId && <LearnerProfilePanel studentId={profileStudentId} onClose={() => setProfileStudentId(null)} />}
       </section>
