@@ -2573,7 +2573,7 @@ function QuizCenter({ mode, demo = false }) {
         </div>
       )}
       {room && question && (
-        <div className="question-stage">
+        <div className={`question-stage ${mode === "student" ? "student-copy-protected" : ""}`} onCopy={mode === "student" ? (event) => event.preventDefault() : undefined} onCut={mode === "student" ? (event) => event.preventDefault() : undefined} onContextMenu={mode === "student" ? (event) => event.preventDefault() : undefined} onDragStart={mode === "student" ? (event) => event.preventDefault() : undefined} onKeyDown={mode === "student" ? (event) => { if ((event.ctrlKey || event.metaKey) && ["a", "c", "x"].includes(event.key.toLowerCase())) event.preventDefault(); } : undefined}>
           <div className="quiz-time-progress" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, (seconds / (room.questionTimeSeconds || questionTimeSeconds)) * 100))}%` }} /></div>
           <div className={`countdown ${seconds <= 5 ? "danger" : ""}`}>
             {seconds}
