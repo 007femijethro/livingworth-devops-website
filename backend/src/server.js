@@ -19,6 +19,7 @@ import { ensurePostgresSchema } from './schema.js';
 import { startReminderScheduler } from './reminders.js';
 import { registerStoryRoutes } from './stories.js';
 import { registerCertificateRoutes } from './certificates.js';
+import { registerLiveClassRoutes } from './live-classes.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -609,6 +610,7 @@ registerLearnerProfileRoutes(app, pool, requireAuth, requireStaff);
 registerNotificationRoutes(app, pool, requireAuth);
 registerStoryRoutes(app, pool, requireAuth, requireStaff);
 registerCertificateRoutes(app, pool, requireAuth, requireStaff);
+registerLiveClassRoutes(app, pool, requireAuth, requireStaff);
 configureQuizSockets(io, pool, verifyToken);
 
 app.post('/api/enquiries', async (req, res, next) => {
