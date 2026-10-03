@@ -431,9 +431,7 @@ export function configureQuizSockets(io, pool, verifyToken) {
     })).sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || a.fullName.localeCompare(b.fullName));
     io.to(`quiz:${id}`).emit('quiz:presence', { count: studentIds.size });
     io.to(`quiz:${id}`).emit('quiz:answer-count', { answered: answeredIds.size, total: studentIds.size, remaining: Math.max(0, studentIds.size - answeredIds.size) });
-    for (const client of await io.in(`quiz:${id}`).fetchSockets()) {
-      if (['admin', 'mentor'].includes(client.user?.role)) client.emit('quiz:roster', { students: roster });
-    }
+    io.to(`quiz:${id}`).emit('quiz:roster', { students: roster });
   };
   const initials = name => String(name || '').split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 3).toUpperCase();
   const emitRanked = async (quizId, event, extra = {}) => {
