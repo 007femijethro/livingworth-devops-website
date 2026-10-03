@@ -1832,6 +1832,7 @@ function StaffCertificates({ demo = false }) {
   const [students, setStudents] = useState([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [deletingCertificateId, setDeletingCertificateId] = useState(null);
   async function load() {
     if (demo) return;
     try {
@@ -1856,6 +1857,13 @@ function StaffCertificates({ demo = false }) {
     try { const data = await api(`/staff/certificates/${certificate.id}/revoke`, { method: "PATCH", body: JSON.stringify({ reason }) }); setMessage(data.message); await load(); }
     catch (error) { setMessage(error.message); }
   }
+  async function deleteCertificate(certificate) {
+    if (!window.confirm(`Permanently delete certificate ${certificate.certificateNumber} for ${certificate.studentName}? This cannot be undone and its verification record will disappear.`)) return;
+    setDeletingCertificateId(certificate.id);
+    try { const data = await api(`/staff/certificates/${certificate.id}`, { method: "DELETE" }); setMessage(data.message); await load(); }
+    catch (error) { setMessage(error.message); }
+    finally { setDeletingCertificateId(null); }
+  }
   function copyLink(certificate) {
     navigator.clipboard.writeText(`${window.location.origin}/?verify=${encodeURIComponent(certificate.certificateNumber)}`);
     setMessage("Verification link copied.");
@@ -1865,7 +1873,7 @@ function StaffCertificates({ demo = false }) {
     <div className="certificates-heading"><p className="eyebrow">Academy credentials</p><h2>Certificates</h2><p>Issue verifiable certificates to approved students and manage existing credentials.</p></div>
     <form className="certificate-issue-form" onSubmit={issue}><label>Student<select name="studentId" required><option value="">Choose approved student</option>{students.map(student => <option key={student.id} value={student.id}>{student.fullName} · {student.email}</option>)}</select></label><label>Course completed<input name="courseTitle" defaultValue="DevOps Engineering Bootcamp" maxLength="180" required /></label><label>Completion date<input name="completionDate" type="date" max={new Date().toISOString().slice(0, 10)} required /></label><button className="button primary" disabled={busy}>{busy ? "Issuing…" : "Issue certificate"}</button></form>
     <p className="form-message success">{message}</p>
-    <div className="certificate-admin-list">{certificates.length === 0 ? <div className="empty">No certificates issued yet.</div> : certificates.map(certificate => <article key={certificate.id}><div><strong>{certificate.studentName}</strong><span>{certificate.courseTitle}</span><small>{certificate.certificateNumber} · issued {new Date(certificate.issuedAt).toLocaleDateString()}</small></div><b className={certificate.status === "valid" ? "certificate-valid" : "certificate-revoked"}>{certificate.status}</b><button className="button light-border" onClick={() => copyLink(certificate)}>Copy verification link</button>{certificate.status === "valid" && <button className="button certificate-revoke-button" onClick={() => revoke(certificate)}>Revoke</button>}</article>)}</div>
+    <div className="certificate-admin-list">{certificates.length === 0 ? <div className="empty">No certificates issued yet.</div> : certificates.map(certificate => <article key={certificate.id}><div><strong>{certificate.studentName}</strong><span>{certificate.courseTitle}</span><small>{certificate.certificateNumber} · issued {new Date(certificate.issuedAt).toLocaleDateString()}</small></div><b className={certificate.status === "valid" ? "certificate-valid" : "certificate-revoked"}>{certificate.status}</b><button className="button light-border" onClick={() => copyLink(certificate)}>Copy verification link</button>{certificate.status === "valid" ? <button className="button certificate-revoke-button" onClick={() => revoke(certificate)}>Revoke</button> : <button className="button certificate-delete-button" disabled={deletingCertificateId === certificate.id} onClick={() => deleteCertificate(certificate)}>{deletingCertificateId === certificate.id ? "Deleting…" : "Delete permanently"}</button>}</article>)}</div>
   </section>;
 }
 

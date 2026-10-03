@@ -71,6 +71,16 @@ export function registerCertificateRoutes(app, pool, requireAuth, requireStaff) 
     } catch (error) { next(error); }
   });
 
+  app.delete('/api/staff/certificates/:id', requireAuth, requireStaff, async (req, res, next) => {
+    try {
+      const certificateId = Number.parseInt(req.params.id, 10);
+      if (!certificateId) return res.status(400).json({ message: 'Choose a valid certificate.' });
+      const [result] = await pool.execute("DELETE FROM certificates WHERE id = ? AND status = 'revoked'", [certificateId]);
+      if (!result.affectedRows) return res.status(404).json({ message: 'Revoked certificate not found. Active certificates must be revoked before deletion.' });
+      res.json({ message: 'Revoked certificate deleted permanently.' });
+    } catch (error) { next(error); }
+  });
+
   app.patch('/api/staff/certificates/:id/revoke', requireAuth, requireStaff, async (req, res, next) => {
     try {
       const reason = String(req.body.reason || '').trim().slice(0, 500);
