@@ -393,11 +393,12 @@ export function configureQuizSockets(io, pool, verifyToken) {
   io.use(async (socket, next) => {
     try {
       socket.user = verifyToken(socket.handshake.auth?.token);
-      const [accounts] = await pool.execute('SELECT role, status, session_version AS sessionVersion FROM users WHERE id = ?', [socket.user.id]);
+      const [accounts] = await pool.execute('SELECT full_name AS fullName, role, status, session_version AS sessionVersion FROM users WHERE id = ?', [socket.user.id]);
       const account = accounts[0];
       if (!account) throw new Error('Authentication required');
       if (socket.user.role === 'student' && account.status !== 'approved') throw new Error('Approved student access required');
       if (Number(socket.user.sessionVersion || 0) !== Number(account.sessionVersion || 0)) throw new Error('Authentication required');
+      socket.user.fullName = account.fullName;
       socket.user.role = account.role;
       socket.user.status = account.status;
       socket.user.sessionVersion = Number(account.sessionVersion || 0);
@@ -412,14 +413,26 @@ export function configureQuizSockets(io, pool, verifyToken) {
     return { id: question.id, index: state.index, total: state.questions.length, prompt: question.prompt, options: question.options, questionType: question.questionType, endsAt };
   };
 
+  const joinedStudentsByQuiz = new Map();
   const studentSockets = async quizId => (await io.in(`quiz:${quizId}`).fetchSockets()).filter(client => client.user?.role === 'student');
   const emitParticipation = async quizId => {
-    const students = await studentSockets(quizId);
-    const studentIds = new Set(students.map(client => client.user.id));
-    const state = rooms.get(Number(quizId));
-    const answeredIds = new Set([...(state?.questionAnswers || [])].map(key => Number(String(key).split(':')[1])).filter(id => studentIds.has(id)));
-    io.to(`quiz:${quizId}`).emit('quiz:presence', { count: studentIds.size });
-    io.to(`quiz:${quizId}`).emit('quiz:answer-count', { answered: answeredIds.size, total: studentIds.size, remaining: Math.max(0, studentIds.size - answeredIds.size) });
+    const id = Number(quizId);
+    const students = await studentSockets(id);
+    const studentIds = new Set(students.map(client => Number(client.user.id)));
+    const joinedIds = joinedStudentsByQuiz.get(id) || new Set();
+    const state = rooms.get(id);
+    const answeredIds = new Set([...(state?.questionAnswers || [])].map(key => Number(String(key).split(':')[1])).filter(studentId => studentIds.has(studentId)));
+    const [eligibleStudents] = await pool.execute("SELECT id, full_name AS fullName FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name");
+    const roster = eligibleStudents.map(student => ({
+      id: Number(student.id),
+      fullName: student.fullName,
+      status: studentIds.has(Number(student.id)) ? 'online' : joinedIds.has(Number(student.id)) ? 'left' : 'not_joined'
+    })).sort((a, b) => ({ online: 0, left: 1, not_joined: 2 }[a.status] - { online: 0, left: 1, not_joined: 2 }[b.status] || a.fullName.localeCompare(b.fullName));
+    io.to(`quiz:${id}`).emit('quiz:presence', { count: studentIds.size });
+    io.to(`quiz:${id}`).emit('quiz:answer-count', { answered: answeredIds.size, total: studentIds.size, remaining: Math.max(0, studentIds.size - answeredIds.size) });
+    for (const client of await io.in(`quiz:${id}`).fetchSockets()) {
+      if (['admin', 'mentor'].includes(client.user?.role)) client.emit('quiz:roster', { students: roster });
+    }
   };
   const initials = name => String(name || '').split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 3).toUpperCase();
   const emitRanked = async (quizId, event, extra = {}) => {
@@ -507,8 +520,18 @@ export function configureQuizSockets(io, pool, verifyToken) {
           await pool.execute("UPDATE quizzes SET status='lobby' WHERE id=?", [quiz.id]);
           quiz.status = 'lobby';
         }
+        const previousQuizId = Number(socket.data.quizId || 0);
+        if (previousQuizId && previousQuizId !== Number(quiz.id)) {
+          socket.leave(`quiz:${previousQuizId}`);
+          emitParticipation(previousQuizId).catch(() => {});
+        }
         socket.join(`quiz:${quiz.id}`);
         socket.data.quizId = quiz.id;
+        if (socket.user.role === 'student') {
+          const joinedIds = joinedStudentsByQuiz.get(Number(quiz.id)) || new Set();
+          joinedIds.add(Number(socket.user.id));
+          joinedStudentsByQuiz.set(Number(quiz.id), joinedIds);
+        }
         if (quiz.status === 'draft' && (!quiz.scheduledAt || new Date(quiz.scheduledAt) <= new Date())) await pool.execute("UPDATE quizzes SET status='lobby' WHERE id=?", [quiz.id]);
         state = rooms.get(Number(quiz.id));
         const liveState = liveStateFor(state, socket.user.id);
@@ -658,6 +681,7 @@ export function configureQuizSockets(io, pool, verifyToken) {
         }
         io.to(`quiz:${id}`).emit('quiz:closed', { completed, message: completed ? 'The mentor stopped the quiz.' : 'The mentor closed the quiz room.' });
         io.in(`quiz:${id}`).socketsLeave(`quiz:${id}`);
+        joinedStudentsByQuiz.delete(id);
         ack({ ok: true, completed, message: completed ? 'Quiz stopped. Current attempts were saved.' : 'Quiz room closed.' });
       } catch (error) { ack({ ok: false, message: error.message }); }
     });
