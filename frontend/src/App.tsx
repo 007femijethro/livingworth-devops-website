@@ -73,6 +73,48 @@ const Logo = () => (
   </a>
 );
 
+const portalItems = {
+  admin: ["Overview", "Applications", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
+  mentor: ["Overview", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
+  student: ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security"],
+};
+
+const portalIcons = {
+  Overview: "⌂", Applications: "◎", Students: "♙", Certificates: "◇", Leaderboard: "↗", Mentors: "♟",
+  Stories: "✦", "My stories": "✦", Announcements: "◉", Programme: "▦", Learning: "▤", Assignments: "✓",
+  Attendance: "◷", "Live class": "●", "Live quiz": "⚡", Notifications: "◌", Security: "⌾",
+};
+
+function sectionSlug(section) {
+  return section.toLowerCase().replaceAll(" ", "-");
+}
+
+function usePortalSection(role, initialSection) {
+  const sections = portalItems[role] || [];
+  const fromPath = () => {
+    const prefix = `/portal/${role}/`;
+    if (!window.location.pathname.startsWith(prefix)) return initialSection;
+    const slug = window.location.pathname.slice(prefix.length);
+    return sections.find((section) => sectionSlug(section) === slug) || initialSection;
+  };
+  const [active, setActiveState] = useState(fromPath);
+  const select = (section, replace = false) => {
+    if (!sections.includes(section)) return;
+    const path = `/portal/${role}/${sectionSlug(section)}`;
+    window.history[replace ? "replaceState" : "pushState"]({ section }, "", path);
+    setActiveState(section);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  useEffect(() => {
+    const expectedPrefix = `/portal/${role}/`;
+    if (!window.location.pathname.startsWith(expectedPrefix)) select(initialSection, true);
+    const backOrForward = () => setActiveState(fromPath());
+    window.addEventListener("popstate", backOrForward);
+    return () => window.removeEventListener("popstate", backOrForward);
+  }, [role]);
+  return [active, select];
+}
+
 function Header({ navigate }) {
   return (
     <header className="nav">
@@ -920,8 +962,9 @@ function Register({ navigate }) {
   );
 }
 
-function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forceSecurity = false }) {
+function Sidebar({ role, user, active, onSelect, logout, unreadAnnouncements = 0, forceSecurity = false }) {
   const [assignmentCount, setAssignmentCount] = useState(0);
+  const [mobileOpen, setMobileOpen] = useState(false);
   useEffect(() => {
     if (forceSecurity || localStorage.getItem('lw_demo_admin')) return;
     let mounted = true;
@@ -940,17 +983,12 @@ function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forc
     document.addEventListener('visibilitychange', refresh);
     return () => { mounted = false; clearInterval(timer); window.removeEventListener('lw-assignments-changed', refresh); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
   }, [role, active, forceSecurity]);
-  const items = forceSecurity ? ["Security"] :
-    role === "admin"
-      ? ["Overview", "Applications", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"]
-      : role === "mentor"
-        ? ["Overview", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"]
-        : ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security"];
+  const items = forceSecurity ? ["Security"] : portalItems[role];
   return (
-    <aside className="sidebar" aria-label={`${role} portal navigation`}>
-      <Logo />
-      <div className="role-chip">{role} portal</div>
-      <nav aria-label="Portal sections">
+    <aside className={`sidebar portal-sidebar ${mobileOpen ? "mobile-open" : ""}`} aria-label={`${role} portal navigation`}>
+      <div className="portal-brand"><Logo /><button className="portal-menu-toggle" aria-label="Toggle portal menu" aria-expanded={mobileOpen} onClick={() => setMobileOpen(!mobileOpen)}>☰</button></div>
+      <div className="portal-account"><span className="avatar">{user?.fullName?.[0]}</span><div><strong>{user?.fullName}</strong><small>{role} workspace</small></div></div>
+      <nav aria-label="Portal sections" onClick={() => setMobileOpen(false)}>
         {items.map((item) => (
           <button
             key={item}
@@ -958,7 +996,7 @@ function Sidebar({ role, active, onSelect, logout, unreadAnnouncements = 0, forc
             aria-current={active === item ? "page" : undefined}
             onClick={() => onSelect(item)}
           >
-            <span>{item}</span>{item === "Announcements" && unreadAnnouncements > 0 && <b className="nav-count">{unreadAnnouncements}</b>}
+            <i aria-hidden="true">{portalIcons[item] || "·"}</i><span>{item}</span>{item === "Announcements" && unreadAnnouncements > 0 && <b className="nav-count">{unreadAnnouncements}</b>}
             {item === 'Assignments' && assignmentCount > 0 && <b className="nav-count" aria-label={`${assignmentCount} ${role === 'student' ? 'assignments to submit or correct' : 'submissions awaiting review'}`} title={role === 'student' ? 'Assignments to submit or correct' : 'Submissions awaiting review'}>{assignmentCount}</b>}
           </button>
         ))}
@@ -1999,13 +2037,14 @@ function LiveClassCenter({ mode, user, demo = false }) {
 }
 
 function StudentDashboard({ user, logout }) {
-  const [active, setActive] = useState(user.mustChangePassword ? "Security" : "Overview");
+  const [active, setActive] = usePortalSection("student", user.mustChangePassword ? "Security" : "Overview");
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   useEffect(() => { api("/announcements").then((data) => setUnreadAnnouncements(data.unreadCount)).catch(() => {}); }, []);
   return (
     <main className="dashboard">
       <Sidebar
         role="student"
+        user={user}
         active={active}
         onSelect={setActive}
         logout={logout}
@@ -2013,6 +2052,7 @@ function StudentDashboard({ user, logout }) {
         forceSecurity={user.mustChangePassword}
       />
       <section className="dash-main">
+        {active !== "Overview" && <div className="dash-title"><div><p className="eyebrow">Student workspace</p><h1>{active}</h1><p>Everything you need for this part of your learning journey.</p></div><span className="avatar">{user.fullName[0]}</span></div>}
         {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} onUnreadChange={setUnreadAnnouncements} />}
         {active === "Notifications" && <NotificationsCenter onNavigate={setActive} />}
         {active === "My stories" && <StudentStoriesCenter />}
@@ -3015,7 +3055,7 @@ function AdminDashboard({ user, logout }) {
   const savedDemo = () =>
     JSON.parse(localStorage.getItem("lw_demo_students") || "null") ||
     demoStudents;
-  const [active, setActive] = useState(user.mustChangePassword ? "Security" : "Overview");
+  const [active, setActive] = usePortalSection("admin", user.mustChangePassword ? "Security" : "Overview");
   const [students, setStudents] = useState(user.demo ? savedDemo() : []);
   const [mentors, setMentors] = useState([]);
   const [applicationSummary, setApplicationSummary] = useState({
@@ -3291,6 +3331,7 @@ function AdminDashboard({ user, logout }) {
     <main className="dashboard">
       <Sidebar
         role="admin"
+        user={user}
         active={active}
         onSelect={setActive}
         logout={logout}
@@ -3389,13 +3430,14 @@ function AdminDashboard({ user, logout }) {
 }
 
 function MentorDashboard({ user, logout }) {
-  const [active, setActive] = useState(user.mustChangePassword ? "Security" : "Overview"),
+  const [active, setActive] = usePortalSection("mentor", user.mustChangePassword ? "Security" : "Overview"),
     [message, setMessage] = useState(""),
     [profileStudentId, setProfileStudentId] = useState(null);
   return (
     <main className="dashboard">
       <Sidebar
         role="mentor"
+        user={user}
         active={active}
         onSelect={setActive}
         logout={logout}
@@ -3405,8 +3447,8 @@ function MentorDashboard({ user, logout }) {
         <div className="dash-title">
           <div>
             <p className="eyebrow">Mentor portal</p>
-            <h1>Welcome, {user.fullName.split(" ")[0]}.</h1>
-            <p>Guide the cohort and keep every learner moving forward.</p>
+            <h1>{active === "Overview" ? `Welcome, ${user.fullName.split(" ")[0]}.` : active}</h1>
+            <p>{active === "Overview" ? "Guide the cohort and keep every learner moving forward." : "Manage this area of the Livingworth learning experience."}</p>
           </div>
           <span className="avatar">{user.fullName[0]}</span>
         </div>
@@ -3451,6 +3493,7 @@ export default function App() {
     localStorage.removeItem("lw_demo_admin");
     setUser(null);
     setPage("home");
+    window.history.replaceState({}, "", "/");
   };
   useEffect(() => {
     const expired = (event) => { setUser(null); setAuthNotice(event.detail); setPage("student-login"); };
