@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import AssignmentCard, { SubmissionFiles } from './AssignmentCard';
 import AssignmentsCenter from './AssignmentsCenter';
+import ModernHome from './ModernHome';
+import PortalShell from './PortalShell';
 
 async function api(path, options = {}) {
   const token = localStorage.getItem("lw_token");
@@ -139,7 +141,7 @@ function Header({ navigate }) {
   );
 }
 
-function Home({ navigate }) {
+function LegacyHome({ navigate }) {
   const [stories, setStories] = useState([]);
   useEffect(() => { api("/stories").then(setStories).catch(() => {}); }, []);
   const modules = [
@@ -519,6 +521,12 @@ function Home({ navigate }) {
       </footer>
     </>
   );
+}
+
+function Home({ navigate }) {
+  const [stories, setStories] = useState([]);
+  useEffect(() => { api('/stories').then(setStories).catch(() => {}); }, []);
+  return <ModernHome navigate={navigate} stories={stories} />;
 }
 
 function AuthLayout({ title, subtitle, children, navigate }) {
@@ -2041,18 +2049,7 @@ function StudentDashboard({ user, logout }) {
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   useEffect(() => { api("/announcements").then((data) => setUnreadAnnouncements(data.unreadCount)).catch(() => {}); }, []);
   return (
-    <main className="dashboard">
-      <Sidebar
-        role="student"
-        user={user}
-        active={active}
-        onSelect={setActive}
-        logout={logout}
-        unreadAnnouncements={unreadAnnouncements}
-        forceSecurity={user.mustChangePassword}
-      />
-      <section className="dash-main">
-        {active !== "Overview" && <div className="dash-title"><div><p className="eyebrow">Student workspace</p><h1>{active}</h1><p>Everything you need for this part of your learning journey.</p></div><span className="avatar">{user.fullName[0]}</span></div>}
+    <PortalShell role="student" user={user} active={active} items={portalItems.student} onSelect={setActive} logout={logout} unreadAnnouncements={unreadAnnouncements} forceSecurity={user.mustChangePassword}>
         {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} onUnreadChange={setUnreadAnnouncements} />}
         {active === "Notifications" && <NotificationsCenter onNavigate={setActive} />}
         {active === "My stories" && <StudentStoriesCenter />}
@@ -2091,8 +2088,7 @@ function StudentDashboard({ user, logout }) {
         {active === "Live class" && <LiveClassCenter mode="student" user={user} />}
         {active === "Live quiz" && <QuizCenter mode="student" />}
         {active === "Security" && <SecurityCenter role="student" currentEmail={user.email} />}
-      </section>
-    </main>
+    </PortalShell>
   );
 }
 
@@ -3328,26 +3324,7 @@ function AdminDashboard({ user, logout }) {
     </section>
   );
   return (
-    <main className="dashboard">
-      <Sidebar
-        role="admin"
-        user={user}
-        active={active}
-        onSelect={setActive}
-        logout={logout}
-        forceSecurity={user.mustChangePassword}
-      />
-      <section className="dash-main">
-        <div className="dash-title">
-          <div>
-            <p className="eyebrow">
-              Administrator portal {user.demo && "· Offline preview"}
-            </p>
-            <h1>{active}</h1>
-            <p>Manage people, access and live learning from one place.</p>
-          </div>
-          <span className="avatar">{user.fullName[0]}</span>
-        </div>
+    <PortalShell role="admin" user={user} active={active} items={portalItems.admin} onSelect={setActive} logout={logout} forceSecurity={user.mustChangePassword}>
         {user.demo && (
           <div className="demo-banner">
             <b>Offline demo mode</b>
@@ -3424,8 +3401,7 @@ function AdminDashboard({ user, logout }) {
         {active === "Live quiz" && <QuizCenter mode="admin" demo={user.demo} />}
         {active === "Security" && <SecurityCenter role="admin" demo={user.demo} />}
         {profileStudentId && <LearnerProfilePanel studentId={profileStudentId} onClose={() => setProfileStudentId(null)} onDeleted={(notice) => { setProfileStudentId(null); setMessage(notice); loadApplications(); }} />}
-      </section>
-    </main>
+    </PortalShell>
   );
 }
 
@@ -3434,24 +3410,7 @@ function MentorDashboard({ user, logout }) {
     [message, setMessage] = useState(""),
     [profileStudentId, setProfileStudentId] = useState(null);
   return (
-    <main className="dashboard">
-      <Sidebar
-        role="mentor"
-        user={user}
-        active={active}
-        onSelect={setActive}
-        logout={logout}
-        forceSecurity={user.mustChangePassword}
-      />
-      <section className="dash-main">
-        <div className="dash-title">
-          <div>
-            <p className="eyebrow">Mentor portal</p>
-            <h1>{active === "Overview" ? `Welcome, ${user.fullName.split(" ")[0]}.` : active}</h1>
-            <p>{active === "Overview" ? "Guide the cohort and keep every learner moving forward." : "Manage this area of the Livingworth learning experience."}</p>
-          </div>
-          <span className="avatar">{user.fullName[0]}</span>
-        </div>
+    <PortalShell role="mentor" user={user} active={active} items={portalItems.mentor} onSelect={setActive} logout={logout} forceSecurity={user.mustChangePassword}>
         <p className="form-message">{message}</p>
         {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} onViewLearner={setProfileStudentId} />}
         {active === "Announcements" && <AnnouncementsCenter mode="staff" />}
@@ -3466,8 +3425,7 @@ function MentorDashboard({ user, logout }) {
         {active === "Live class" && <LiveClassCenter mode="staff" user={user} />}
         {active === "Live quiz" && <QuizCenter mode="admin" />}
         {profileStudentId && <LearnerProfilePanel studentId={profileStudentId} onClose={() => setProfileStudentId(null)} />}
-      </section>
-    </main>
+    </PortalShell>
   );
 }
 
