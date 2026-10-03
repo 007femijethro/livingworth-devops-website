@@ -1997,6 +1997,7 @@ function QuizCenter({ mode, demo = false }) {
     [quizzes, setQuizzes] = useState([]),
     [room, setRoom] = useState(null),
     [presence, setPresence] = useState(0),
+    [waitingRoomRoster, setWaitingRoomRoster] = useState([]),
     [answerCount, setAnswerCount] = useState({ answered: 0, total: 0, remaining: 0 }),
     [question, setQuestion] = useState(null),
     [seconds, setSeconds] = useState(30),
@@ -2059,6 +2060,7 @@ function QuizCenter({ mode, demo = false }) {
     roomRef.current = null;
     setQuestion(null);
     setPresence(0);
+    setWaitingRoomRoster([]);
     setAnswerCount({ answered: 0, total: 0, remaining: 0 });
     setPaused(false);
     setSubmitted(false);
@@ -2097,6 +2099,7 @@ function QuizCenter({ mode, demo = false }) {
     });
     s.on("connect_error", () => setMessage("Live quiz server is unavailable."));
     s.on("quiz:presence", (d) => setPresence(d.count));
+    s.on("quiz:roster", (d) => setWaitingRoomRoster(d.students || []));
     s.on("quiz:answer-count", setAnswerCount);
     s.on("quiz:started", () => setMessage("Quiz started."));
     s.on("quiz:question", (q) => {
@@ -2556,6 +2559,12 @@ function QuizCenter({ mode, demo = false }) {
             {presence} connected participant{presence === 1 ? "" : "s"}
           </p>
           <p>{room.questionTimeSeconds} seconds per question · {room.navigationMode === "automatic" ? "Automatic navigation" : "Mentor-controlled navigation"}</p>
+          {mode === "admin" && (
+            <section className="quiz-waiting-roster" aria-label="Waiting room student status">
+              <div className="quiz-waiting-roster-heading"><h4>Student waiting room</h4><span>{waitingRoomRoster.filter(student => student.status === "online").length} online · {waitingRoomRoster.length} eligible</span></div>
+              {waitingRoomRoster.length ? <ul>{waitingRoomRoster.map(student => <li key={student.id} className={`quiz-roster-${student.status}`}><span className="quiz-roster-dot" aria-hidden="true" /><strong>{student.fullName}</strong><small>{student.status === "online" ? "Online" : student.status === "left" ? "Left waiting room" : "Not joined"}</small></li>)}</ul> : <p className="quiz-roster-empty">No approved students found.</p>}
+            </section>
+          )}
           {mode === "admin" ? (
             <div className="quiz-lobby-actions"><button className="button gold" onClick={start}>Start quiz for everyone</button><button className="button close-quiz-room" onClick={closeQuizRoom}>Close room &amp; go back</button></div>
           ) : (
