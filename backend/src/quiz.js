@@ -423,11 +423,12 @@ export function configureQuizSockets(io, pool, verifyToken) {
     const state = rooms.get(id);
     const answeredIds = new Set([...(state?.questionAnswers || [])].map(key => Number(String(key).split(':')[1])).filter(studentId => studentIds.has(studentId)));
     const [eligibleStudents] = await pool.execute("SELECT id, full_name AS fullName FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name");
+    const statusOrder = { online: 0, left: 1, not_joined: 2 };
     const roster = eligibleStudents.map(student => ({
       id: Number(student.id),
       fullName: student.fullName,
       status: studentIds.has(Number(student.id)) ? 'online' : joinedIds.has(Number(student.id)) ? 'left' : 'not_joined'
-    })).sort((a, b) => ({ online: 0, left: 1, not_joined: 2 }[a.status] - { online: 0, left: 1, not_joined: 2 }[b.status] || a.fullName.localeCompare(b.fullName));
+    })).sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || a.fullName.localeCompare(b.fullName));
     io.to(`quiz:${id}`).emit('quiz:presence', { count: studentIds.size });
     io.to(`quiz:${id}`).emit('quiz:answer-count', { answered: answeredIds.size, total: studentIds.size, remaining: Math.max(0, studentIds.size - answeredIds.size) });
     for (const client of await io.in(`quiz:${id}`).fetchSockets()) {
