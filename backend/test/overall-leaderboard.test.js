@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { registerAnalyticsRoutes } from '../src/analytics.js';
+import { registerAnalyticsRoutes } from '../dist/analytics.js';
 
 test('overall leaderboard normalizes quiz, assignment and attendance scores over 100', async () => {
   const app = express();

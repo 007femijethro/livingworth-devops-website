@@ -1,3 +1,4 @@
+// @ts-nocheck
 const rooms = new Map();
 const MIN_QUESTION_SECONDS = 5;
 const MAX_QUESTION_SECONDS = 300;

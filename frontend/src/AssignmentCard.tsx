@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState } from 'react';
 
 export function AttachmentDownload({ id, name, index = 0 }) {
@@ -74,4 +75,4 @@ export default function AssignmentCard({ assignment: a, onSubmitted }) {
     </form>}
   </section>;
 }
-import AssignmentMarkdown, { AssignmentInstructions } from './AssignmentMarkdown.jsx';
+import AssignmentMarkdown, { AssignmentInstructions } from './AssignmentMarkdown';

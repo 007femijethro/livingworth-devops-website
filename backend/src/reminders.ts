@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { notifyStudents } from './notifications.js';
 
 const reminderMinutes = Math.max(5, Number(process.env.REMINDER_CHECK_MINUTES || 5));

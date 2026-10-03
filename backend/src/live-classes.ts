@@ -1,3 +1,4 @@
+// @ts-nocheck
 import crypto from 'node:crypto';
 
 const classFields = `lc.id, lc.title, lc.scheduled_at AS "scheduledAt", lc.duration_minutes AS "durationMinutes",

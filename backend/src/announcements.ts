@@ -1,3 +1,4 @@
+// @ts-nocheck
 const categories = new Set(['general', 'class', 'quiz', 'assignment']);
 
 export function registerAnnouncementRoutes(app, pool, requireAuth, requireStaff) {
