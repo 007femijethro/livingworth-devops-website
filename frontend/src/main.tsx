@@ -22,6 +22,7 @@ import './certificates.css';
 import './live-class.css';
 import './portal-redesign.css';
 import './learning-platform.css';
+import './structural-platform.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Application root element was not found.');
