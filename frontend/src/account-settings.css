@@ -1,0 +1,8 @@
+.student-account-settings {
+  display: grid;
+  gap: 34px;
+}
+
+.student-account-settings > .security-center {
+  margin-top: 0;
+}

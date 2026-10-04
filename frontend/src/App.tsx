@@ -79,7 +79,7 @@ const Logo = () => (
 const portalItems = {
   admin: ["Overview", "Applications", "Profile requests", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
   mentor: ["Overview", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
-  student: ["Overview", "Profile", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security"],
+  student: ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security"],
 };
 
 const portalIcons = {
@@ -2053,7 +2053,6 @@ function StudentDashboard({ user, logout }) {
   return (
     <PortalShell role="student" user={user} active={active} items={portalItems.student} onSelect={setActive} logout={logout} unreadAnnouncements={unreadAnnouncements} forceSecurity={user.mustChangePassword}>
         {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} onUnreadChange={setUnreadAnnouncements} />}
-        {active === "Profile" && <StudentProfileEditor />}
         {active === "Notifications" && <NotificationsCenter onNavigate={setActive} />}
         {active === "My stories" && <StudentStoriesCenter />}
         {active === "Announcements" && <AnnouncementsCenter mode="student" onUnreadChange={setUnreadAnnouncements} />}
@@ -2090,7 +2089,7 @@ function StudentDashboard({ user, logout }) {
         {active === "Leaderboard" && <StudentOverallLeaderboard user={user} />}
         {active === "Live class" && <LiveClassCenter mode="student" user={user} />}
         {active === "Live quiz" && <QuizCenter mode="student" />}
-        {active === "Security" && <SecurityCenter role="student" currentEmail={user.email} />}
+        {active === "Security" && <div className="student-account-settings"><StudentProfileEditor /><SecurityCenter role="student" currentEmail={user.email} /></div>}
     </PortalShell>
   );
 }

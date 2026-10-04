@@ -86,7 +86,7 @@ export function registerProfileChangeRoutes(app, pool, requireAuth, requireAdmin
       }
       await connection.execute(`UPDATE profile_change_requests SET status=?,rejection_reason=?,reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=?`, [decision, decision === 'rejected' ? reason : null, req.user.id, req.params.id]);
       await connection.commit();
-      await notifyUser(pool, request.studentId, { title: `Profile update ${decision}`, message: decision === 'approved' ? 'Your requested profile changes have been approved and are now visible.' : `Your profile update was not approved: ${reason}`, category: 'review', actionTarget: 'Profile' });
+      await notifyUser(pool, request.studentId, { title: `Profile update ${decision}`, message: decision === 'approved' ? 'Your requested profile changes have been approved and are now visible.' : `Your profile update was not approved: ${reason}`, category: 'review', actionTarget: 'Security' });
       res.json({ message: `Profile update ${decision}.` });
     } catch (error) { await connection.rollback(); next(error); }
     finally { connection.release(); }
