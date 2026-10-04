@@ -24,6 +24,7 @@ import './portal-redesign.css';
 import './learning-platform.css';
 import './structural-platform.css';
 import './profile-changes.css';
+import './account-settings.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Application root element was not found.');
