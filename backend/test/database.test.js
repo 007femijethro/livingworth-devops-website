@@ -21,3 +21,9 @@ test('adds insert id returns for identity tables', () => {
   assert.doesNotMatch(translateSql('INSERT INTO material_progress (material_id, student_id) VALUES (?, ?)'), /RETURNING id/);
   assert.doesNotMatch(translateSql("INSERT INTO system_settings (setting_key, enabled) VALUES ('email_notifications', ?)"), /RETURNING id/);
 });
+
+test('prefixes profile change request queries', () => {
+  const sql = translateSql('SELECT id FROM profile_change_requests WHERE student_id = ?');
+  assert.match(sql, /FROM lw_profile_change_requests/);
+  assert.match(sql, /student_id = \$1/);
+});
