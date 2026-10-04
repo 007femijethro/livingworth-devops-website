@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 
-const icons: Record<string,string> = { Overview:'⌂',Applications:'◫',Students:'◉',Certificates:'◇',Leaderboard:'↗',Mentors:'♙',Stories:'✦','My stories':'✦',Announcements:'◌',Programme:'▦',Learning:'▤',Assignments:'✓',Attendance:'◷','Live class':'●','Live quiz':'⚡',Notifications:'◎',Security:'⌾' };
+const icons: Record<string,string> = { Overview:'⌂',Applications:'◫','Profile requests':'▧',Profile:'♙',Students:'◉',Certificates:'◇',Leaderboard:'↗',Mentors:'♙',Stories:'✦','My stories':'✦',Announcements:'◌',Programme:'▦',Learning:'▤',Assignments:'✓',Attendance:'◷','Live class':'●','Live quiz':'⚡',Notifications:'◎',Security:'⌾' };
 
 export default function PortalShell({ role,user,active,items,onSelect,logout,children,unreadAnnouncements=0,forceSecurity=false }: { role:string; user:any; active:string; items:string[]; onSelect:(item:string)=>void; logout:()=>void; children:ReactNode; unreadAnnouncements?:number; forceSecurity?:boolean }) {
   const [open,setOpen]=useState(false); const [assignmentCount,setAssignmentCount]=useState(0);

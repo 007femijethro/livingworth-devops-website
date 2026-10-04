@@ -6,6 +6,7 @@ import AssignmentCard, { SubmissionFiles } from './AssignmentCard';
 import AssignmentsCenter from './AssignmentsCenter';
 import ModernHome from './ModernHome';
 import PortalShell from './PortalShell';
+import { AdminProfileRequests, StudentProfileEditor } from './ProfileChanges';
 
 async function api(path, options = {}) {
   const token = localStorage.getItem("lw_token");
@@ -76,15 +77,16 @@ const Logo = () => (
 );
 
 const portalItems = {
-  admin: ["Overview", "Applications", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
+  admin: ["Overview", "Applications", "Profile requests", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
   mentor: ["Overview", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
-  student: ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security"],
+  student: ["Overview", "Profile", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security"],
 };
 
 const portalIcons = {
   Overview: "⌂", Applications: "◎", Students: "♙", Certificates: "◇", Leaderboard: "↗", Mentors: "♟",
   Stories: "✦", "My stories": "✦", Announcements: "◉", Programme: "▦", Learning: "▤", Assignments: "✓",
   Attendance: "◷", "Live class": "●", "Live quiz": "⚡", Notifications: "◌", Security: "⌾",
+  Profile: "♙", "Profile requests": "◫",
 };
 
 function sectionSlug(section) {
@@ -2051,6 +2053,7 @@ function StudentDashboard({ user, logout }) {
   return (
     <PortalShell role="student" user={user} active={active} items={portalItems.student} onSelect={setActive} logout={logout} unreadAnnouncements={unreadAnnouncements} forceSecurity={user.mustChangePassword}>
         {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} onUnreadChange={setUnreadAnnouncements} />}
+        {active === "Profile" && <StudentProfileEditor />}
         {active === "Notifications" && <NotificationsCenter onNavigate={setActive} />}
         {active === "My stories" && <StudentStoriesCenter />}
         {active === "Announcements" && <AnnouncementsCenter mode="student" onUnreadChange={setUnreadAnnouncements} />}
@@ -3336,6 +3339,7 @@ function AdminDashboard({ user, logout }) {
         <p className="form-message success">{message}</p>
         {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} onViewLearner={user.demo ? null : setProfileStudentId} demo={user.demo} />}
         {active === "Applications" && applications}
+        {active === "Profile requests" && <AdminProfileRequests />}
         {active === "Students" && <StudentDirectory demo={user.demo} canDelete={!user.demo} />}
         {active === "Certificates" && <StaffCertificates demo={user.demo} />}
         {active === "Leaderboard" && <OverallLeaderboard demo={user.demo} />}
