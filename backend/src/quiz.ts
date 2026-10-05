@@ -559,6 +559,21 @@ export function configureQuizSockets(io, pool, verifyToken) {
       } catch (error) { ack({ ok: false, message: error.message }); }
     });
 
+    socket.on('quiz:leave', async ({ quizId }, ack = () => {}) => {
+      try {
+        if (socket.user.role !== 'student') throw new Error('Only students can leave the waiting room.');
+        const id = Number(quizId);
+        if (!id || Number(socket.data.quizId) !== id) throw new Error('You are not in this quiz room.');
+        if (rooms.has(id)) throw new Error('The quiz has already started.');
+        const [quizzes] = await pool.execute("SELECT status FROM quizzes WHERE id = ? AND status IN ('draft','lobby')", [id]);
+        if (!quizzes.length) throw new Error('The quiz has already started or the room is closed.');
+        await socket.leave(`quiz:${id}`);
+        socket.data.quizId = null;
+        ack({ ok: true, message: 'You left the quiz waiting room.' });
+        await emitParticipation(id);
+      } catch (error) { ack({ ok: false, message: error.message }); }
+    });
+
     socket.on('quiz:answer', async ({ quizId, questionId, answerIndex, answerIndexes, answerText }, ack = () => {}) => {
       try {
         if (socket.user.role !== 'student' || socket.user.status !== 'approved') throw new Error('Approved student access required.');
