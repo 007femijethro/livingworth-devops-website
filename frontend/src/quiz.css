@@ -196,6 +196,10 @@
   color: #e0ae40;
 }
 .quiz-lobby-actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}.quiz-lobby-actions .close-quiz-room{border:1px solid #9bd8de;background:transparent;color:#fff}
+.student-lobby-actions { display: grid; justify-items: center; gap: 10px; }
+.student-lobby-actions p { margin-bottom: 0; }
+.student-lobby-actions .leave-quiz-room { border: 1px solid #9bd8de; background: transparent; color: #fff; }
+.student-lobby-actions .leave-quiz-room:hover { background: rgba(255, 255, 255, .1); }
 .live-dot {
   color: #72e4e8;
   font-weight: 800;
