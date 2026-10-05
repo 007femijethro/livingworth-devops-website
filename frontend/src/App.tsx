@@ -2335,6 +2335,13 @@ function QuizCenter({ mode, demo = false }) {
       setMessage(result.ok ? "Starting now…" : result.message),
     );
   }
+  function leaveWaitingRoom() {
+    if (!window.confirm("Leave this quiz waiting room? You can join again before the quiz starts.")) return;
+    socket?.emit("quiz:leave", { quizId: room.id }, (result) => {
+      if (result.ok) leaveQuizRoom(result.message);
+      else setMessage(result.message);
+    });
+  }
   function togglePause() {
     socket?.emit("quiz:pause", { quizId: room.id }, (result) => {
       if (!result.ok) setMessage(result.message);
@@ -2739,7 +2746,7 @@ function QuizCenter({ mode, demo = false }) {
           {mode === "admin" ? (
             <div className="quiz-lobby-actions"><button className="button gold" onClick={start}>Start quiz for everyone</button><button className="button close-quiz-room" onClick={closeQuizRoom}>Close room &amp; go back</button></div>
           ) : (
-            <p>Waiting for your instructor to start…</p>
+            <div className="student-lobby-actions"><p>Waiting for your instructor to start…</p><button type="button" className="button leave-quiz-room" onClick={leaveWaitingRoom}>Leave quiz room</button></div>
           )}
         </div>
       )}
