@@ -1519,13 +1519,13 @@ function classSessionStatus(now = new Date()) {
 }
 
 function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
-  const [data, setData] = useState({ learning: null, attendance: null, quizzes: null, announcements: null });
+  const [data, setData] = useState({ learning: null, attendance: null, quizzes: null, announcements: null, overall: null });
   const [message, setMessage] = useState("Loading your progress…");
   const [clock, setClock] = useState(() => new Date());
   useEffect(() => {
-    Promise.all([api("/student/learning"), api("/student/attendance"), api("/student/quiz-results"), api("/announcements")])
-      .then(([learning, attendance, quizzes, announcements]) => {
-        setData({ learning, attendance, quizzes, announcements });
+    Promise.all([api("/student/learning"), api("/student/attendance"), api("/student/quiz-results"), api("/announcements"), api("/student/overall-leaderboard")])
+      .then(([learning, attendance, quizzes, announcements, overall]) => {
+        setData({ learning, attendance, quizzes, announcements, overall });
         onUnreadChange(announcements.unreadCount);
         setMessage("");
       })
@@ -1546,6 +1546,17 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
   const quizAverage = data.quizzes?.length
     ? Math.round(data.quizzes.reduce((total, quiz) => total + Number(quiz.percentage || 0), 0) / data.quizzes.length)
     : 0;
+  const performance = data.overall?.currentStudent;
+  const eligibility = data.overall?.certificateEligibility;
+  const overallScore = performance?.overallScore ?? null;
+  const scoreGap = eligibility && overallScore !== null ? Math.max(0, eligibility.requiredScore - overallScore) : eligibility?.requiredScore || 75;
+  const scoreProgress = overallScore === null ? 0 : Math.min(100, Math.round(overallScore * 100 / (eligibility?.requiredScore || 75)));
+  const performanceAreas = performance ? [
+    { label: "Quiz", score: performance.quizScore, page: "Live quiz" },
+    { label: "Assignments", score: performance.assignmentScore, page: "Assignments" },
+    { label: "Attendance", score: performance.attendanceScore, page: "Attendance" },
+  ] : [];
+  const focusArea = performanceAreas.filter((area) => area.score !== null).sort((left, right) => left.score - right.score)[0];
   const firstName = user.fullName.split(" ")[0];
   return (
     <section className="student-progress-overview">
@@ -1558,10 +1569,15 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
         {data.announcements.announcements[0] && <button className="dashboard-announcement" onClick={() => onNavigate("Announcements")}><span>{data.announcements.announcements[0].category}</span><div><strong>{data.announcements.announcements[0].title}</strong><p>{data.announcements.announcements[0].message}</p></div><b>View update</b></button>}
         <div className="progress-metrics">
           <button onClick={() => onNavigate("Attendance")}><span>Attendance</span><strong>{data.attendance.summary.percentage}%</strong><small>{data.attendance.summary.attended} of {data.attendance.summary.total} counted sessions</small></button>
-          <button onClick={() => onNavigate("Assignments")}><span>Assignments completed</span><strong>{data.learning.progress.completed}/{data.learning.progress.total}</strong><small>Overall score: {data.learning.scoreSummary.percentage == null ? "Awaiting results" : `${data.learning.scoreSummary.percentage}%`}</small></button>
+          <button onClick={() => onNavigate("Leaderboard")}><span>Overall score</span><strong>{overallScore === null ? "—" : `${overallScore}/100`}</strong><small>{performance ? `Position #${performance.rank} · ${performance.categoriesCounted}/3 categories` : "Complete activities to receive a score"}</small></button>
+          <button onClick={() => onNavigate("Assignments")}><span>Learning progress</span><strong>{data.learning.progress.completed}/{data.learning.progress.total}</strong><small>{outstanding.length ? `${outstanding.length} assignment${outstanding.length === 1 ? "" : "s"} need attention` : "All available assignments are up to date"}</small></button>
           <button onClick={() => onNavigate("Live quiz")}><span>Quiz average</span><strong>{quizAverage}%</strong><small>{data.quizzes.length} completed attempt{data.quizzes.length === 1 ? "" : "s"}</small></button>
-          <article className={classSession.isLive ? "class-live-metric" : ""}><span>{classSession.isLive ? "Class status" : "Next class"}</span><strong>{classSession.isLive ? "Live now" : nextClass ? new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Lagos" }).format(nextClass) : "—"}</strong><small>{classSession.isLive ? "Join the meeting now" : "8:00 p.m. GMT+1"}</small></article>
         </div>
+        <section className={`overview-certificate-card ${eligibility?.eligible ? "eligible" : "not-eligible"}`}>
+          <div className="certificate-score-ring" style={{ background: `conic-gradient(${eligibility?.eligible ? "#11855f" : "#d29b32"} ${scoreProgress * 3.6}deg, #e3e9e6 0deg)` }}><span>{overallScore === null ? "—" : overallScore}</span><small>/100</small></div>
+          <div className="certificate-overview-copy"><span className="progress-kicker">Certificate journey</span><h2>{eligibility?.eligible ? "You are certificate eligible" : "Keep building toward your certificate"}</h2><p>{eligibility?.eligible ? `Excellent work — your overall score meets the ${eligibility.requiredScore}/100 certificate requirement.` : overallScore === null ? `Your overall score will appear as you complete quizzes, assignments and attendance. The certificate requirement is ${eligibility?.requiredScore || 75}/100.` : `You are ${scoreGap} point${scoreGap === 1 ? "" : "s"} away from the ${eligibility.requiredScore}/100 certificate requirement.`}</p><div className="certificate-threshold"><span style={{ width: `${scoreProgress}%` }} /></div><small>{overallScore === null ? "Start completing assessed activities" : eligibility?.eligible ? "Requirement achieved" : `${overallScore}/100 current · ${eligibility?.requiredScore || 75}/100 required`}</small></div>
+          <div className="certificate-score-breakdown">{performanceAreas.map((area) => <button key={area.label} onClick={() => onNavigate(area.page)}><span>{area.label}</span><strong>{area.score === null ? "—" : area.score}</strong></button>)}{focusArea && !eligibility?.eligible && <button className="focus-recommendation" onClick={() => onNavigate(focusArea.page)}><span>Best next move</span><strong>Improve {focusArea.label.toLowerCase()} →</strong></button>}<button className="certificate-overview-link" onClick={() => onNavigate("Certificates")}><span>Credential status</span><strong>View certificates →</strong></button></div>
+        </section>
         <div className="progress-columns">
           <section className={`next-class-card ${classSession.isLive ? "live" : ""}`}>
             <span className="progress-kicker">{classSession.isLive ? <><i aria-hidden="true" /> Meeting is live</> : "Next live session"}</span>
