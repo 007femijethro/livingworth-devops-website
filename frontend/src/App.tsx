@@ -1519,13 +1519,13 @@ function classSessionStatus(now = new Date()) {
 }
 
 function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
-  const [data, setData] = useState({ learning: null, attendance: null, quizzes: null, announcements: null, overall: null });
+  const [data, setData] = useState({ learning: null, attendance: null, quizzes: null, activeQuizzes: null, announcements: null, overall: null });
   const [message, setMessage] = useState("Loading your progress…");
   const [clock, setClock] = useState(() => new Date());
   useEffect(() => {
-    Promise.all([api("/student/learning"), api("/student/attendance"), api("/student/quiz-results"), api("/announcements"), api("/student/overall-leaderboard")])
-      .then(([learning, attendance, quizzes, announcements, overall]) => {
-        setData({ learning, attendance, quizzes, announcements, overall });
+    Promise.all([api("/student/learning?assignments=all"), api("/student/attendance"), api("/student/quiz-results"), api("/quizzes/active"), api("/announcements"), api("/student/overall-leaderboard")])
+      .then(([learning, attendance, quizzes, activeQuizzes, announcements, overall]) => {
+        setData({ learning, attendance, quizzes, activeQuizzes, announcements, overall });
         onUnreadChange(announcements.unreadCount);
         setMessage("");
       })
@@ -1541,8 +1541,12 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
     module.assignments.map((assignment) => ({ ...assignment, moduleTitle: module.title, weekNumber: module.weekNumber })),
   ) || [];
   const outstanding = assignments
-    .filter((assignment) => assignment.assignmentType === "portal" && !assignment.closedAt && !["completed", "rejected", "unavailable"].includes(assignment.submissionStatus))
+    .filter((assignment) => assignment.assignmentType === "portal"
+      && (!assignment.closedAt || assignment.submissionStatus === "rejected")
+      && (!assignment.submissionId || assignment.submissionStatus === "rejected"))
     .sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt));
+  const completedQuizIds = new Set((data.quizzes || []).map((quiz) => Number(quiz.quizId)));
+  const pendingQuizzes = (data.activeQuizzes || []).filter((quiz) => !completedQuizIds.has(Number(quiz.id)));
   const quizAverage = data.quizzes?.length
     ? Math.round(data.quizzes.reduce((total, quiz) => total + Number(quiz.percentage || 0), 0) / data.quizzes.length)
     : 0;
@@ -1585,12 +1589,19 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
             <p>Live DevOps class · 8:00–9:00 p.m. GMT+1</p>
             <a className="button gold" href={CLASS_MEETING_URL} target="_blank" rel="noreferrer">{classSession.isLive ? "Join live meeting" : "Join meeting"}</a>
           </section>
-          <section className="attention-card">
-            <div className="progress-section-title"><div><span>Assignments</span><h2>Needs your attention</h2></div><button onClick={() => onNavigate("Assignments")}>View all</button></div>
-            {outstanding.length === 0 ? <p className="progress-empty">You have no outstanding assignments.</p> : outstanding.slice(0, 3).map((assignment) => {
-              const overdue = new Date(assignment.dueAt) < new Date();
-              return <article key={assignment.id}><div><small>Week {assignment.weekNumber} · {assignment.moduleTitle}</small><h3>{assignment.title}</h3><p>Due {new Date(assignment.dueAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p></div><b className={overdue ? "overdue" : "upcoming"}>{overdue ? "Overdue" : "Upcoming"}</b></article>;
-            })}
+          <section className="attention-card pending-work-card">
+            <div className="progress-section-title"><div><span>Your action list</span><h2>Pending on you</h2></div><strong>{outstanding.length + pendingQuizzes.length} pending</strong></div>
+            <div className="pending-work-summary">
+              <button onClick={() => onNavigate("Assignments")}><span>Assignments</span><strong>{outstanding.length}</strong><small>{outstanding.length ? "Still to submit" : "All caught up"}</small></button>
+              <button onClick={() => onNavigate("Live quiz")}><span>Quizzes</span><strong>{pendingQuizzes.length}</strong><small>{pendingQuizzes.length ? "Ready to join" : "Nothing active"}</small></button>
+            </div>
+            {outstanding.length === 0 && pendingQuizzes.length === 0 ? <p className="progress-empty">You are all caught up. Nothing is pending on you.</p> : <div className="pending-work-list">
+              {pendingQuizzes.slice(0, 2).map((quiz) => <button key={`quiz-${quiz.id}`} onClick={() => onNavigate("Live quiz")}><i className="pending-work-icon quiz">Q</i><div><small>Quiz · {quiz.status === "live" ? "Live now" : "Waiting room open"}</small><h3>{quiz.title}</h3><p>Join with code {quiz.joinCode}</p></div><b className={quiz.status === "live" ? "live-now" : "upcoming"}>{quiz.status === "live" ? "Join now" : "Join room"}</b></button>)}
+              {outstanding.slice(0, Math.max(1, 4 - pendingQuizzes.length)).map((assignment) => {
+                const overdue = new Date(assignment.dueAt) < new Date();
+                return <button key={`assignment-${assignment.id}`} onClick={() => onNavigate("Assignments")}><i className="pending-work-icon assignment">A</i><div><small>Week {assignment.weekNumber} · {assignment.moduleTitle}</small><h3>{assignment.title}</h3><p>{assignment.submissionStatus === "rejected" ? "Corrections requested — submit again" : `Due ${new Date(assignment.dueAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`}</p></div><b className={assignment.submissionStatus === "rejected" || overdue ? "overdue" : "upcoming"}>{assignment.submissionStatus === "rejected" ? "Redo" : overdue ? "Overdue" : "Submit"}</b></button>;
+              })}
+            </div>}
           </section>
         </div>
         <section className="recent-quiz-card">
