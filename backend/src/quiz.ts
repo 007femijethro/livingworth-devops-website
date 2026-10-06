@@ -1,4 +1,6 @@
 // @ts-nocheck
+import { logger } from './logger.js';
+
 const rooms = new Map();
 const MIN_QUESTION_SECONDS = 5;
 const MAX_QUESTION_SECONDS = 300;
@@ -520,6 +522,7 @@ export function configureQuizSockets(io, pool, verifyToken) {
   };
 
   io.on('connection', socket => {
+    logger.info('quiz_socket_connected', { socketId: socket.id, userId: socket.user.id, role: socket.user.role });
     socket.on('quiz:join', async ({ joinCode: requestedCode }, ack = () => {}) => {
       try {
         const code = String(requestedCode || '').trim().toUpperCase();
@@ -553,8 +556,9 @@ export function configureQuizSockets(io, pool, verifyToken) {
         const liveState = liveStateFor(state, socket.user.id);
         if (liveState?.submitted) state.questionAnswers.add(`${liveState.question.id}:${socket.user.id}`);
         ack({ ok: true, quiz: { id: quiz.id, title: quiz.title, joinCode: quiz.joinCode, questionTimeSeconds: quiz.questionTimeSeconds, navigationMode: quiz.navigationMode, status: quiz.status === 'draft' ? 'lobby' : quiz.status }, liveState });
+        logger.info('quiz_room_joined', { quizId: quiz.id, userId: socket.user.id, role: socket.user.role, status: quiz.status });
         await emitParticipation(quiz.id);
-      } catch (error) { ack({ ok: false, message: error.message }); }
+      } catch (error) { logger.warn('quiz_room_join_failed', { userId: socket.user.id, role: socket.user.role, error: error.message }); ack({ ok: false, message: error.message }); }
     });
 
     socket.on('quiz:start', async ({ quizId }, ack = () => {}) => {
@@ -571,6 +575,7 @@ export function configureQuizSockets(io, pool, verifyToken) {
         rooms.set(Number(quizId), state);
         io.to(`quiz:${quizId}`).emit('quiz:started', { questionCount: questions.length, questionTimeSeconds: state.questionMs / 1000 });
         sendQuestion(Number(quizId));
+        logger.info('quiz_started', { quizId: Number(quizId), userId: socket.user.id, questionCount: questions.length });
         ack({ ok: true });
       } catch (error) { ack({ ok: false, message: error.message }); }
     });
@@ -585,6 +590,7 @@ export function configureQuizSockets(io, pool, verifyToken) {
         if (!quizzes.length) throw new Error('The quiz has already started or the room is closed.');
         await socket.leave(`quiz:${id}`);
         socket.data.quizId = null;
+        logger.info('quiz_room_left', { quizId: id, userId: socket.user.id });
         ack({ ok: true, message: 'You left the quiz waiting room.' });
         await emitParticipation(id);
       } catch (error) { ack({ ok: false, message: error.message }); }
@@ -713,10 +719,12 @@ export function configureQuizSockets(io, pool, verifyToken) {
         io.to(`quiz:${id}`).emit('quiz:closed', { completed, message: completed ? 'The mentor stopped the quiz.' : 'The mentor closed the quiz room.' });
         io.in(`quiz:${id}`).socketsLeave(`quiz:${id}`);
         joinedStudentsByQuiz.delete(id);
+        logger.info('quiz_closed', { quizId: id, userId: socket.user.id, completed });
         ack({ ok: true, completed, message: completed ? 'Quiz stopped. Current attempts were saved.' : 'Quiz room closed.' });
       } catch (error) { ack({ ok: false, message: error.message }); }
     });
     socket.on('disconnect', () => {
+      logger.info('quiz_socket_disconnected', { socketId: socket.id, userId: socket.user.id, role: socket.user.role, quizId: socket.data.quizId || null });
       if (socket.data.quizId) emitParticipation(socket.data.quizId).catch(() => {});
     });
   });
