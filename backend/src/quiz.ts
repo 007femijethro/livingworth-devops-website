@@ -179,6 +179,22 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
   app.get('/api/quizzes/active', requireAuth, async (_req, res, next) => {
     try { await openScheduled(); const [rows] = await pool.query("SELECT id, title, join_code AS joinCode, status, question_time_seconds AS questionTimeSeconds, navigation_mode AS navigationMode FROM quizzes WHERE status IN ('lobby','live') ORDER BY id DESC"); res.json(rows); } catch (e) { next(e); }
   });
+  app.get('/api/student/pending-quizzes', requireAuth, async (req, res, next) => {
+    try {
+      if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
+      await openScheduled();
+      const [rows] = await pool.execute(`SELECT q.id, q.title, q.join_code AS joinCode, q.status,
+        q.scheduled_at AS scheduledAt, lm.title AS materialTitle
+        FROM quizzes q LEFT JOIN learning_materials lm ON lm.id = q.material_id
+        WHERE q.status IN ('lobby', 'live', 'completed')
+          AND NOT EXISTS (
+            SELECT 1 FROM quiz_attempts qa
+            WHERE qa.quiz_id = q.id AND qa.student_id = ? AND qa.status = 'completed'
+          )
+        ORDER BY CASE q.status WHEN 'live' THEN 1 WHEN 'lobby' THEN 2 ELSE 3 END, q.id DESC`, [req.user.id]);
+      res.json(rows);
+    } catch (error) { next(error); }
+  });
   app.patch('/api/admin/quizzes/:id/settings', requireAuth, requireStaff, async (req, res, next) => {
     try {
       const allowRetakes = req.body.allowRetakes === undefined ? null : Boolean(req.body.allowRetakes);

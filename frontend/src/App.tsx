@@ -1519,13 +1519,13 @@ function classSessionStatus(now = new Date()) {
 }
 
 function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
-  const [data, setData] = useState({ learning: null, attendance: null, quizzes: null, activeQuizzes: null, announcements: null, overall: null });
+  const [data, setData] = useState({ learning: null, attendance: null, quizzes: null, pendingQuizzes: null, announcements: null, overall: null });
   const [message, setMessage] = useState("Loading your progress…");
   const [clock, setClock] = useState(() => new Date());
   useEffect(() => {
-    Promise.all([api("/student/learning?assignments=all"), api("/student/attendance"), api("/student/quiz-results"), api("/quizzes/active"), api("/announcements"), api("/student/overall-leaderboard")])
-      .then(([learning, attendance, quizzes, activeQuizzes, announcements, overall]) => {
-        setData({ learning, attendance, quizzes, activeQuizzes, announcements, overall });
+    Promise.all([api("/student/learning?assignments=all"), api("/student/attendance"), api("/student/quiz-results"), api("/student/pending-quizzes"), api("/announcements"), api("/student/overall-leaderboard")])
+      .then(([learning, attendance, quizzes, pendingQuizzes, announcements, overall]) => {
+        setData({ learning, attendance, quizzes, pendingQuizzes, announcements, overall });
         onUnreadChange(announcements.unreadCount);
         setMessage("");
       })
@@ -1542,11 +1542,10 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
   ) || [];
   const outstanding = assignments
     .filter((assignment) => assignment.assignmentType === "portal"
-      && (!assignment.closedAt || assignment.submissionStatus === "rejected")
-      && (!assignment.submissionId || assignment.submissionStatus === "rejected"))
+      && !assignment.closedAt
+      && (!assignment.submissionId || (assignment.score != null && Number(assignment.score) === 0) || ["rejected", "needs_correction"].includes(assignment.submissionStatus)))
     .sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt));
-  const completedQuizIds = new Set((data.quizzes || []).map((quiz) => Number(quiz.quizId)));
-  const pendingQuizzes = (data.activeQuizzes || []).filter((quiz) => !completedQuizIds.has(Number(quiz.id)));
+  const pendingQuizzes = data.pendingQuizzes || [];
   const quizAverage = data.quizzes?.length
     ? Math.round(data.quizzes.reduce((total, quiz) => total + Number(quiz.percentage || 0), 0) / data.quizzes.length)
     : 0;
@@ -1596,10 +1595,14 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
               <button onClick={() => onNavigate("Live quiz")}><span>Quizzes</span><strong>{pendingQuizzes.length}</strong><small>{pendingQuizzes.length ? "Ready to join" : "Nothing active"}</small></button>
             </div>
             {outstanding.length === 0 && pendingQuizzes.length === 0 ? <p className="progress-empty">You are all caught up. Nothing is pending on you.</p> : <div className="pending-work-list">
-              {pendingQuizzes.slice(0, 2).map((quiz) => <button key={`quiz-${quiz.id}`} onClick={() => onNavigate("Live quiz")}><i className="pending-work-icon quiz">Q</i><div><small>Quiz · {quiz.status === "live" ? "Live now" : "Waiting room open"}</small><h3>{quiz.title}</h3><p>Join with code {quiz.joinCode}</p></div><b className={quiz.status === "live" ? "live-now" : "upcoming"}>{quiz.status === "live" ? "Join now" : "Join room"}</b></button>)}
+              {pendingQuizzes.slice(0, 2).map((quiz) => {
+                const canJoin = ["live", "lobby"].includes(quiz.status);
+                return <button key={`quiz-${quiz.id}`} onClick={() => onNavigate("Live quiz")}><i className="pending-work-icon quiz">Q</i><div><small>Quiz · {quiz.status === "live" ? "Live now" : quiz.status === "lobby" ? "Waiting room open" : "Not completed"}</small><h3>{quiz.title}</h3><p>{canJoin ? `Join with code ${quiz.joinCode}` : "You missed this quiz — ask your admin to reopen it"}</p></div><b className={quiz.status === "live" ? "live-now" : quiz.status === "lobby" ? "upcoming" : "overdue"}>{quiz.status === "live" ? "Join now" : quiz.status === "lobby" ? "Join room" : "Missed"}</b></button>;
+              })}
               {outstanding.slice(0, Math.max(1, 4 - pendingQuizzes.length)).map((assignment) => {
                 const overdue = new Date(assignment.dueAt) < new Date();
-                return <button key={`assignment-${assignment.id}`} onClick={() => onNavigate("Assignments")}><i className="pending-work-icon assignment">A</i><div><small>Week {assignment.weekNumber} · {assignment.moduleTitle}</small><h3>{assignment.title}</h3><p>{assignment.submissionStatus === "rejected" ? "Corrections requested — submit again" : `Due ${new Date(assignment.dueAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`}</p></div><b className={assignment.submissionStatus === "rejected" || overdue ? "overdue" : "upcoming"}>{assignment.submissionStatus === "rejected" ? "Redo" : overdue ? "Overdue" : "Submit"}</b></button>;
+                const redo = ["rejected", "needs_correction"].includes(assignment.submissionStatus) || (assignment.score != null && Number(assignment.score) === 0);
+                return <button key={`assignment-${assignment.id}`} onClick={() => onNavigate("Assignments")}><i className="pending-work-icon assignment">A</i><div><small>Week {assignment.weekNumber} · {assignment.moduleTitle}</small><h3>{assignment.title}</h3><p>{redo ? "This assignment still needs to be completed successfully" : `Due ${new Date(assignment.dueAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`}</p></div><b className={redo || overdue ? "overdue" : "upcoming"}>{redo ? "Redo" : overdue ? "Overdue" : "Submit"}</b></button>;
               })}
             </div>}
           </section>
