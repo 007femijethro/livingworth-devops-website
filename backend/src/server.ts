@@ -22,6 +22,7 @@ import { startReminderScheduler } from './reminders.js';
 import { registerStoryRoutes } from './stories.js';
 import { registerCertificateRoutes } from './certificates.js';
 import { registerLiveClassRoutes } from './live-classes.js';
+import { identityHash, logger, requestLogger } from './logger.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -31,6 +32,7 @@ configureEmailControl(pool);
 
 app.use(helmet());
 app.use(cors());
+app.use(requestLogger);
 app.use('/api/admin/quizzes/import', express.text({ type: ['text/csv', 'text/plain'], limit: '2mb' }));
 app.use(express.json());
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || '/app/uploads'));
@@ -130,10 +132,14 @@ app.post('/api/auth/login', async (req, res, next) => {
     const { email, password, portal = 'student' } = req.body;
     const [rows] = await pool.execute('SELECT *, locked_until > NOW() AS is_locked FROM users WHERE email = ?', [email?.trim().toLowerCase()]);
     const user = rows[0];
-    if (user?.is_locked) return res.status(429).json({ message: 'Too many incorrect attempts. Try again in 15 minutes.' });
+    if (user?.is_locked) {
+      logger.warn('login_blocked', { requestId: req.requestId, userId: user.id, reason: 'locked' });
+      return res.status(429).json({ message: 'Too many incorrect attempts. Try again in 15 minutes.' });
+    }
     if (!user || !(await bcrypt.compare(password || '', user.password_hash))) {
       if (user) await pool.execute(`UPDATE users SET failed_login_attempts = failed_login_attempts + 1,
         locked_until = CASE WHEN failed_login_attempts + 1 >= 5 THEN DATE_ADD(NOW(), INTERVAL 15 MINUTE) ELSE locked_until END WHERE id = ?`, [user.id]);
+      logger.warn('login_failed', { requestId: req.requestId, userId: user?.id || null, emailHash: identityHash(email), reason: 'invalid_credentials' });
       return res.status(401).json({ message: 'Incorrect email or password.' });
     }
     if (!['student', 'staff'].includes(portal)) return res.status(400).json({ message: 'Choose Student or Staff login.' });
@@ -146,6 +152,7 @@ app.post('/api/auth/login', async (req, res, next) => {
       return res.status(403).json({ message: user.status === 'pending' ? 'Your registration is awaiting administrator approval.' : 'Your registration was not approved.' });
     }
     await pool.execute('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?', [user.id]);
+    logger.info('login_succeeded', { requestId: req.requestId, userId: user.id, role: user.role, portal });
     res.json({ token: createToken(user), user: { id: user.id, fullName: user.full_name, email: user.email, role: user.role, status: user.status, mustChangePassword: Boolean(user.must_change_password) } });
   } catch (error) { next(error); }
 });
@@ -616,6 +623,20 @@ registerCertificateRoutes(app, pool, requireAuth, requireStaff);
 registerLiveClassRoutes(app, pool, requireAuth, requireStaff);
 configureQuizSockets(io, pool, verifyToken);
 
+app.post('/api/client-logs', (req, res) => {
+  const level = ['warn', 'error'].includes(req.body?.level) ? req.body.level : 'error';
+  logger[level]('frontend_error', {
+    requestId: req.requestId,
+    message: String(req.body?.message || 'Unknown frontend error').slice(0, 1000),
+    source: String(req.body?.source || '').slice(0, 200),
+    line: Number(req.body?.line || 0) || null,
+    column: Number(req.body?.column || 0) || null,
+    pathname: String(req.body?.pathname || '').slice(0, 300),
+    userAgent: String(req.headers['user-agent'] || '').slice(0, 300)
+  });
+  res.status(202).json({ received: true, requestId: req.requestId });
+});
+
 app.post('/api/enquiries', async (req, res, next) => {
   try {
     const { name, email, message } = req.body;
@@ -632,8 +653,8 @@ app.post('/api/enquiries', async (req, res, next) => {
   }
 });
 
-app.use((error, _req, res, _next) => {
-  console.error(error);
+app.use((error, req, res, _next) => {
+  logger.error('unhandled_error', { requestId: req.requestId, method: req.method, path: req.path, userId: req.user?.id || null, error });
   if (error.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ message: 'The file is larger than 10 MB.' });
   if (error.message?.startsWith('Upload a PDF')) return res.status(400).json({ message: error.message });
   res.status(500).json({ message: 'Something went wrong.' });
@@ -664,7 +685,7 @@ async function start() {
     );
   }
   startReminderScheduler(pool);
-  httpServer.listen(port, '0.0.0.0', () => console.log(`Livingworth API and live quiz server listening on port ${port}`));
+  httpServer.listen(port, '0.0.0.0', () => logger.info('server_started', { port }));
 }
 
-start().catch((error) => { console.error('Failed to start API', error); process.exit(1); });
+start().catch((error) => { logger.error('server_start_failed', { error }); process.exit(1); });

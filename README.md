@@ -49,6 +49,26 @@ docker compose down
 docker compose down -v  # also removes database data
 ```
 
+### Application logs
+
+All services log to standard output/error, ready for `docker logs` or Loki/Alloy collection:
+
+```bash
+# Everything
+docker compose logs -f --tail=200
+
+# Backend API requests, authentication events and errors
+docker compose logs -f --tail=200 backend
+
+# Public Nginx access and proxy errors
+docker compose logs -f --tail=200 nginx
+
+# Frontend web-server requests
+docker compose logs -f --tail=200 frontend
+```
+
+Backend and public Nginx entries are structured JSON. Every API response includes an `X-Request-Id`, which can be searched across Nginx and backend logs. Browser crashes and unhandled promise failures appear as `frontend_error` events. Request bodies, passwords, tokens, cookies, quiz answers and uploaded content are not logged. Docker rotates each service log after 10 MB and retains five files. Set `LOG_LEVEL=debug` for more development detail or `LOG_HEALTHCHECKS=true` to include `/api/health` requests.
+
 ## Local development
 
 Start MySQL, create a database using `backend/sql/init.sql`, then:

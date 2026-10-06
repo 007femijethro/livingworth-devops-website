@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   backend:
     build: ./backend
@@ -29,10 +35,13 @@ services:
       CLASS_TIME: ${CLASS_TIME:-20:00}
       CLASS_TIMEZONE: ${CLASS_TIMEZONE:-Africa/Lagos}
       CLASS_MEETING_LINK: ${CLASS_MEETING_LINK:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_HEALTHCHECKS: ${LOG_HEALTHCHECKS:-false}
       UPLOAD_DIR: /app/uploads
     volumes:
       - learning_uploads:/app/uploads
     networks: [livingworth]
+    logging: *default-logging
 
   frontend:
     build: ./frontend
@@ -40,6 +49,7 @@ services:
     restart: unless-stopped
     depends_on: [backend]
     networks: [livingworth]
+    logging: *default-logging
 
   nginx:
     image: nginx:1.27-alpine
@@ -56,6 +66,7 @@ services:
       - backend
     networks:
       - livingworth
+    logging: *default-logging
 
 volumes:
   learning_uploads:
