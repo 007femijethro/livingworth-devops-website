@@ -1,4 +1,6 @@
 // @ts-nocheck
+export const CERTIFICATE_ELIGIBILITY_SCORE = 75;
+
 export async function buildOverallLeaderboard(pool) {
   const [[students], [quizAttempts], [assignmentResults], [attendanceRows]] = await Promise.all([
         pool.query("SELECT id, full_name AS fullName, email FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name, id"),
@@ -82,6 +84,11 @@ export function registerAnalyticsRoutes(app, pool, requireAuth, requireStaff) {
       res.json({
         scoring: data.scoring,
         summary: { ranked: data.summary.ranked },
+        certificateEligibility: {
+          requiredScore: CERTIFICATE_ELIGIBILITY_SCORE,
+          overallScore: currentStudent?.overallScore ?? null,
+          eligible: currentStudent?.overallScore != null && currentStudent.overallScore >= CERTIFICATE_ELIGIBILITY_SCORE
+        },
         topTen: ranked.slice(0, 10).map((student, index) => ({ ...student, rank: index + 1, isCurrentStudent: student.id === Number(req.user.id) })),
         currentStudent,
         hiddenCount: currentStudent?.rank > 10 ? currentStudent.rank - 11 : 0
