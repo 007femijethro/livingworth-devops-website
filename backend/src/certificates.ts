@@ -1,8 +1,6 @@
 // @ts-nocheck
 import crypto from 'node:crypto';
-import { buildOverallLeaderboard } from './analytics.js';
-
-const CERTIFICATE_ELIGIBILITY_SCORE = 75;
+import { buildOverallLeaderboard, CERTIFICATE_ELIGIBILITY_SCORE } from './analytics.js';
 
 function certificateNumber() {
   return `LWA-${new Date().getUTCFullYear()}-${crypto.randomBytes(5).toString('hex').toUpperCase()}`;

@@ -64,6 +64,11 @@ test('student leaderboard returns the top 10 and the signed-in student without e
     assert.equal(data.topTen.at(-1).fullName, 'Student 10');
     assert.equal(data.currentStudent.fullName, 'Student 12');
     assert.equal(data.currentStudent.rank, 12);
+    assert.deepEqual(data.certificateEligibility, {
+      requiredScore: 75,
+      overallScore: 8,
+      eligible: false
+    });
     assert.equal(data.hiddenCount, 1);
     assert.equal(JSON.stringify(data).includes('Student 11'), false);
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
