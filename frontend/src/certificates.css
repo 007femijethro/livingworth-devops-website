@@ -4,3 +4,13 @@
 @page{size:A4 landscape;margin:0}
 @media(max-width:900px){.certificate-document{aspect-ratio:auto}.certificate-border{min-height:620px}}
 @media print{html,body{width:297mm;height:210mm;margin:0!important;padding:0!important;background:#fff}body.printing-certificate{overflow:hidden}body.printing-certificate .certificate-entry.printing{position:static!important;margin:0!important;padding:0!important}body.printing-certificate .certificate-entry.printing .certificate-document{position:fixed!important;inset:0!important;width:297mm!important;height:210mm!important;max-width:none!important;aspect-ratio:auto!important;margin:0!important;padding:8mm!important;box-sizing:border-box!important;box-shadow:none!important;background:#f4eee0!important;overflow:hidden!important;break-inside:avoid;page-break-inside:avoid}body.printing-certificate .certificate-entry.printing .certificate-border{width:100%!important;height:100%!important;min-height:0!important;padding:10mm 13mm!important;box-sizing:border-box!important}body.printing-certificate .certificate-border img{width:48mm;height:14mm}body.printing-certificate .certificate-border h2{margin:2mm 0 5mm;font-size:30pt}body.printing-certificate .certificate-border h3{margin:2mm 0;padding:0 10mm 2mm;font-size:25pt}body.printing-certificate .certificate-border h4{margin:2mm 0;font-size:18pt}body.printing-certificate .certificate-signatures{margin:8mm 0 4mm;flex-direction:row!important;align-items:flex-end!important}body.printing-certificate .certificate-border footer{flex-direction:row!important;align-items:center!important}body.printing-certificate .certificate-actions,.sidebar,.dash-title{display:none!important}}
+
+.certificate-issue-form label>small{color:#687c88;font-weight:600}
+.certificate-eligibility{display:grid;grid-template-columns:1fr auto;gap:8px 20px;align-items:center;padding:20px 22px;border:1px solid}
+.certificate-eligibility>div{display:grid;gap:3px}
+.certificate-eligibility span{font-weight:700}
+.certificate-eligibility strong{font:800 1.45rem Manrope}
+.certificate-eligibility>b{font:800 1.6rem Manrope}
+.certificate-eligibility>p{grid-column:1/-1;margin:0}
+.certificate-eligibility.eligible{border-color:#9ed4bd;background:#edf8f3;color:#087451}
+.certificate-eligibility.not-eligible{border-color:#e4c59a;background:#fff8e9;color:#815b17}

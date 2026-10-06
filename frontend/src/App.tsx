@@ -1868,10 +1868,16 @@ function CertificateVerification({ navigate, initialNumber = "" }) {
 
 function StudentCertificates() {
   const [certificates, setCertificates] = useState([]);
+  const [eligibility, setEligibility] = useState(null);
   const [message, setMessage] = useState("");
-  useEffect(() => { api("/student/certificates").then(setCertificates).catch(error => setMessage(error.message)); }, []);
+  useEffect(() => {
+    Promise.all([api("/student/certificates"), api("/student/certificate-eligibility")])
+      .then(([certificateData, eligibilityData]) => { setCertificates(certificateData); setEligibility(eligibilityData); })
+      .catch(error => setMessage(error.message));
+  }, []);
   return <section className="certificates-center"><div className="certificates-heading"><p className="eyebrow">Your achievements</p><h2>My certificates</h2><p>View, print or save your issued Livingworth Academy certificates.</p></div>
     {message && <p className="form-message">{message}</p>}
+    {eligibility && <div className={`certificate-eligibility ${eligibility.eligible ? "eligible" : "not-eligible"}`}><div><span>Certificate eligibility</span><strong>{eligibility.eligible ? "Eligible" : "Not yet eligible"}</strong></div><b>{eligibility.overallScore == null ? "No score yet" : `${eligibility.overallScore}/100`}</b><p>{eligibility.eligible ? `Well done — you have met the required overall score of ${eligibility.requiredScore}/100.` : eligibility.overallScore == null ? `Complete your quizzes, assignments and attendance records to build your overall score. You need at least ${eligibility.requiredScore}/100.` : `Keep going — improve your overall score by ${eligibility.requiredScore - eligibility.overallScore} point${eligibility.requiredScore - eligibility.overallScore === 1 ? "" : "s"} to reach the required ${eligibility.requiredScore}/100.`}</p></div>}
     {certificates.length === 0 ? <div className="empty">No certificate has been issued to you yet.</div> : certificates.map(certificate => <div className="certificate-entry" key={certificate.id}><CertificateDocument certificate={certificate}/><div className="certificate-actions"><a className="button light-border" href={`/?verify=${encodeURIComponent(certificate.certificateNumber)}`} target="_blank" rel="noreferrer">Open verification page</a><button className="button primary" onClick={printCertificate}>Print / Save PDF</button></div></div>)}
   </section>;
 }
@@ -1879,14 +1885,16 @@ function StudentCertificates() {
 function StaffCertificates({ demo = false }) {
   const [certificates, setCertificates] = useState([]);
   const [students, setStudents] = useState([]);
+  const [eligibilityByStudent, setEligibilityByStudent] = useState(new Map());
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [deletingCertificateId, setDeletingCertificateId] = useState(null);
   async function load() {
     if (demo) return;
     try {
-      const [certificateData, studentData] = await Promise.all([api("/staff/certificates"), api("/staff/students")]);
+      const [certificateData, studentData, performanceData] = await Promise.all([api("/staff/certificates"), api("/staff/students"), api("/staff/overall-leaderboard")]);
       setCertificates(certificateData); setStudents(studentData);
+      setEligibilityByStudent(new Map(performanceData.leaderboard.map(student => [Number(student.id), { overallScore: student.overallScore, eligible: student.overallScore !== null && student.overallScore >= 75 }])));
     } catch (error) { setMessage(error.message); }
   }
   useEffect(() => { load(); }, [demo]);
@@ -1919,8 +1927,8 @@ function StaffCertificates({ demo = false }) {
   }
   if (demo) return <div className="empty">Connect the backend to issue and verify certificates.</div>;
   return <section className="certificates-center">
-    <div className="certificates-heading"><p className="eyebrow">Academy credentials</p><h2>Certificates</h2><p>Issue verifiable certificates to approved students and manage existing credentials.</p></div>
-    <form className="certificate-issue-form" onSubmit={issue}><label>Student<select name="studentId" required><option value="">Choose approved student</option>{students.map(student => <option key={student.id} value={student.id}>{student.fullName} · {student.email}</option>)}</select></label><label>Course completed<input name="courseTitle" defaultValue="DevOps Engineering Bootcamp" maxLength="180" required /></label><label>Completion date<input name="completionDate" type="date" max={new Date().toISOString().slice(0, 10)} required /></label><button className="button primary" disabled={busy}>{busy ? "Issuing…" : "Issue certificate"}</button></form>
+    <div className="certificates-heading"><p className="eyebrow">Academy credentials</p><h2>Certificates</h2><p>Issue verifiable certificates to students whose overall score is at least 75/100.</p></div>
+    <form className="certificate-issue-form" onSubmit={issue}><label>Eligible student<select name="studentId" required><option value="">Choose eligible student</option>{students.map(student => { const result = eligibilityByStudent.get(Number(student.id)); return <option key={student.id} value={student.id} disabled={!result?.eligible}>{student.fullName} · {result?.overallScore == null ? "No overall score — not eligible" : `${result.overallScore}/100${result.eligible ? " — eligible" : " — not eligible"}`}</option>; })}</select><small>Students need an overall score of 75/100 or higher.</small></label><label>Course completed<input name="courseTitle" defaultValue="DevOps Engineering Bootcamp" maxLength="180" required /></label><label>Completion date<input name="completionDate" type="date" max={new Date().toISOString().slice(0, 10)} required /></label><button className="button primary" disabled={busy}>{busy ? "Issuing…" : "Issue certificate"}</button></form>
     <p className="form-message success">{message}</p>
     <div className="certificate-admin-list">{certificates.length === 0 ? <div className="empty">No certificates issued yet.</div> : certificates.map(certificate => <article key={certificate.id}><div><strong>{certificate.studentName}</strong><span>{certificate.courseTitle}</span><small>{certificate.certificateNumber} · issued {new Date(certificate.issuedAt).toLocaleDateString()}</small></div><b className={certificate.status === "valid" ? "certificate-valid" : "certificate-revoked"}>{certificate.status}</b><button className="button light-border" onClick={() => copyLink(certificate)}>Copy verification link</button>{certificate.status === "valid" ? <button className="button certificate-revoke-button" onClick={() => revoke(certificate)}>Revoke</button> : <button className="button certificate-delete-button" disabled={deletingCertificateId === certificate.id} onClick={() => deleteCertificate(certificate)}>{deletingCertificateId === certificate.id ? "Deleting…" : "Delete permanently"}</button>}</article>)}</div>
   </section>;

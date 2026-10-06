@@ -1,5 +1,5 @@
 // @ts-nocheck
-async function buildOverallLeaderboard(pool) {
+export async function buildOverallLeaderboard(pool) {
   const [[students], [quizAttempts], [assignmentResults], [attendanceRows]] = await Promise.all([
         pool.query("SELECT id, full_name AS fullName, email FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name, id"),
         pool.query(`SELECT student_id AS studentId, quiz_id AS quizId, correct_count AS correctCount, total_questions AS totalQuestions
