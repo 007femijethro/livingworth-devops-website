@@ -136,6 +136,35 @@ CREATE TABLE IF NOT EXISTS attendance (
   FOREIGN KEY (marked_by) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS live_classes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(180) NOT NULL,
+  scheduled_at DATETIME NOT NULL,
+  duration_minutes INT NOT NULL DEFAULT 60,
+  room_name VARCHAR(120) NOT NULL UNIQUE,
+  meeting_url VARCHAR(1000),
+  attendance_code VARCHAR(12) UNIQUE,
+  attendance_expires_at DATETIME,
+  status ENUM('scheduled','live','ended') NOT NULL DEFAULT 'scheduled',
+  created_by INT NOT NULL,
+  started_at DATETIME,
+  ended_at DATETIME,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX live_class_schedule (status, scheduled_at),
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS live_class_attendance_submissions (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  class_id INT NOT NULL,
+  student_id INT NOT NULL,
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY one_live_class_submission (class_id, student_id),
+  INDEX live_class_attendance_submission (class_id, submitted_at),
+  FOREIGN KEY (class_id) REFERENCES live_classes(id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS announcements (
   id INT AUTO_INCREMENT PRIMARY KEY,
   title VARCHAR(180) NOT NULL,
