@@ -40,7 +40,7 @@ services:
       UPLOAD_DIR: /app/uploads
     volumes:
       - learning_uploads:/app/uploads
-    networks: [livingworth]
+    networks: [livingworth, monitoring]
     logging: *default-logging
 
   frontend:
@@ -48,7 +48,7 @@ services:
     container_name: livingworth-frontend
     restart: unless-stopped
     depends_on: [backend]
-    networks: [livingworth]
+    networks: [livingworth, monitoring]
     logging: *default-logging
 
   nginx:
@@ -66,6 +66,7 @@ services:
       - backend
     networks:
       - livingworth
+      - monitoring
     logging: *default-logging
 
 volumes:
@@ -74,3 +75,6 @@ volumes:
 networks:
   livingworth:
     driver: bridge
+  monitoring:
+    external: true
+    name: monitoring
