@@ -1132,6 +1132,7 @@ function AttendanceReports({ onDaily }) {
 
 function AttendanceCenter({ mode, demo = false }) {
   const staff = mode === "staff";
+  const canMark = staff || mode === "rep";
   const [date, setDate] = useState(latestClassDate()),
     [records, setRecords] = useState([]),
     [summary, setSummary] = useState({ attended: 0, total: 0, percentage: 0 }),
@@ -1146,7 +1147,7 @@ function AttendanceCenter({ mode, demo = false }) {
     setMessage("Loading attendance…");
     try {
       const data = await api(
-        staff ? `/staff/attendance?date=${selected}` : "/student/attendance",
+        canMark && !(mode === "rep" && view === "mine") ? `/staff/attendance?date=${selected}` : "/student/attendance",
       );
       setRecords(data.records || []);
       if (data.summary) setSummary(data.summary);
@@ -1158,7 +1159,7 @@ function AttendanceCenter({ mode, demo = false }) {
   }
   useEffect(() => {
     load();
-  }, [mode, demo]);
+  }, [mode, demo, view]);
   function update(studentId, field, value) {
     setRecords((current) =>
       current.map((record) =>
@@ -1192,13 +1193,14 @@ function AttendanceCenter({ mode, demo = false }) {
     }
   }
   if (staff && view === "reports") return <section className="attendance"><AttendanceReports onDaily={() => setView("daily")} /></section>;
-  if (staff)
+  if (canMark && view !== "mine")
     return (
       <section className="attendance">
-        <div className="attendance-view-tabs"><button className="active">Daily register</button><button onClick={() => setView("reports")}>Reports & warnings</button></div>
+        {staff && <div className="attendance-view-tabs"><button className="active">Daily register</button><button onClick={() => setView("reports")}>Reports & warnings</button></div>}
+        {mode === "rep" && <div className="attendance-view-tabs"><button className="active">Mark attendance</button><button onClick={() => setView("mine")}>My attendance</button></div>}
         <div className="attendance-head">
           <div>
-            <p className="eyebrow">Class register</p>
+            <p className="eyebrow">{mode === "rep" ? "Class representative" : "Class register"}</p>
             <h2>Mark attendance</h2>
             <p>Sessions run every Monday, Wednesday and Friday.</p>
           </div>
@@ -1277,6 +1279,7 @@ function AttendanceCenter({ mode, demo = false }) {
     );
   return (
     <section className="attendance">
+      {mode === "rep" && <div className="attendance-view-tabs"><button onClick={() => setView("daily")}>Mark attendance</button><button className="active">My attendance</button></div>}
       <div className="attendance-head">
         <div>
           <p className="eyebrow">My attendance</p>
@@ -2071,7 +2074,7 @@ function StudentDashboard({ user, logout }) {
             </div>
           </section>
         )}
-        {active === "Attendance" && <AttendanceCenter mode="student" />}
+        {active === "Attendance" && <AttendanceCenter mode={user.isClassRep ? "rep" : "student"} />}
         {active === "Learning" && <LearningCenter mode="student" />}
         {active === "Assignments" && <AssignmentsCenter />}
         {active === "Certificates" && <StudentCertificates />}
@@ -2918,7 +2921,7 @@ function LearnerProfilePanel({ studentId, onClose, onDeleted }) {
   </div>;
 }
 
-function StudentDirectory({ demo = false, canDelete = false }) {
+function StudentDirectory({ demo = false, canDelete = false, canManageClassReps = false }) {
   const [students, setStudents] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [search, setSearch] = useState("");
@@ -2930,6 +2933,14 @@ function StudentDirectory({ demo = false, canDelete = false }) {
     api("/staff/students").then((data) => { setStudents(data); setMessage(""); }).catch((error) => setMessage(error.message));
   }
   useEffect(load, [demo]);
+  const classRepCount = students.filter((student) => student.isClassRep).length;
+  async function setClassRep(student, enabled) {
+    if (!window.confirm(`${enabled ? "Appoint" : "Remove"} ${student.fullName} ${enabled ? "as a class representative" : "from the class-rep position"}?`)) return;
+    try {
+      const result = await api(`/admin/students/${student.id}/class-rep`, { method: "PATCH", body: JSON.stringify({ enabled }) });
+      setMessage(result.message); await load();
+    } catch (error) { setMessage(error.message); }
+  }
   const countries = [...new Set(students.map((student) => student.country).filter(Boolean))].sort();
   const modes = [...new Set(students.map((student) => student.learningMode).filter(Boolean))].sort();
   const query = search.trim().toLowerCase();
@@ -2938,7 +2949,7 @@ function StudentDirectory({ demo = false, canDelete = false }) {
     return (!query || searchable.includes(query)) && (!learningMode || student.learningMode === learningMode) && (!country || student.country === country);
   });
   return <section className="student-directory">
-    <div className="directory-heading"><div><p className="eyebrow">Student records</p><h2>Student directory</h2><p>Find a learner and open their complete registration and performance profile.</p></div><strong>{students.length}<span>approved student{students.length === 1 ? "" : "s"}</span></strong></div>
+    <div className="directory-heading"><div><p className="eyebrow">Student records</p><h2>Student directory</h2><p>Find a learner and open their complete registration and performance profile.</p>{canManageClassReps && <small className="class-rep-limit">Class representatives: <b>{classRepCount}/2</b> appointed. They can mark attendance only.</small>}</div><strong>{students.length}<span>approved student{students.length === 1 ? "" : "s"}</span></strong></div>
     <div className="directory-filters">
       <label>Search<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, email, phone or city" /></label>
       <label>Country<select value={country} onChange={(event) => setCountry(event.target.value)}><option value="">All countries</option>{countries.map((value) => <option key={value}>{value}</option>)}</select></label>
@@ -2948,9 +2959,9 @@ function StudentDirectory({ demo = false, canDelete = false }) {
     {message && <p className="form-message" role="status">{message}</p>}
     {!message && <p className="directory-result-count">Showing {filtered.length} of {students.length} students</p>}
     <div className="directory-grid">{!message && filtered.length === 0 ? <div className="empty">No students match these filters.</div> : filtered.map((student) => <article key={student.id}>
-      <div className="directory-card-head"><span className="student-avatar">{student.fullName[0]}</span><div><h3>{student.fullName}</h3><p>{student.email}</p></div><b className="status approved">active</b></div>
+      <div className="directory-card-head"><span className="student-avatar">{student.fullName[0]}</span><div><h3>{student.fullName}</h3><p>{student.email}</p></div><b className={`status ${student.isClassRep ? "class-rep" : "approved"}`}>{student.isClassRep ? "class rep" : "active"}</b></div>
       <div className="student-facts"><span><small>Phone</small><b>{student.phone || "Not provided"}</b></span><span><small>Location</small><b>{[student.stateCity, student.country].filter(Boolean).join(", ") || "Not provided"}</b></span><span><small>Learning mode</small><b>{student.learningMode || "Not provided"}</b></span><span><small>Current status</small><b>{student.employmentStatus || "Not provided"}</b></span><span><small>Education</small><b>{student.educationalLevel || "Not provided"}</b></span><span><small>Tech experience</small><b>{student.techExperience || student.experienceLevel || "Not provided"}</b></span></div>
-      <button type="button" className="button primary full" onClick={() => setSelectedId(student.id)}>View full profile</button>
+      <button type="button" className="button primary full" onClick={() => setSelectedId(student.id)}>View full profile</button>{canManageClassReps && <button type="button" className="button light-border full" disabled={!student.isClassRep && classRepCount >= 2} onClick={() => setClassRep(student, !student.isClassRep)}>{student.isClassRep ? "Remove class rep" : "Appoint class rep"}</button>}
     </article>)}</div>
     {selectedId && <LearnerProfilePanel studentId={selectedId} onClose={() => setSelectedId(null)} onDeleted={canDelete ? (notice) => { setSelectedId(null); setMessage(notice); load(); } : undefined} />}
   </section>;
@@ -3335,7 +3346,7 @@ function AdminDashboard({ user, logout }) {
         {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} onViewLearner={user.demo ? null : setProfileStudentId} demo={user.demo} />}
         {active === "Applications" && applications}
         {active === "Profile requests" && <AdminProfileRequests />}
-        {active === "Students" && <StudentDirectory demo={user.demo} canDelete={!user.demo} />}
+        {active === "Students" && <StudentDirectory demo={user.demo} canDelete={!user.demo} canManageClassReps={!user.demo} />}
         {active === "Certificates" && <StaffCertificates demo={user.demo} />}
         {active === "Leaderboard" && <OverallLeaderboard demo={user.demo} />}
         {active === "Stories" && <StaffStoriesCenter demo={user.demo} />}
