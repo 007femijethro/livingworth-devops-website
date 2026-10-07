@@ -27,3 +27,9 @@ test('prefixes profile change request queries', () => {
   assert.match(sql, /FROM lw_profile_change_requests/);
   assert.match(sql, /student_id = \$1/);
 });
+
+test('prefixes live class attendance submission queries', () => {
+  const sql = translateSql('SELECT id FROM live_class_attendance_submissions WHERE class_id = ? AND student_id = ?');
+  assert.match(sql, /FROM lw_live_class_attendance_submissions/);
+  assert.match(sql, /class_id = \$1 AND student_id = \$2/);
+});

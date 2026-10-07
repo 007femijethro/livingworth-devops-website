@@ -9,6 +9,7 @@ const sensitiveKey = /password|token|secret|authorization|cookie|answer|content|
 function clean(value, depth = 0) {
   if (depth > 4) return '[truncated]';
   if (value instanceof Error) return { name: value.name, message: value.message, code: value.code, stack: value.stack };
+  if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.slice(0, 20).map(item => clean(item, depth + 1));
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sensitiveKey.test(key) ? '[redacted]' : clean(item, depth + 1)]));
