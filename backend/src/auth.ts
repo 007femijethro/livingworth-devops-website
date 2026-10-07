@@ -31,7 +31,7 @@ export async function requireAuth(req, res, next) {
   try {
     req.user = jwt.verify(token, secret());
     const [accounts] = await pool.execute(
-      'SELECT role, status, session_version AS sessionVersion FROM users WHERE id = ?',
+      'SELECT role, status, session_version AS sessionVersion, is_class_rep AS isClassRep FROM users WHERE id = ?',
       [req.user.id]
     );
     const account = accounts[0];
@@ -48,6 +48,7 @@ export async function requireAuth(req, res, next) {
     req.user.role = account.role;
     req.user.status = account.status;
     req.user.sessionVersion = Number(account.sessionVersion || 0);
+    req.user.isClassRep = account.isClassRep === true;
     if (req.user.mustChangePassword && !['/api/auth/me', '/api/auth/change-password'].includes(req.path)) {
       return res.status(403).json({ message: 'Change your temporary password before using the portal.' });
     }
