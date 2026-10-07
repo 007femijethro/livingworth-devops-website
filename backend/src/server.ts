@@ -153,7 +153,7 @@ app.post('/api/auth/login', async (req, res, next) => {
     }
     await pool.execute('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?', [user.id]);
     logger.info('login_succeeded', { requestId: req.requestId, userId: user.id, role: user.role, portal });
-    res.json({ token: createToken(user), user: { id: user.id, fullName: user.full_name, email: user.email, role: user.role, status: user.status, mustChangePassword: Boolean(user.must_change_password) } });
+    res.json({ token: createToken(user), user: { id: user.id, fullName: user.full_name, email: user.email, role: user.role, status: user.status, isClassRep: Boolean(user.is_class_rep), mustChangePassword: Boolean(user.must_change_password) } });
   } catch (error) { next(error); }
 });
 
@@ -268,7 +268,7 @@ app.patch('/api/admin/users/:id/password', requireAuth, requireAdmin, async (req
 
 app.get('/api/auth/me', requireAuth, async (req, res, next) => {
   try {
-    const [rows] = await pool.execute('SELECT id, full_name AS fullName, email, phone, experience_level AS experienceLevel, learning_goal AS learningGoal, role, status, must_change_password AS mustChangePassword, created_at AS createdAt FROM users WHERE id = ?', [req.user.id]);
+    const [rows] = await pool.execute('SELECT id, full_name AS fullName, email, phone, experience_level AS experienceLevel, learning_goal AS learningGoal, role, status, is_class_rep AS isClassRep, must_change_password AS mustChangePassword, created_at AS createdAt FROM users WHERE id = ?', [req.user.id]);
     if (!rows.length) return res.status(404).json({ message: 'Account not found.' });
     res.json(rows[0]);
   } catch (error) { next(error); }
@@ -298,7 +298,7 @@ app.get('/api/admin/students', requireAuth, requireAdmin, async (req, res, next)
       `SELECT id, full_name AS fullName, first_name AS firstName, last_name AS lastName, email, phone, gender,
         country, state_city AS stateCity, employment_status AS employmentStatus, educational_level AS educationalLevel,
         course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience,
-        experience_level AS experienceLevel, learning_goal AS learningGoal, status,
+        experience_level AS experienceLevel, learning_goal AS learningGoal, status, is_class_rep AS isClassRep,
         rejection_reason AS rejectionReason, expelled_reason AS expelledReason, expelled_at AS expelledAt,
         created_at AS createdAt, updated_at AS updatedAt
        FROM users WHERE ${where.join(' AND ')}
@@ -344,8 +344,8 @@ app.patch('/api/admin/students/:id/status', requireAuth, requireAdmin, async (re
     if (!['pending', 'approved', 'rejected'].includes(status)) return res.status(400).json({ message: 'Choose pending, approved or rejected.' });
     if (status === 'rejected' && !rejectionReason) return res.status(400).json({ message: 'Add a reason before rejecting this application.' });
     const [result] = await pool.execute(
-      "UPDATE users SET status = ?, rejection_reason = ? WHERE id = ? AND role = 'student'",
-      [status, status === 'rejected' ? rejectionReason : null, req.params.id]
+      "UPDATE users SET status = ?, rejection_reason = ?, is_class_rep = CASE WHEN ? = 'approved' THEN is_class_rep ELSE FALSE END WHERE id = ? AND role = 'student'",
+      [status, status === 'rejected' ? rejectionReason : null, status, req.params.id]
     );
     if (!result.affectedRows) return res.status(404).json({ message: 'Student not found.' });
     const [students] = await pool.execute("SELECT full_name AS fullName, email FROM users WHERE id = ?", [req.params.id]);
@@ -374,7 +374,7 @@ app.patch('/api/admin/students/:id/expel', requireAuth, requireAdmin, async (req
       await connection.rollback();
       return res.status(409).json({ message: 'Only an active student can be expelled.' });
     }
-    await connection.execute(`UPDATE users SET status = 'expelled', expelled_reason = ?, expelled_at = CURRENT_TIMESTAMP,
+    await connection.execute(`UPDATE users SET status = 'expelled', expelled_reason = ?, expelled_at = CURRENT_TIMESTAMP, is_class_rep = FALSE,
       rejection_reason = NULL, session_version = session_version + 1, failed_login_attempts = 0,
       locked_until = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [reason, studentId]);
     await connection.execute('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL', [studentId]);
@@ -426,7 +426,7 @@ app.get('/api/staff/students', requireAuth, requireStaff, async (_req, res, next
     const [rows] = await pool.query(`SELECT id, full_name AS fullName, email, phone, gender, country,
       state_city AS stateCity, employment_status AS employmentStatus, educational_level AS educationalLevel,
       course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience,
-      experience_level AS experienceLevel, learning_goal AS learningGoal, status, created_at AS createdAt
+      experience_level AS experienceLevel, learning_goal AS learningGoal, status, is_class_rep AS isClassRep, created_at AS createdAt
       FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name`);
     res.json(rows);
   } catch (error) { next(error); }
@@ -460,7 +460,45 @@ function validClassDate(value) {
   return !Number.isNaN(date.getTime()) && [1, 3, 5].includes(date.getUTCDay());
 }
 
-app.get('/api/staff/attendance', requireAuth, requireStaff, async (req, res, next) => {
+function requireAttendanceManager(req, res, next) {
+  if (['admin', 'mentor'].includes(req.user?.role) || (req.user?.role === 'student' && req.user?.isClassRep)) return next();
+  return res.status(403).json({ message: 'Attendance marking access required.' });
+}
+
+app.patch('/api/admin/students/:id/class-rep', requireAuth, requireAdmin, async (req, res, next) => {
+  const connection = await pool.getConnection();
+  let transactionStarted = false;
+  try {
+    const studentId = Number.parseInt(req.params.id, 10);
+    const enabled = req.body.enabled;
+    if (!studentId || typeof enabled !== 'boolean') return res.status(400).json({ message: 'Choose a valid student and class-rep status.' });
+    await connection.beginTransaction();
+    transactionStarted = true;
+    await connection.query('SELECT pg_advisory_xact_lock(1280067)');
+    const [students] = await connection.execute("SELECT id, full_name AS fullName, is_class_rep AS isClassRep FROM users WHERE id=? AND role='student' AND status='approved' FOR UPDATE", [studentId]);
+    if (!students.length) {
+      await connection.rollback(); transactionStarted = false;
+      return res.status(404).json({ message: 'Approved student not found.' });
+    }
+    if (enabled && !students[0].isClassRep) {
+      const [counts] = await connection.query("SELECT COUNT(*) AS count FROM users WHERE role='student' AND status='approved' AND is_class_rep=TRUE");
+      if (Number(counts[0].count) >= 2) {
+        await connection.rollback(); transactionStarted = false;
+        return res.status(409).json({ message: 'You can appoint a maximum of two class representatives.' });
+      }
+    }
+    await connection.execute("UPDATE users SET is_class_rep=? WHERE id=? AND role='student'", [enabled, studentId]);
+    await connection.commit();
+    transactionStarted = false;
+    logger.info(enabled ? 'class_rep_appointed' : 'class_rep_removed', { studentId, userId: req.user.id });
+    res.json({ isClassRep: enabled, message: `${students[0].fullName} ${enabled ? 'is now a class representative' : 'is no longer a class representative'}.` });
+  } catch (error) {
+    if (transactionStarted) await connection.rollback();
+    next(error);
+  } finally { connection.release(); }
+});
+
+app.get('/api/staff/attendance', requireAuth, requireAttendanceManager, async (req, res, next) => {
   try {
     const date = String(req.query.date || '');
     if (!validClassDate(date)) return res.status(400).json({ message: 'Choose a Monday, Wednesday or Friday.' });
@@ -477,7 +515,7 @@ app.get('/api/staff/attendance', requireAuth, requireStaff, async (req, res, nex
   } catch (error) { next(error); }
 });
 
-app.put('/api/staff/attendance', requireAuth, requireStaff, async (req, res, next) => {
+app.put('/api/staff/attendance', requireAuth, requireAttendanceManager, async (req, res, next) => {
   const connection = await pool.getConnection();
   try {
     const { date, records } = req.body;
