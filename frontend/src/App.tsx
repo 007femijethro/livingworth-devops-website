@@ -1048,7 +1048,7 @@ function AttendanceReports({ onDaily }) {
   const [to, setTo] = useState(defaults.to);
   const [studentId, setStudentId] = useState("");
   const [status, setStatus] = useState("");
-  const [report, setReport] = useState({ records: [], students: [], summary: { total: 0, present: 0, late: 0, absent: 0, excused: 0 } });
+  const [report, setReport] = useState({ records: [], students: [], summary: { total: 0, present: 0, late: 0, absent: 0, excused: 0, not_recorded: 0 } });
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   function setQuickRange(kind) {
@@ -1107,25 +1107,25 @@ function AttendanceReports({ onDaily }) {
         <label>From<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} required /></label>
         <label>To<input type="date" value={to} onChange={(event) => setTo(event.target.value)} required /></label>
         <label>Student<select value={studentId} onChange={(event) => setStudentId(event.target.value)}><option value="">All students</option>{report.students.map((student) => <option key={student.studentId} value={student.studentId}>{student.fullName}</option>)}</select></label>
-        <label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["present", "late", "absent", "excused"].map((value) => <option key={value}>{value}</option>)}</select></label>
+        <label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{[["present", "Present"], ["late", "Late"], ["absent", "Absent"], ["excused", "Excused"], ["not_recorded", "Attendance not recorded"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <button className="button primary">Apply filters</button>
       </form>
       <p className="form-message">{loading ? "Loading report…" : message}</p>
       <div className="report-metrics">
-        {[["Sessions", report.summary.total], ["Present", report.summary.present], ["Late", report.summary.late], ["Absent", report.summary.absent], ["Excused", report.summary.excused]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}
+        {[["Sessions", report.summary.total], ["Present", report.summary.present], ["Late", report.summary.late], ["Absent", report.summary.absent], ["Excused", report.summary.excused], ["Not recorded", report.summary.not_recorded]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}
       </div>
       {!studentId && <div className="learner-attendance-list">
         {report.students.map((student) => (
           <article key={student.studentId} className={student.warning || (student.counted > 0 && student.percentage < 75) ? "needs-attention" : ""}>
             <div className="attendance-person"><span className="student-avatar">{student.fullName[0]}</span><div><strong>{student.fullName}</strong><small>{student.email}</small></div></div>
-            <div className="attendance-breakdown"><span>{student.present} present</span><span>{student.late} late</span><span>{student.absent} absent</span><span>{student.excused} excused</span></div>
+            <div className="attendance-breakdown"><span>{student.present} present</span><span>{student.late} late</span><span>{student.absent} absent</span><span>{student.excused} excused</span><span>{student.notRecorded} not recorded</span></div>
             <strong className={`attendance-percentage ${student.counted > 0 && student.percentage < 75 ? "low" : ""}`}>{student.percentage}%</strong>
             <div className="attendance-flags">{student.warning && <b>Missed Mon & Wed</b>}{student.counted > 0 && student.percentage < 75 && <b>Below 75%</b>}</div>
             <button className="profile-button" onClick={() => setStudentId(String(student.studentId))}>View history</button>
           </article>
         ))}
       </div>}
-      {studentId && <div className="individual-history"><div className="history-title"><div><p className="eyebrow">Individual history</p><h3>{selectedName || "Selected learner"}</h3></div><button className="text-btn" onClick={() => setStudentId("")}>View all students</button></div>{report.records.length ? report.records.map((record, index) => <article key={`${record.studentId}-${record.sessionDate}-${index}`}><div><strong>{displayDate(record.sessionDate)}</strong><small>{record.note || "No note"}</small></div><span className={`attendance-status ${record.status}`}>{record.status}</span></article>) : <div className="empty">No attendance records match these filters.</div>}</div>}
+      {studentId && <div className="individual-history"><div className="history-title"><div><p className="eyebrow">Individual history</p><h3>{selectedName || "Selected learner"}</h3></div><button className="text-btn" onClick={() => setStudentId("")}>View all students</button></div>{report.records.length ? report.records.map((record, index) => <article key={`${record.studentId}-${record.sessionDate}-${index}`}><div><strong>{displayDate(record.sessionDate)}</strong><small>{record.note || "No note"}</small></div><span className={`attendance-status ${record.status}`}>{record.status === "not_recorded" ? "Attendance not recorded" : record.status}</span></article>) : <div className="empty">No attendance records match these filters.</div>}</div>}
     </>
   );
 }
