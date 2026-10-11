@@ -1027,12 +1027,17 @@ function latestClassDate() {
   return dateInputValue(date);
 }
 function displayDate(value) {
+  const datePart = value instanceof Date
+    ? value.toISOString().slice(0, 10)
+    : String(value ?? "").slice(0, 10);
+  const date = new Date(`${datePart}T12:00:00`);
+  if (!datePart || Number.isNaN(date.getTime())) return "Date unavailable";
   return new Intl.DateTimeFormat("en-GB", {
     weekday: "short",
     day: "numeric",
     month: "short",
     year: "numeric",
-  }).format(new Date(`${String(value).slice(0, 10)}T12:00:00`));
+  }).format(date);
 }
 
 function reportDefaultRange() {
@@ -1133,32 +1138,41 @@ function AttendanceReports({ onDaily }) {
 function AttendanceCenter({ mode, demo = false }) {
   const staff = mode === "staff";
   const canMark = staff || mode === "rep";
+  const attendanceLoadId = useRef(0);
   const [date, setDate] = useState(latestClassDate()),
     [records, setRecords] = useState([]),
     [summary, setSummary] = useState({ attended: 0, total: 0, percentage: 0 }),
     [message, setMessage] = useState(""),
     [saving, setSaving] = useState(false),
     [view, setView] = useState("daily");
-  async function load(selected = date) {
+  async function load(selectedDate = date, selectedView = view, selectedMode = mode) {
+    const requestId = ++attendanceLoadId.current;
     if (demo) {
-      setMessage("Connect the backend to use the attendance register.");
+      if (requestId === attendanceLoadId.current) setMessage("Connect the backend to use the attendance register.");
       return;
     }
     setMessage("Loading attendance…");
     try {
-      const data = await api(
-        canMark && !(mode === "rep" && view === "mine") ? `/staff/attendance?date=${selected}` : "/student/attendance",
-      );
-      setRecords(data.records || []);
-      if (data.summary) setSummary(data.summary);
+      const canManage = selectedMode === "staff" || selectedMode === "rep";
+      const isMyAttendance = selectedMode === "rep" && selectedView === "mine";
+      const endpoint = canManage && !isMyAttendance
+        ? `/staff/attendance?date=${selectedDate}`
+        : "/student/attendance";
+      const data = await api(endpoint);
+      if (requestId !== attendanceLoadId.current) return;
+      const nextRecords = Array.isArray(data.records) ? data.records : [];
+      setRecords(nextRecords);
+      if (data.summary && typeof data.summary === "object") setSummary(data.summary);
       setMessage("");
     } catch (e) {
+      if (requestId !== attendanceLoadId.current) return;
       setRecords([]);
-      setMessage(e.message);
+      setMessage(e.message || "Unable to load attendance.");
     }
   }
   useEffect(() => {
-    load();
+    load(date, view, mode);
+    return () => { attendanceLoadId.current += 1; };
   }, [mode, demo, view]);
   function update(studentId, field, value) {
     setRecords((current) =>
@@ -1185,7 +1199,7 @@ function AttendanceCenter({ mode, demo = false }) {
         body: JSON.stringify({ date, records: selected }),
       });
       setMessage(data.message);
-      load(date);
+      await load(date, view, mode);
     } catch (e) {
       setMessage(e.message);
     } finally {
@@ -1211,7 +1225,7 @@ function AttendanceCenter({ mode, demo = false }) {
               value={date}
               onChange={(e) => {
                 setDate(e.target.value);
-                load(e.target.value);
+                load(e.target.value, view, mode);
               }}
             />
           </label>
