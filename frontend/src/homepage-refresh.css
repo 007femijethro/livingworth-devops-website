@@ -141,3 +141,50 @@
   .modern-benefits ul { grid-template-columns: 1fr; gap: 0; }
   .modern-benefits li { padding: 14px 0; }
 }
+
+/* Keep the benefits and roadmap sections together as a two-panel feature. */
+.modern-site > main {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.modern-site > main > section:not(.modern-benefits):not(.modern-roadmap) {
+  grid-column: 1 / -1;
+}
+.modern-site > main > .modern-benefits,
+.modern-site > main > .modern-roadmap {
+  grid-column: span 1;
+  min-width: 0;
+  align-content: start;
+  padding: 56px clamp(20px, 3.2vw, 48px);
+}
+.modern-site > main > .modern-benefits {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.modern-site > main > .modern-benefits ul {
+  grid-template-columns: 1fr;
+}
+.modern-site > main > .modern-benefits h2,
+.modern-site > main > .modern-roadmap h2 {
+  font-size: clamp(2.1rem, 3vw, 3.15rem);
+}
+.modern-site > main > .modern-roadmap {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.modern-site > main > .modern-roadmap .modern-roadmap-intro {
+  max-width: none;
+}
+.modern-site > main > .modern-roadmap .modern-track-list {
+  width: 100%;
+}
+@media (max-width: 900px) {
+  .modern-site > main { grid-template-columns: 1fr; }
+  .modern-site > main > .modern-benefits,
+  .modern-site > main > .modern-roadmap {
+    grid-column: 1 / -1;
+    padding: 64px 24px;
+  }
+}
