@@ -1060,8 +1060,8 @@ function AttendanceReports({ onDaily }) {
     const end = new Date();
     const start = new Date(end);
     if (kind === "week") start.setDate(end.getDate() - ((end.getDay() + 6) % 7));
-    else start.setDate(end.getDate() - 30);
-    setFrom(dateInputValue(start));
+    else if (kind === "month") start.setDate(end.getDate() - 30);
+    setFrom(kind === "all" ? "1970-01-01" : dateInputValue(start));
     setTo(dateInputValue(end));
   }
   async function load() {
@@ -1107,7 +1107,7 @@ function AttendanceReports({ onDaily }) {
         <div><p className="eyebrow">Attendance intelligence</p><h2>Reports & warnings</h2><p>Review performance and identify learners who need follow-up.</p></div>
         <button className="button light-border" onClick={exportReport}>Export CSV</button>
       </div>
-      <div className="report-presets"><span>Quick summary</span><button onClick={() => setQuickRange("week")}>This week</button><button onClick={() => setQuickRange("month")}>Last 30 days</button></div>
+      <div className="report-presets"><span>Quick summary</span><button onClick={() => setQuickRange("week")}>This week</button><button onClick={() => setQuickRange("month")}>Last 30 days</button><button onClick={() => setQuickRange("all")}>All time</button></div>
       <form className="report-filters" onSubmit={(event) => { event.preventDefault(); load(); }}>
         <label>From<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} required /></label>
         <label>To<input type="date" value={to} onChange={(event) => setTo(event.target.value)} required /></label>
