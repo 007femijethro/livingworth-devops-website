@@ -216,7 +216,7 @@ function LegacyHome({ navigate }) {
       <main className="academy-home">
         <section className="hero" id="home">
           <div>
-            <p className="eyebrow">14-week live DevOps engineering bootcamp</p>
+            <p className="eyebrow">4-month live DevOps engineering programme</p>
             <h1>
               Don’t just learn it.
               <br />
@@ -239,7 +239,7 @@ function LegacyHome({ navigate }) {
               </a>
             </div>
             <div className="trust">
-              <span>✓ 42 guided class days</span>
+              <span>✓ Three sessions per week</span>
               <span>✓ Live mentor support</span>
               <span>✓ Portfolio-ready projects</span>
             </div>
@@ -256,7 +256,7 @@ function LegacyHome({ navigate }) {
               </div>
             </div>
             <div className="path-preview">
-              <p className="path-caption">14 weeks. Real engineering skills.</p>
+              <p className="path-caption">4 months. Real engineering skills.</p>
               <ol>
                 <li><span>01</span><div><strong>Build your foundation</strong><small>Linux · Shell scripting · Git</small></div></li>
                 <li><span>02</span><div><strong>Automate & deploy</strong><small>AWS · Terraform · Docker</small></div></li>
@@ -266,22 +266,22 @@ function LegacyHome({ navigate }) {
             </div>
           </div>
         </section>
-        <section className="outcome-band">
+        <section className="outcome-band" aria-label="Programme details">
           <article>
-            <strong>14</strong>
-            <span>weeks of guided learning</span>
+            <strong>4 Months</strong>
+            <span>Programme duration</span>
           </article>
           <article>
-            <strong>42</strong>
-            <span>structured class days</span>
+            <strong>Physical / Online</strong>
+            <span>Choose how to attend</span>
           </article>
           <article>
-            <strong>10+</strong>
-            <span>industry tools</span>
+            <strong>Weekday / Weekend</strong>
+            <span><b>Weekdays:</b> Mon, Wed, Fri<br /><b>Weekends:</b> Fri, Sat, Sun</span>
           </article>
           <article>
-            <strong>1</strong>
-            <span>end-to-end capstone</span>
+            <strong>7 pm – 9 pm</strong>
+            <span>Class time (WAT)</span>
           </article>
         </section>
         <section className="devops-strip">
@@ -377,10 +377,10 @@ function LegacyHome({ navigate }) {
         <section className="schedule" id="schedule">
           <div>
             <p className="eyebrow">Cohort rhythm</p>
-            <h2>Three focused touchpoints every week.</h2>
+            <h2>Choose the schedule that works for you.</h2>
             <p>
-              Classes run on Google Meet from 8:00–9:00 p.m. GMT+1. Every week
-              combines orientation, review and a deeper practical session.
+              Attend physically or online. Choose a weekday or weekend cohort;
+              each session runs from 7:00–9:00 p.m. WAT.
             </p>
             <ul>
               <li>Laptop: 8GB RAM minimum, 16GB preferred</li>
@@ -391,19 +391,14 @@ function LegacyHome({ navigate }) {
           </div>
           <div className="week">
             <article>
-              <b>MON</b>
-              <h3>Orientation</h3>
-              <p>New topic, learning objectives and guided foundation.</p>
+              <b>WEEKDAYS</b>
+              <h3>Monday · Wednesday · Friday</h3>
+              <p>Physical or online · 7:00–9:00 p.m. WAT</p>
             </article>
             <article>
-              <b>WED</b>
-              <h3>Summary & practice</h3>
-              <p>Review, questions, demonstrations and troubleshooting.</p>
-            </article>
-            <article>
-              <b>FRI</b>
-              <h3>Live class</h3>
-              <p>Deep practical teaching, discussion and project work.</p>
+              <b>WEEKENDS</b>
+              <h3>Friday · Saturday · Sunday</h3>
+              <p>Physical or online · 7:00–9:00 p.m. WAT</p>
             </article>
           </div>
         </section>
