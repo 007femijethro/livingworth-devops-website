@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import './homepage-refresh.css';
 
 type Navigate = (page: string) => void;
 type Story = { id: number; title: string; content: string; studentName: string; storyType: string; featured?: boolean };
@@ -11,11 +12,11 @@ const tracks = [
 ];
 
 export default function ModernHome({ navigate, stories }: { navigate: Navigate; stories: Story[] }) {
-  const [openTrack, setOpenTrack] = useState(0);
+  const [openTrack, setOpenTrack] = useState<number | null>(null);
   return <div className="modern-site">
     <header className="modern-nav">
       <a className="modern-logo" href="#top"><img src="/livingworth-logo.jpeg" alt="Livingworth Academy" /></a>
-      <nav><a href="#experience">Experience</a><a href="#roadmap">Roadmap</a><a href="#outcomes">Outcomes</a></nav>
+      <nav><a href="#mentor">Your mentor</a><a href="#experience">Experience</a><a href="#roadmap">Roadmap</a></nav>
       <div><button className="modern-link" onClick={() => navigate('verify-certificate')}>Verify certificate</button><button className="modern-login" onClick={() => navigate('student-login')}>Log in</button><button className="modern-apply" onClick={() => navigate('register')}>Apply now <span>↗</span></button></div>
     </header>
 
@@ -25,17 +26,22 @@ export default function ModernHome({ navigate, stories }: { navigate: Navigate; 
           <span className="modern-kicker">Live DevOps academy · 14 weeks</span>
           <h1>Learn the work.<br/><em>Build the proof.</em></h1>
           <p>A practical learning experience for people ready to understand modern infrastructure, ship real projects and grow into confident DevOps engineers.</p>
-          <div className="modern-hero-actions"><button onClick={() => navigate('register')}>Join the next cohort <span>→</span></button><a href="#roadmap">View the learning path</a></div>
+          <div className="modern-hero-actions"><button onClick={() => navigate('register')}>Join the next cohort <span>→</span></button><a href="#mentor">Meet your mentor ↓</a></div>
           <div className="modern-proof"><div><strong>42</strong><span>live class days</span></div><div><strong>10+</strong><span>industry tools</span></div><div><strong>1:1</strong><span>project feedback</span></div></div>
         </div>
         <div className="modern-hero-visual">
-          <div className="modern-orbit"><span>Linux</span><span>AWS</span><span>Docker</span><span>K8s</span><b>LW</b></div>
-          <article className="modern-now"><span>LIVE LEARNING</span><h3>Production delivery lab</h3><p>Friday · 8:00 PM WAT</p><div><i>JM</i><i>JO</i><i>DA</i><small>+9 learners</small></div></article>
-          <article className="modern-progress"><header><span>Your roadmap</span><b>68%</b></header><div><i /></div><p>7 of 10 modules completed</p></article>
+          <figure className="home-lab"><img src="/devops-mentor-lab.jpg" alt="DevOps learning lab with hands-on engineering guidance" /><figcaption><span>THE LIVINGWORTH EXPERIENCE</span><strong>Learn together.<br/>Build with confidence.</strong><a href="#experience">Explore the programme ↗</a></figcaption></figure>
         </div>
       </section>
 
       <section className="modern-marquee"><span>LINUX</span><i>◆</i><span>GIT</span><i>◆</i><span>AWS</span><i>◆</i><span>TERRAFORM</span><i>◆</i><span>DOCKER</span><i>◆</i><span>KUBERNETES</span><i>◆</i><span>CI/CD</span></section>
+
+      <section className="home-mentor" id="mentor" aria-labelledby="mentor-heading">
+        <div className="home-mentor-identity"><span className="modern-kicker">Meet your mentor</span><div className="home-mentor-monogram" aria-hidden="true">JF<span>Livingworth Academy</span></div><h2 id="mentor-heading">Jethro F.M</h2><p>Lead DevOps Mentor<br/>Managing Director</p><a href="#roadmap">Explore what you’ll learn ↗</a></div>
+        <div className="home-mentor-copy"><span>Practical experience. Personal guidance.</span><h3>Understand the tools.<br/>Learn the thinking.</h3><p>The programme is led with practical engineering experience, simple explanations and live troubleshooting. Students learn not only which commands to run, but how to reason through failures, communicate technical decisions and deliver reliable systems.</p><p>From your first Linux commands to your final project, live demonstrations and feedback help you turn each lesson into work you can explain with confidence.</p><ul><li>Cloud &amp; infrastructure</li><li>CI/CD &amp; automation</li><li>Containers &amp; orchestration</li><li>Production troubleshooting</li></ul></div>
+      </section>
+
+      <section className="home-learning-loop" aria-label="How learning works"><div><span>01</span><h3>Join the live class</h3><p>Follow demonstrations and ask questions as you learn.</p></div><div><span>02</span><h3>Put it into practice</h3><p>Apply the lesson through quizzes, assignments and projects.</p></div><div><span>03</span><h3>Improve with feedback</h3><p>Track your progress and build on what you’ve learned.</p></div></section>
 
       <section className="modern-experience" id="experience">
         <div className="modern-section-heading"><span>Designed for real learning</span><h2>More than watching.<br/>You learn by doing.</h2><p>Every part of the programme moves you from explanation to practice, feedback and evidence you can confidently discuss.</p></div>
@@ -48,7 +54,7 @@ export default function ModernHome({ navigate, stories }: { navigate: Navigate; 
 
       <section className="modern-roadmap" id="roadmap">
         <div className="modern-roadmap-intro"><span>Your learning journey</span><h2>A clear path from foundations to production.</h2><p>Four connected stages. Each one builds the judgment and practical confidence needed for the next.</p><button onClick={() => navigate('register')}>Start your journey →</button></div>
-        <div className="modern-track-list">{tracks.map((track,index)=><article key={track.number} className={openTrack===index?'open':''} onClick={()=>setOpenTrack(index)}><button aria-expanded={openTrack===index}><b>{track.number}</b><span><strong>{track.title}</strong><small>{track.tools}</small></span><i>{openTrack===index?'−':'+'}</i></button>{openTrack===index&&<p>{track.copy}</p>}</article>)}</div>
+        <div className="modern-track-list">{tracks.map((track,index)=><article key={track.number} className={openTrack===index?'open':''}><button aria-expanded={openTrack===index} aria-controls={`track-${track.number}`} onClick={()=>setOpenTrack(openTrack===index?null:index)}><b>{track.number}</b><span><strong>{track.title}</strong><small>{track.tools}</small></span><i aria-hidden="true">{openTrack===index?'−':'+'}</i></button>{openTrack===index&&<p id={`track-${track.number}`}>{track.copy}</p>}</article>)}</div>
       </section>
 
       <section className="modern-outcomes" id="outcomes">
