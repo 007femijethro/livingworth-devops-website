@@ -50,3 +50,83 @@
   .student-learning .student-assignment input,
   .student-learning .student-assignment textarea { min-width: 0; max-width: 100%; font-size: 16px; }
 }
+
+
+/* Render lesson notes with the same readable structure as assignment instructions. */
+.student-lesson-note .student-lesson-content {
+  padding: 18px 20px;
+  color: #405966;
+  line-height: 1.75;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.student-lesson-note .student-lesson-content p,
+.student-lesson-note .student-lesson-content ul,
+.student-lesson-note .student-lesson-content ol,
+.student-lesson-note .student-lesson-content blockquote,
+.student-lesson-note .student-lesson-content pre,
+.student-lesson-note .student-lesson-content table {
+  margin: 0 0 1rem;
+}
+.student-lesson-note .student-lesson-content h1,
+.student-lesson-note .student-lesson-content h2,
+.student-lesson-note .student-lesson-content h3,
+.student-lesson-note .student-lesson-content h4 {
+  margin: 1.25rem 0 .55rem;
+  color: #082d65;
+  line-height: 1.3;
+}
+.student-lesson-note .student-lesson-content h1:first-child,
+.student-lesson-note .student-lesson-content h2:first-child,
+.student-lesson-note .student-lesson-content h3:first-child,
+.student-lesson-note .student-lesson-content h4:first-child {
+  margin-top: 0;
+}
+.student-lesson-note .student-lesson-content ul,
+.student-lesson-note .student-lesson-content ol {
+  padding-left: 1.5rem;
+}
+.student-lesson-note .student-lesson-content li + li {
+  margin-top: .3rem;
+}
+.student-lesson-note .student-lesson-content blockquote {
+  padding: .25rem 1rem;
+  border-left: 3px solid #059cac;
+  color: #526b77;
+}
+.student-lesson-note .student-lesson-content pre {
+  overflow-x: auto;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: #10243b;
+  color: #f2f7fa;
+  line-height: 1.55;
+}
+.student-lesson-note .student-lesson-content pre code {
+  white-space: pre;
+}
+.student-lesson-note .student-lesson-content :not(pre) > code {
+  padding: .12em .35em;
+  border-radius: 4px;
+  background: #e8f0f3;
+  color: #183b58;
+}
+.student-lesson-note .student-lesson-content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+.student-lesson-note .student-lesson-content th,
+.student-lesson-note .student-lesson-content td {
+  padding: 8px 10px;
+  border: 1px solid #d6e3e8;
+  text-align: left;
+}
+.student-lesson-note .student-lesson-content th {
+  background: #eaf2f5;
+  color: #082d65;
+}
+@media (max-width: 560px) {
+  .student-lesson-note .student-lesson-content { padding: 14px 12px; }
+}
