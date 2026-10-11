@@ -77,7 +77,7 @@ const Logo = () => (
 );
 
 const portalItems = {
-  admin: ["Overview", "Applications", "Profile requests", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
+  admin: ["Overview", "Applications", "Profile requests", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Settings", "Security"],
   mentor: ["Overview", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
   student: ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security"],
 };
@@ -85,7 +85,7 @@ const portalItems = {
 const portalIcons = {
   Overview: "⌂", Applications: "◎", Students: "♙", Certificates: "◇", Leaderboard: "↗", Mentors: "♟",
   Stories: "✦", "My stories": "✦", Announcements: "◉", Programme: "▦", Learning: "▤", Assignments: "✓",
-  Attendance: "◷", "Live class": "●", "Live quiz": "⚡", Notifications: "◌", Security: "⌾",
+  Attendance: "◷", "Live class": "●", "Live quiz": "⚡", Notifications: "◌", Settings: "⚙", Security: "⌾",
   Profile: "♙", "Profile requests": "◫",
 };
 
@@ -1287,6 +1287,7 @@ function AttendanceCenter({ mode, demo = false }) {
           <p>
             {summary.attended} of {summary.total} counted sessions attended.
             Excused sessions are not counted against you.
+            {summary.notRecorded > 0 && ` ${summary.notRecorded} held session${summary.notRecorded === 1 ? " has" : "s have"} attendance not recorded.`}
           </p>
         </div>
         <div className="attendance-score">{summary.percentage}%</div>
@@ -1305,7 +1306,7 @@ function AttendanceCenter({ mode, demo = false }) {
                 {record.note && <small>{record.note}</small>}
               </div>
               <span className={`attendance-status ${record.status}`}>
-                {record.status}
+                {record.status === "not_recorded" ? "Attendance not recorded" : record.status}
               </span>
             </article>
           ))
@@ -2025,9 +2026,9 @@ function LiveClassCenter({ mode, user, demo = false }) {
   }
   if (demo) return <div className="empty">Connect the backend to schedule Google Meet classes.</div>;
   return <section className="live-class-center">
-    <header><div><p className="eyebrow">Google Meet classroom</p><h2>Live class & attendance</h2><p>Join class in Google Meet and record attendance securely with a code that remains open for 72 hours.</p></div></header>
+    <header><div><p className="eyebrow">Google Meet classroom</p><h2>Live class & attendance</h2><p>Join class in Google Meet and record attendance securely before the configured deadline.</p></div></header>
     {staff && <form className="live-class-form" onSubmit={createClass}><label>Class title<input name="title" placeholder="Friday DevOps live class" maxLength="180" required /></label><label>Date and time<input name="scheduledAt" type="datetime-local" required /></label><label>Duration<input name="durationMinutes" type="number" min="15" max="240" defaultValue="60" required /></label><label>Google Meet link<input name="meetingUrl" type="url" defaultValue={CLASS_MEETING_URL} pattern="https://meet\.google\.com/.*" required /></label><button className="button primary" disabled={busy}>{busy ? "Scheduling…" : "Schedule class"}</button></form>}
-    {!staff && <form className="attendance-code-form" onSubmit={submitAttendance}><div><span>Class attendance</span><h3>Enter the code announced during class</h3><p>You have 72 hours from the scheduled class time to submit it.</p></div><input name="code" aria-label="Attendance code" placeholder="ABC234" minLength="6" maxLength="6" autoCapitalize="characters" required /><button className="button primary" disabled={busy}>{busy ? "Submitting…" : "Submit attendance"}</button></form>}
+    {!staff && <form className="attendance-code-form" onSubmit={submitAttendance}><div><span>Class attendance</span><h3>Enter the code announced during class</h3><p>Submit it before the attendance deadline shown for the class.</p></div><input name="code" aria-label="Attendance code" placeholder="ABC234" minLength="6" maxLength="6" autoCapitalize="characters" required /><button className="button primary" disabled={busy}>{busy ? "Submitting…" : "Submit attendance"}</button></form>}
     <p className="form-message success">{message}</p>
     <div className="live-class-list">{classes.length ? classes.map(item => {
       const expired = item.attendanceExpiresAt && new Date(item.attendanceExpiresAt) < new Date();
@@ -2038,10 +2039,29 @@ function LiveClassCenter({ mode, user, demo = false }) {
   </section>;
 }
 
+function AdminClassSettings({ demo = false }) {
+  const [expiryHours, setExpiryHours] = useState(72), [message, setMessage] = useState(""), [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!demo) api("/admin/class-settings").then(data => setExpiryHours(data.expiryHours)).catch(error => setMessage(error.message));
+  }, [demo]);
+  async function save(event) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const data = await api("/admin/class-settings", { method: "PATCH", body: JSON.stringify({ expiryHours }) });
+      setMessage(data.message);
+    } catch (error) { setMessage(error.message); } finally { setSaving(false); }
+  }
+  if (demo) return <div className="empty">Connect the backend to manage class settings.</div>;
+  return <section className="portal-form-card"><p className="eyebrow">Class settings</p><h2>Attendance code deadline</h2><p>Set the global amount of time learners have to submit every class code.</p><form className="form" onSubmit={save}><label>Expiry time in hours<input type="number" min="1" max="720" value={expiryHours} onChange={event => setExpiryHours(Number(event.target.value))} required /></label><small>Between 1 and 720 hours. Saving recalculates every open code from its scheduled class time.</small><button className="button primary" disabled={saving}>{saving ? "Saving…" : "Save class setting"}</button></form><p className="form-message success">{message}</p></section>;
+}
+
 function StudentDashboard({ user, logout }) {
   const [active, setActive] = usePortalSection("student", user.mustChangePassword ? "Security" : "Overview");
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
+  const [isClassRep, setIsClassRep] = useState(Boolean(user.isClassRep));
   useEffect(() => { api("/announcements").then((data) => setUnreadAnnouncements(data.unreadCount)).catch(() => {}); }, []);
+  useEffect(() => { if (active === "Attendance") api("/auth/me").then(data => setIsClassRep(Boolean(data.isClassRep))).catch(() => {}); }, [active]);
   return (
     <PortalShell role="student" user={user} active={active} items={portalItems.student} onSelect={setActive} logout={logout} unreadAnnouncements={unreadAnnouncements} forceSecurity={user.mustChangePassword}>
         {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} onUnreadChange={setUnreadAnnouncements} />}
@@ -2074,7 +2094,7 @@ function StudentDashboard({ user, logout }) {
             </div>
           </section>
         )}
-        {active === "Attendance" && <AttendanceCenter mode={user.isClassRep ? "rep" : "student"} />}
+        {active === "Attendance" && <AttendanceCenter mode={isClassRep ? "rep" : "student"} />}
         {active === "Learning" && <LearningCenter mode="student" />}
         {active === "Assignments" && <AssignmentsCenter />}
         {active === "Certificates" && <StudentCertificates />}
@@ -3409,6 +3429,7 @@ function AdminDashboard({ user, logout }) {
         {active === "Assignments" && <AssignmentsCenter staff demo={user.demo} />}
         {active === "Live class" && <LiveClassCenter mode="staff" user={user} demo={user.demo} />}
         {active === "Live quiz" && <QuizCenter mode="admin" demo={user.demo} />}
+        {active === "Settings" && <AdminClassSettings demo={user.demo} />}
         {active === "Security" && <SecurityCenter role="admin" demo={user.demo} />}
         {profileStudentId && <LearnerProfilePanel studentId={profileStudentId} onClose={() => setProfileStudentId(null)} onDeleted={(notice) => { setProfileStudentId(null); setMessage(notice); loadApplications(); }} />}
     </PortalShell>

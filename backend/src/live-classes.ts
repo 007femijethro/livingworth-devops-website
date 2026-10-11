@@ -24,6 +24,48 @@ function attendanceCode() {
   return Array.from(crypto.randomBytes(6), byte => alphabet[byte % alphabet.length]).join('');
 }
 
+async function classCodeExpiryHours(pool) {
+  const [rows] = await pool.execute("SELECT value_text AS value FROM system_settings WHERE setting_key='class_code_expiry_hours'");
+  const hours = Number.parseInt(rows[0]?.value, 10);
+  return Number.isInteger(hours) && hours >= 1 && hours <= 720 ? hours : 72;
+}
+
+export async function finalizeExpiredClassAttendance(pool) {
+  const [classes] = await pool.query(`SELECT id,title,scheduled_at AS "scheduledAt",created_by AS "createdBy"
+    FROM live_classes WHERE attendance_code IS NOT NULL AND attendance_expires_at <= CURRENT_TIMESTAMP
+    AND attendance_finalized_at IS NULL ORDER BY attendance_expires_at LIMIT 50`);
+  for (const liveClass of classes) {
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [locked] = await connection.execute(`SELECT id FROM live_classes WHERE id=? AND attendance_finalized_at IS NULL FOR UPDATE`, [liveClass.id]);
+      if (!locked.length) { await connection.rollback(); continue; }
+      const sessionDate = new Date(liveClass.scheduledAt).toISOString().slice(0, 10);
+      await connection.execute(`INSERT INTO attendance (student_id,session_date,status,note,marked_by)
+        SELECT u.id,?,'absent',?,? FROM users u
+        WHERE u.role='student' AND u.status='approved'
+        AND NOT EXISTS (SELECT 1 FROM live_class_attendance_submissions s WHERE s.class_id=? AND s.student_id=u.id)
+        ON CONFLICT (student_id,session_date) DO NOTHING`,
+      [sessionDate, `Attendance code not submitted before the deadline for ${liveClass.title}`, liveClass.createdBy, liveClass.id]);
+      await connection.execute('UPDATE live_classes SET attendance_finalized_at=CURRENT_TIMESTAMP WHERE id=?', [liveClass.id]);
+      await connection.commit();
+      logger.info('class_attendance_finalized', { classId: liveClass.id, sessionDate });
+    } catch (error) {
+      await connection.rollback();
+      logger.error('class_attendance_finalization_failed', { classId: liveClass.id, error });
+    } finally { connection.release(); }
+  }
+  return classes.length;
+}
+
+export function startLiveClassAttendanceScheduler(pool) {
+  const run = () => finalizeExpiredClassAttendance(pool).catch(error => logger.error('class_attendance_scheduler_failed', { error }));
+  run();
+  const timer = setInterval(run, 60_000);
+  timer.unref?.();
+  return timer;
+}
+
 export function registerLiveClassRoutes(app, pool, requireAuth, requireStaff) {
   app.get('/api/live-classes', requireAuth, async (req, res, next) => {
     try {
@@ -49,7 +91,8 @@ export function registerLiveClassRoutes(app, pool, requireAuth, requireStaff) {
       if (durationMinutes < 15 || durationMinutes > 240) return res.status(400).json({ message: 'Class duration must be between 15 and 240 minutes.' });
       if (!meetingUrl) return res.status(400).json({ message: 'Enter a valid Google Meet link beginning with https://meet.google.com/.' });
       const code = attendanceCode();
-      const expiresAt = new Date(scheduledAt.getTime() + 72 * 60 * 60 * 1000);
+      const expiryHours = await classCodeExpiryHours(pool);
+      const expiresAt = new Date(scheduledAt.getTime() + expiryHours * 60 * 60 * 1000);
       const roomName = `google-meet-${crypto.randomBytes(12).toString('hex')}`;
       const [result] = await pool.execute(`INSERT INTO live_classes
         (title,scheduled_at,duration_minutes,room_name,meeting_url,attendance_code,attendance_expires_at,created_by)
@@ -77,7 +120,7 @@ export function registerLiveClassRoutes(app, pool, requireAuth, requireStaff) {
       const [result] = await pool.execute("UPDATE live_classes SET status='ended', ended_at=CURRENT_TIMESTAMP WHERE id=? AND status='live'", [id]);
       if (!result.affectedRows) return res.status(404).json({ message: 'Live class not found.' });
       logger.info('google_meet_class_ended', { classId: id, userId: req.user.id });
-      res.json({ message: 'Class ended. The attendance code remains valid until its 72-hour deadline.' });
+      res.json({ message: 'Class ended. The attendance code remains valid until its configured deadline.' });
     } catch (error) { next(error); }
   });
 
@@ -121,7 +164,7 @@ export function registerLiveClassRoutes(app, pool, requireAuth, requireStaff) {
       const liveClass = classes[0];
       const now = new Date();
       if (now < new Date(liveClass.scheduledAt)) { await connection.rollback(); return res.status(400).json({ message: 'This attendance code is not active yet.' }); }
-      if (now > new Date(liveClass.attendanceExpiresAt)) { await connection.rollback(); return res.status(410).json({ message: 'This attendance code expired after 72 hours. Contact your mentor.' }); }
+      if (now > new Date(liveClass.attendanceExpiresAt)) { await connection.rollback(); return res.status(410).json({ message: 'This attendance code has expired. Contact your mentor.' }); }
       const [existing] = await connection.execute('SELECT id FROM live_class_attendance_submissions WHERE class_id=? AND student_id=?', [liveClass.id, req.user.id]);
       if (existing.length) { await connection.rollback(); return res.status(409).json({ message: 'You already submitted attendance for this class.' }); }
       await connection.execute('INSERT INTO live_class_attendance_submissions (class_id,student_id) VALUES (?,?)', [liveClass.id, req.user.id]);
