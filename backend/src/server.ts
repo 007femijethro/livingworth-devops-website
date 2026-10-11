@@ -21,7 +21,7 @@ import { ensurePostgresSchema } from './schema.js';
 import { startReminderScheduler } from './reminders.js';
 import { registerStoryRoutes } from './stories.js';
 import { registerCertificateRoutes } from './certificates.js';
-import { registerLiveClassRoutes } from './live-classes.js';
+import { registerLiveClassRoutes, startLiveClassAttendanceScheduler } from './live-classes.js';
 import { identityHash, logger, requestLogger } from './logger.js';
 
 const app = express();
@@ -78,6 +78,27 @@ app.patch('/api/staff/email-settings', requireAuth, requireStaff, async (req, re
     res.json({ enabled: req.body.enabled, message: req.body.enabled
       ? 'Email notifications are ON. The system can send emails again.'
       : 'Email notifications are OFF. No system emails will be sent to anyone.' });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/admin/class-settings', requireAuth, requireAdmin, async (_req, res, next) => {
+  try {
+    const [rows] = await pool.execute("SELECT value_text AS value, updated_at AS updatedAt FROM system_settings WHERE setting_key='class_code_expiry_hours'");
+    res.json({ expiryHours: Number.parseInt(rows[0]?.value, 10) || 72, updatedAt: rows[0]?.updatedAt || null });
+  } catch (error) { next(error); }
+});
+
+app.patch('/api/admin/class-settings', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const expiryHours = Number.parseInt(req.body.expiryHours, 10);
+    if (!Number.isInteger(expiryHours) || expiryHours < 1 || expiryHours > 720) return res.status(400).json({ message: 'Choose an expiry time between 1 and 720 hours.' });
+    await pool.execute(`INSERT INTO system_settings (setting_key,enabled,value_text,updated_by,updated_at)
+      VALUES ('class_code_expiry_hours',TRUE,?,?,CURRENT_TIMESTAMP)
+      ON CONFLICT (setting_key) DO UPDATE SET value_text=EXCLUDED.value_text,updated_by=EXCLUDED.updated_by,updated_at=CURRENT_TIMESTAMP`,
+    [String(expiryHours), req.user.id]);
+    await pool.execute(`UPDATE live_classes SET attendance_expires_at=scheduled_at + (? * INTERVAL '1 hour')
+      WHERE attendance_code IS NOT NULL AND attendance_finalized_at IS NULL`, [expiryHours]);
+    res.json({ expiryHours, message: `Class attendance codes now expire after ${expiryHours} hours.` });
   } catch (error) { next(error); }
 });
 
@@ -550,13 +571,18 @@ app.get('/api/student/attendance', requireAuth, async (req, res, next) => {
   try {
     if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
     const [records] = await pool.execute(
-      `SELECT session_date AS sessionDate, status, COALESCE(note, '') AS note, marked_at AS markedAt
-       FROM attendance WHERE student_id = ? ORDER BY session_date DESC`,
+      `SELECT held.session_date AS "sessionDate", COALESCE(a.status,'not_recorded') AS status,
+        COALESCE(a.note,CASE WHEN a.id IS NULL THEN 'Attendance not recorded' ELSE '' END) AS note,
+        a.marked_at AS "markedAt", (a.id IS NOT NULL) AS "attendanceRecorded"
+       FROM (SELECT DISTINCT session_date FROM attendance WHERE status IN ('present','late')) held
+       LEFT JOIN attendance a ON a.session_date=held.session_date AND a.student_id=?
+       ORDER BY held.session_date DESC`,
       [req.user.id]
     );
-    const counted = records.filter(record => record.status !== 'excused');
+    const counted = records.filter(record => !['excused','not_recorded'].includes(record.status));
     const attended = counted.filter(record => ['present', 'late'].includes(record.status)).length;
-    res.json({ records, summary: { attended, total: counted.length, percentage: counted.length ? Math.round((attended / counted.length) * 100) : 0 } });
+    const notRecorded = records.filter(record => record.status === 'not_recorded').length;
+    res.json({ records, summary: { attended, total: counted.length, notRecorded, percentage: counted.length ? Math.round((attended / counted.length) * 100) : 0 } });
   } catch (error) { next(error); }
 });
 
@@ -723,6 +749,7 @@ async function start() {
     );
   }
   startReminderScheduler(pool);
+  startLiveClassAttendanceScheduler(pool);
   httpServer.listen(port, '0.0.0.0', () => logger.info('server_started', { port }));
 }
 

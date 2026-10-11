@@ -32,8 +32,12 @@ export function registerLearnerProfileRoutes(app, pool, requireAuth, requireStaf
       if (!students.length) return res.status(404).json({ message: 'Approved learner not found.' });
 
       const [[attendanceRows], [materialRows], [quizRows], [topicRows], [assignmentRows], [activityRows]] = await Promise.all([
-        pool.execute(`SELECT session_date AS sessionDate, status, note, marked_at AS markedAt
-          FROM attendance WHERE student_id = ? ORDER BY session_date DESC`, [studentId]),
+        pool.execute(`SELECT held.session_date AS "sessionDate", COALESCE(a.status,'not_recorded') AS status,
+          COALESCE(a.note,CASE WHEN a.id IS NULL THEN 'Attendance not recorded' ELSE '' END) AS note,
+          a.marked_at AS "markedAt", (a.id IS NOT NULL) AS "attendanceRecorded"
+          FROM (SELECT DISTINCT session_date FROM attendance WHERE status IN ('present','late')) held
+          LEFT JOIN attendance a ON a.session_date=held.session_date AND a.student_id=?
+          ORDER BY held.session_date DESC`, [studentId]),
         pool.execute(`SELECT lm.id AS materialId, lm.title, lm.material_type AS materialType,
           m.week_number AS weekNumber, m.title AS moduleTitle, COALESCE(mp.status, 'not_started') AS status,
           mp.updated_at AS updatedAt FROM learning_materials lm JOIN learning_modules m ON m.id = lm.module_id
@@ -67,7 +71,8 @@ export function registerLearnerProfileRoutes(app, pool, requireAuth, requireStaf
         present: attendanceRows.filter(row => row.status === 'present').length,
         late: attendanceRows.filter(row => row.status === 'late').length,
         absent: attendanceRows.filter(row => row.status === 'absent').length,
-        excused: attendanceRows.filter(row => row.status === 'excused').length
+        excused: attendanceRows.filter(row => row.status === 'excused').length,
+        notRecorded: attendanceRows.filter(row => row.status === 'not_recorded').length
       };
       attendance.counted = attendance.present + attendance.late + attendance.absent;
       attendance.attended = attendance.present + attendance.late;

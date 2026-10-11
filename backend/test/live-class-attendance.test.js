@@ -15,6 +15,7 @@ test('staff scheduling creates a six-character code with a 72-hour deadline', as
   let inserted;
   const pool = {
     execute: async (sql, params) => {
+      if (sql.includes("class_code_expiry_hours")) return [[{ value: '72' }]];
       assert.match(sql, /attendance_code,attendance_expires_at/);
       inserted = params;
       return [{ insertId: 41, affectedRows: 1 }];
