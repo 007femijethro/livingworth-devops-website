@@ -78,3 +78,66 @@
   .modern-facts span { font-size: .74rem; }
   .modern-facts-cohorts span { font-size: .66rem; }
 }
+
+
+.modern-benefits {
+  display: grid;
+  grid-template-columns: minmax(260px, .8fr) minmax(0, 1.2fr);
+  gap: clamp(36px, 7vw, 96px);
+  align-items: start;
+  padding: 88px clamp(24px, 7vw, 112px);
+  background: var(--cream);
+}
+.modern-benefits-intro > span {
+  color: var(--aqua);
+  font-size: .72rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+.modern-benefits h2 {
+  margin: 14px 0 16px;
+  color: var(--ink);
+  font: 600 clamp(2.6rem, 4.2vw, 4rem)/1.05 Newsreader, serif;
+  letter-spacing: -.035em;
+}
+.modern-benefits-intro p {
+  max-width: 440px;
+  color: #5f7480;
+  line-height: 1.8;
+}
+.modern-benefits ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.modern-benefits li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 17px 0;
+  border-bottom: 1px solid #dce5e3;
+  color: var(--ink);
+  font-weight: 700;
+  line-height: 1.5;
+}
+.modern-benefits li > span {
+  flex: 0 0 25px;
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: var(--aqua);
+  color: white;
+  font-size: .9rem;
+  font-weight: 900;
+}
+@media (max-width: 760px) {
+  .modern-benefits { grid-template-columns: 1fr; gap: 20px; padding: 64px 20px; }
+  .modern-benefits ul { grid-template-columns: 1fr; gap: 0; }
+  .modern-benefits li { padding: 14px 0; }
+}

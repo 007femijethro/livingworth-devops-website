@@ -59,6 +59,24 @@ export default function ModernHome({ navigate, stories }: { navigate: Navigate; 
         </div>
       </section>
 
+      <section className="modern-benefits" aria-labelledby="benefits-heading">
+        <div className="modern-benefits-intro">
+          <span>Why learn with Livingworth</span>
+          <h2 id="benefits-heading">Training benefits</h2>
+          <p>Build practical DevOps skills with guided teaching, real projects and support from your mentor.</p>
+        </div>
+        <ul>
+          <li><span aria-hidden="true">✓</span>Beginner-friendly, step-by-step lessons</li>
+          <li><span aria-hidden="true">✓</span>Hands-on labs using industry tools</li>
+          <li><span aria-hidden="true">✓</span>Physical or online class options</li>
+          <li><span aria-hidden="true">✓</span>Weekday and weekend cohorts</li>
+          <li><span aria-hidden="true">✓</span>Live mentor guidance and troubleshooting</li>
+          <li><span aria-hidden="true">✓</span>Assignments with feedback</li>
+          <li><span aria-hidden="true">✓</span>GitHub portfolio and capstone project</li>
+          <li><span aria-hidden="true">✓</span>Certificate when completion requirements are met</li>
+        </ul>
+      </section>
+
       <section className="modern-roadmap" id="roadmap">
         <div className="modern-roadmap-intro"><span>Your learning journey</span><h2>A clear path from foundations to production.</h2><p>Four connected stages. Each one builds the judgment and practical confidence needed for the next.</p><button onClick={() => navigate('register')}>Start your journey →</button></div>
         <div className="modern-track-list">{tracks.map((track,index)=><article key={track.number} className={openTrack===index?'open':''}><button aria-expanded={openTrack===index} aria-controls={`track-${track.number}`} onClick={()=>setOpenTrack(openTrack===index?null:index)}><b>{track.number}</b><span><strong>{track.title}</strong><small>{track.tools}</small></span><i aria-hidden="true">{openTrack===index?'−':'+'}</i></button>{openTrack===index&&<p id={`track-${track.number}`}>{track.copy}</p>}</article>)}</div>
