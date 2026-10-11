@@ -23,15 +23,22 @@ export default function ModernHome({ navigate, stories }: { navigate: Navigate; 
     <main id="top">
       <section className="modern-hero">
         <div className="modern-hero-copy">
-          <span className="modern-kicker">Live DevOps academy · 14 weeks</span>
+          <span className="modern-kicker">Live DevOps academy · 4 months</span>
           <h1>Learn the work.<br/><em>Build the proof.</em></h1>
           <p>A practical learning experience for people ready to understand modern infrastructure, ship real projects and grow into confident DevOps engineers.</p>
           <div className="modern-hero-actions"><button onClick={() => navigate('register')}>Join the next cohort <span>→</span></button><a href="#mentor">Meet your mentor ↓</a></div>
-          <div className="modern-proof"><div><strong>42</strong><span>live class days</span></div><div><strong>10+</strong><span>industry tools</span></div><div><strong>1:1</strong><span>project feedback</span></div></div>
+          <div className="modern-proof"><div><strong>3</strong><span>classes each week</span></div><div><strong>10+</strong><span>industry tools</span></div><div><strong>1:1</strong><span>project feedback</span></div></div>
         </div>
         <div className="modern-hero-visual">
           <figure className="home-lab"><img src="/devops-mentor-lab.jpg" alt="DevOps learning lab with hands-on engineering guidance" /><figcaption><span>THE LIVINGWORTH EXPERIENCE</span><strong>Learn together.<br/>Build with confidence.</strong><a href="#experience">Explore the programme ↗</a></figcaption></figure>
         </div>
+      </section>
+
+      <section className="modern-facts" aria-label="Programme schedule">
+        <article><strong>4 Months</strong><span>Duration</span></article>
+        <article><strong>Physical / Online</strong><span>Classes</span></article>
+        <article className="modern-facts-cohorts"><strong>Weekday / Weekend</strong><span><b>Weekdays:</b> Mon, Wed, Fri<br/><b>Weekends:</b> Fri, Sat, Sun</span></article>
+        <article><strong>7 pm – 9 pm</strong><span>Time · WAT</span></article>
       </section>
 
       <section className="modern-marquee"><span>LINUX</span><i>◆</i><span>GIT</span><i>◆</i><span>AWS</span><i>◆</i><span>TERRAFORM</span><i>◆</i><span>DOCKER</span><i>◆</i><span>KUBERNETES</span><i>◆</i><span>CI/CD</span></section>

@@ -38,3 +38,43 @@
   .home-learning-loop > div + div { border-top: 1px solid #ffffff26; padding-top: 24px; }
 }
 @media (max-width: 400px) { .home-mentor-copy ul { grid-template-columns: 1fr; } }
+
+
+.modern-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0 clamp(24px, 7vw, 112px);
+  background: #fff;
+  border-top: 1px solid #dce5e3;
+  border-bottom: 1px solid #dce5e3;
+}
+.modern-facts article {
+  min-width: 0;
+  min-height: 136px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  padding: 18px 14px;
+  text-align: center;
+  border-right: 4px solid var(--aqua);
+}
+.modern-facts article:first-child { border-left: 4px solid var(--aqua); }
+.modern-facts strong {
+  color: var(--ink);
+  font: 800 clamp(1.1rem, 1.8vw, 1.75rem)/1.2 Manrope, sans-serif;
+}
+.modern-facts span { color: #647783; font-size: .9rem; font-weight: 700; line-height: 1.45; }
+.modern-facts-cohorts span { font-size: .78rem; }
+.modern-facts-cohorts b { color: #526a78; }
+@media (max-width: 760px) {
+  .modern-facts { grid-template-columns: 1fr 1fr; padding: 0 18px; }
+  .modern-facts article { min-height: 112px; padding: 14px 7px; border-right-width: 3px; }
+  .modern-facts article:first-child, .modern-facts article:nth-child(3) { border-left: 3px solid var(--aqua); }
+  .modern-facts article:nth-child(2) { border-right: 0; }
+  .modern-facts article:nth-child(3), .modern-facts article:nth-child(4) { border-top: 1px solid #e4ece8; }
+  .modern-facts strong { font-size: clamp(1rem, 3.5vw, 1.3rem); }
+  .modern-facts span { font-size: .74rem; }
+  .modern-facts-cohorts span { font-size: .66rem; }
+}
