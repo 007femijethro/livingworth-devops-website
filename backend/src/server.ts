@@ -609,16 +609,20 @@ async function attendanceReport(query) {
   const to = String(query.to || '');
   if (!validDate(from) || !validDate(to) || from > to) throw new Error('Choose a valid attendance date range.');
   const studentId = Number.parseInt(query.studentId, 10) || 0;
-  const status = ['present', 'late', 'absent', 'excused'].includes(query.status) ? query.status : '';
-  const where = ['a.session_date BETWEEN ? AND ?'];
+  const status = ['present', 'late', 'absent', 'excused', 'not_recorded'].includes(query.status) ? query.status : '';
+  const where = ["u.role = 'student'", "u.status = 'approved'", 'held.session_date BETWEEN ? AND ?'];
   const params = [from, to];
-  if (studentId) { where.push('a.student_id = ?'); params.push(studentId); }
-  if (status) { where.push('a.status = ?'); params.push(status); }
+  if (studentId) { where.push('u.id = ?'); params.push(studentId); }
+  if (status === 'not_recorded') where.push('a.id IS NULL');
+  else if (status) { where.push('a.status = ?'); params.push(status); }
   const [records] = await pool.execute(
-    `SELECT a.student_id AS studentId, u.full_name AS fullName, u.email, a.session_date AS sessionDate,
-      a.status, COALESCE(a.note, '') AS note, a.marked_at AS markedAt
-     FROM attendance a JOIN users u ON u.id = a.student_id
-     WHERE ${where.join(' AND ')} ORDER BY a.session_date DESC, u.full_name`, params
+    `SELECT u.id AS "studentId", u.full_name AS "fullName", u.email, held.session_date AS "sessionDate",
+      COALESCE(a.status,'not_recorded') AS status,
+      COALESCE(a.note,CASE WHEN a.id IS NULL THEN 'Attendance not recorded' ELSE '' END) AS note,
+      a.marked_at AS "markedAt"
+     FROM users u CROSS JOIN (SELECT DISTINCT session_date FROM attendance WHERE status IN ('present','late')) held
+     LEFT JOIN attendance a ON a.student_id=u.id AND a.session_date=held.session_date
+     WHERE ${where.join(' AND ')} ORDER BY held.session_date DESC, u.full_name`, params
   );
   const aggregateWhere = ['u.role = \'student\'', "u.status = 'approved'"];
   const aggregateParams = [from, to];
@@ -631,6 +635,9 @@ async function attendanceReport(query) {
      FROM users u LEFT JOIN attendance a ON a.student_id = u.id AND a.session_date BETWEEN ? AND ?
      WHERE ${aggregateWhere.join(' AND ')} GROUP BY u.id ORDER BY u.full_name`, aggregateParams
   );
+  const [heldRows] = await pool.execute(`SELECT COUNT(DISTINCT session_date) AS count FROM attendance
+    WHERE status IN ('present','late') AND session_date BETWEEN ? AND ?`, [from, to]);
+  const heldSessions = Number(heldRows[0]?.count || 0);
   const week = currentWeekDates();
   const [warnings] = week.canWarn ? await pool.execute(
     `SELECT student_id AS studentId FROM attendance WHERE session_date IN (?, ?) AND status = 'absent'
@@ -641,6 +648,7 @@ async function attendanceReport(query) {
     ...row,
     present: Number(row.present || 0), late: Number(row.late || 0), absent: Number(row.absent || 0),
     excused: Number(row.excused || 0), counted: Number(row.counted || 0), attended: Number(row.attended || 0),
+    notRecorded: Math.max(0, heldSessions - Number(row.present || 0) - Number(row.late || 0) - Number(row.absent || 0) - Number(row.excused || 0)),
     percentage: Number(row.counted) ? Math.round((Number(row.attended) / Number(row.counted)) * 100) : 0,
     warning: warningIds.has(row.studentId)
   }));
@@ -648,7 +656,7 @@ async function attendanceReport(query) {
     result.total += 1;
     result[record.status] += 1;
     return result;
-  }, { total: 0, present: 0, late: 0, absent: 0, excused: 0 });
+  }, { total: 0, present: 0, late: 0, absent: 0, excused: 0, not_recorded: 0 });
   return { records, students: studentSummaries, summary, range: { from, to }, warningWeek: week };
 }
 
