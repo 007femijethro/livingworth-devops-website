@@ -1,0 +1,21 @@
+.native-app { overscroll-behavior-y: none; }
+.native-app body { padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)); padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)); }
+.native-app input, .native-app select, .native-app textarea { font-size: 16px; }
+.native-app button, .native-app nav a { min-height: 44px; }
+.native-notice, .native-offline { position: fixed; left: 12px; right: 12px; z-index: 10000; padding: 14px 18px; border-radius: 12px; font: 14px/1.5 system-ui,sans-serif; box-shadow: 0 4px 24px #0003; }
+.native-notice { bottom: calc(16px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); background: #14263b; color: white; }
+.native-offline { top: calc(8px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))); background: #fff2c6; color: #493600; }
+.native-notice[hidden], .native-offline[hidden] { display: none; }
+@media(max-width:600px) { .native-app .learning-workspace { min-width: 0; } .native-app .workspace-content { overflow-wrap: anywhere; } }
+
+.native-app body { padding-left: var(--safe-area-inset-left, 0px); padding-right: var(--safe-area-inset-right, 0px); }
+.mobile-welcome { min-height: 85vh; width: min(100%, 460px); margin: auto; padding: 48px 24px; display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+.mobile-welcome img { width: 220px; max-width: 100%; height: auto; margin-bottom: 24px; }
+.mobile-welcome h1 { margin: 0; font-size: 2rem; line-height: 1.15; color: #14263b; }
+.mobile-welcome p { color: #526375; line-height: 1.6; }
+.mobile-welcome .button { width: 100%; min-height: 52px; }
+.mobile-explore { border: 0; background: transparent; color: #14263b; text-decoration: underline; }
+@media(max-width:760px) {
+  .native-app .learning-topbar { top: var(--safe-area-inset-top, 0px); }
+  .native-app .learning-rail { top: calc(68px + var(--safe-area-inset-top, 0px)); bottom: var(--safe-area-inset-bottom, 0px); }
+}

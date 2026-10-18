@@ -12,6 +12,7 @@ import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } fro
 import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
 import { configureEmailControl, isEmailDeliveryEnabled, sendApplicationDecision, sendApplicationEmails, sendEmailChangeCode, sendPasswordReset, sendTestEmail, verifyEmailConnection } from './mailer.js';
 import { registerLearningRoutes } from './learning.js';
+import { registerMobileUpdateRoutes } from './mobile-updates.js';
 import { registerClassActivityRoutes, regradeShortAnswers } from './class-activities.js';
 import { registerMaterialExportRoutes } from './material-export.js';
 import { registerAnnouncementRoutes } from './announcements.js';
@@ -688,6 +689,7 @@ app.get('/api/staff/attendance/export', requireAuth, requireStaff, async (req, r
 registerQuizRoutes(app, pool, requireAuth, requireStaff);
 registerLearningRoutes(app, pool, requireAuth, requireStaff);
 registerClassActivityRoutes(app, pool, requireAuth, requireStaff);
+registerMobileUpdateRoutes(app);
 registerMaterialExportRoutes(app, pool, requireAuth, requireStaff);
 registerAnnouncementRoutes(app, pool, requireAuth, requireStaff);
 registerAnalyticsRoutes(app, pool, requireAuth, requireStaff);

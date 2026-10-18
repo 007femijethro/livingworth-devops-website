@@ -6,7 +6,7 @@ COPY src ./src
 COPY scripts ./scripts
 COPY tsconfig.json ./
 RUN npm run build && npm prune --omit=dev
-RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
+RUN mkdir -p /app/uploads /app/mobile-private && chown -R node:node /app/uploads /app/mobile-private
 EXPOSE 5000
 USER node
 CMD ["npm", "start"]

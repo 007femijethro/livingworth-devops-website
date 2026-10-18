@@ -1,7 +1,8 @@
+import { academyUrl, isNative } from './mobile';
 function report(payload: Record<string, unknown>) {
   const body = JSON.stringify({ ...payload, pathname: window.location.pathname });
   if (navigator.sendBeacon) {
-    navigator.sendBeacon('/api/client-logs', new Blob([body], { type: 'application/json' }));
+    navigator.sendBeacon(isNative ? academyUrl('/api/client-logs') : '/api/client-logs', new Blob([body], { type: 'application/json' }));
     return;
   }
   fetch('/api/client-logs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
