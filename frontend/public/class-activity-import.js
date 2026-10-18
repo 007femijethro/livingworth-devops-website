@@ -72,6 +72,7 @@
       <summary>Import weekly activities</summary>
       <p>Paste the JSON file contents below. This saves through your signed-in staff session. Weeks with learner attempts are protected.</p>
       <button type="button" data-template>Download JSON template</button>
+      <label data-file-label>Choose prepared activity JSON<input type="file" accept=".json,application/json" data-json-file></label>
       <label>Weekly activity JSON<textarea rows="9" spellcheck="false" placeholder='{"activities":[{"weekNumber":1,"title":"Week 1 Class Activity","questions":[...]}]}'></textarea></label>
       <button type="button" data-import>Import activities</button>
       <p role="status" data-status></p>`;
@@ -84,7 +85,23 @@
     Object.assign(summary.style, { cursor: "pointer", fontWeight: "800", color: "#082d65" });
     const textarea = panel.querySelector("textarea");
     Object.assign(textarea.style, { display: "block", boxSizing: "border-box", width: "100%", marginTop: "6px", padding: "10px", border: "1px solid #bdccd3", borderRadius: "8px", font: "12px/1.5 ui-monospace, monospace" });
+    const fileLabel = panel.querySelector("[data-file-label]");
+    Object.assign(fileLabel.style, { display: "grid", gap: "6px", margin: "10px 0", fontWeight: "700" });
+    Object.assign(panel.querySelector("[data-json-file]").style, { display: "block", maxWidth: "100%", fontWeight: "400" });
     panel.querySelectorAll("button").forEach(button => Object.assign(button.style, { margin: "4px 8px 4px 0", padding: "8px 12px", border: "1px solid #bdccd3", borderRadius: "7px", background: "#f5f9fa", color: "#123a65", cursor: "pointer", fontWeight: "700" }));
+
+    panel.querySelector("[data-json-file]").addEventListener("change", async event => {
+      const file = event.currentTarget.files?.[0];
+      const status = panel.querySelector("[data-status]");
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) { status.textContent = "Choose a JSON file smaller than 2 MB."; return; }
+      try {
+        const imported = JSON.parse(await file.text());
+        if (!Array.isArray(imported?.activities) || !imported.activities.length) throw new Error('The file needs an "activities" array.');
+        textarea.value = JSON.stringify(imported, null, 2);
+        status.textContent = `Loaded ${imported.activities.length} weekly activities from ${file.name}. Click Import activities to save them.`;
+      } catch (error) { status.textContent = error.message || "Could not read that JSON file."; }
+    });
 
     panel.querySelector("[data-template]").addEventListener("click", () => {
       const link = document.createElement("a");
