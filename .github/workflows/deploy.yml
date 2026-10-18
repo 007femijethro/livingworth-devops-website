@@ -84,6 +84,9 @@ jobs:
               -H "Host: bridgess.co.uk" \
               https://localhost/ > /dev/null
 
+            echo "Applying the one-time reviewed weekly summaries..."
+            sudo docker compose exec -T backend node scripts/apply-weekly-summaries.mjs
+
             echo "Publishing signed mobile web update..."
             sudo docker compose exec -T backend mkdir -p /tmp/livingworth-mobile-web
             sudo docker compose exec -T frontend tar -C /usr/share/nginx/html -cf - . | sudo docker compose exec -T backend tar -C /tmp/livingworth-mobile-web -xf -
