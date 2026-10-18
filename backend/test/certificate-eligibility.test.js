@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { registerCertificateRoutes } from '../dist/certificates.js';
 
-function performancePool(correctCount) {
+function performancePool(correctCount, activityCorrectCount = null) {
   return {
     query: async sql => {
       if (sql.includes("FROM users WHERE role = 'student'")) return [[{ id: 1, fullName: 'Ada Student', email: 'ada@example.com' }]];
       if (sql.includes('FROM quiz_attempts')) return [[{ studentId: 1, quizId: 10, correctCount, totalQuestions: 100 }]];
       if (sql.includes('FROM assignment_submissions') || sql.includes('FROM attendance')) return [[]];
+      if (sql.includes('FROM activity_attempts')) return [activityCorrectCount === null ? [] : [{ studentId: 1, activityId: 5, correctCount: activityCorrectCount, totalQuestions: 100 }]];
       throw new Error(sql);
     },
     execute: async sql => {
@@ -40,5 +41,17 @@ test('certificate issuing is blocked when the student score is below 75', async 
     });
     assert.equal(response.status, 422);
     assert.match((await response.json()).message, /74\/100.*75\/100/);
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
+
+
+test('certificate eligibility includes the same class activity grade as the leaderboard', async () => {
+  const app = express(); app.use(express.json());
+  registerCertificateRoutes(app, performancePool(100, 20), (req, _res, next) => { req.user = { id: 1, role: 'student' }; next(); }, (_req, _res, next) => next());
+  const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/student/certificate-eligibility`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { overallScore: 60, requiredScore: 75, eligible: false });
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });

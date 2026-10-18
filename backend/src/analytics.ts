@@ -3,14 +3,19 @@ import { getAcademySettings } from './academy-settings.js';
 export const CERTIFICATE_ELIGIBILITY_SCORE = 75;
 
 export async function buildOverallLeaderboard(pool) {
-  const [[students], [quizAttempts], [assignmentResults], [attendanceRows]] = await Promise.all([
+  const [[students], [quizAttempts], [assignmentResults], [attendanceRows], [activityAttempts]] = await Promise.all([
         pool.query("SELECT id, full_name AS fullName, email FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name, id"),
         pool.query(`SELECT student_id AS studentId, quiz_id AS quizId, correct_count AS correctCount, total_questions AS totalQuestions
           FROM quiz_attempts WHERE status = 'completed' AND total_questions > 0`),
         pool.query(`SELECT s.student_id AS studentId, s.score, a.max_score AS maxScore
           FROM assignment_submissions s JOIN assignments a ON a.id = s.assignment_id
           WHERE s.status = 'completed' AND s.score IS NOT NULL AND a.max_score > 0`),
-        pool.query("SELECT student_id AS studentId, status FROM attendance")
+        pool.query("SELECT student_id AS studentId, status FROM attendance"),
+        pool.query(`SELECT aa.student_id AS studentId, aa.activity_id AS activityId,
+          aa.correct_count AS correctCount, aa.total_questions AS totalQuestions
+          FROM activity_attempts aa JOIN learning_activities a ON a.id = aa.activity_id
+          JOIN learning_modules m ON m.id = a.module_id
+          WHERE aa.completed_at IS NOT NULL AND aa.total_questions > 0 AND m.published = TRUE`)
       ]);
 
   const quizByStudent = new Map();
@@ -20,6 +25,14 @@ export async function buildOverallLeaderboard(pool) {
         const score = Math.round(Number(attempt.correctCount) * 100 / Number(attempt.totalQuestions));
         quizzes.set(Number(attempt.quizId), Math.max(score, quizzes.get(Number(attempt.quizId)) ?? 0));
         quizByStudent.set(studentId, quizzes);
+  }
+  const activitiesByStudent = new Map();
+  for (const attempt of activityAttempts) {
+        const studentId = Number(attempt.studentId);
+        const activities = activitiesByStudent.get(studentId) || new Map();
+        const score = Math.round(Number(attempt.correctCount) * 100 / Number(attempt.totalQuestions));
+        activities.set(Number(attempt.activityId), Math.max(score, activities.get(Number(attempt.activityId)) ?? 0));
+        activitiesByStudent.set(studentId, activities);
   }
   const assignmentsByStudent = new Map();
   for (const result of assignmentResults) {
@@ -42,14 +55,17 @@ export async function buildOverallLeaderboard(pool) {
   const leaderboard = students.map(student => {
         const quizzes = quizByStudent.get(Number(student.id));
         const assignment = assignmentsByStudent.get(Number(student.id));
+        const activities = activitiesByStudent.get(Number(student.id));
         const attendance = attendanceByStudent.get(Number(student.id));
         const quizScore = quizzes?.size ? Math.round([...quizzes.values()].reduce((sum, score) => sum + score, 0) / quizzes.size) : null;
         const assignmentScore = assignment?.possible ? Math.round(assignment.earned * 100 / assignment.possible) : null;
         const attendanceScore = attendance?.counted ? Math.round(attendance.attended * 100 / attendance.counted) : null;
-        const available = [quizScore, assignmentScore, attendanceScore].filter(score => score !== null);
+        const activityScore = activities?.size ? Math.round([...activities.values()].reduce((sum, score) => sum + score, 0) / activities.size) : null;
+        const available = [quizScore, assignmentScore, attendanceScore, activityScore].filter(score => score !== null);
         return {
           id: Number(student.id), fullName: student.fullName, email: student.email,
           quizScore, quizCount: quizzes?.size || 0,
+          activityScore, activityCount: activities?.size || 0,
           assignmentScore, assignmentCount: assignment?.count || 0,
           attendanceScore, attendanceCount: attendance?.counted || 0,
           categoriesCounted: available.length,
@@ -59,7 +75,7 @@ export async function buildOverallLeaderboard(pool) {
     || (right.overallScore ?? -1) - (left.overallScore ?? -1) || left.fullName.localeCompare(right.fullName));
   const ranked = leaderboard.filter(student => student.overallScore !== null);
   return {
-    scoring: { quiz: 'Best attempt per quiz, averaged', assignment: 'Points earned divided by points possible', attendance: 'Present or late divided by counted sessions', overall: 'Equal average of available categories' },
+    scoring: { activity: 'Best attempt per published class activity, averaged', quiz: 'Best attempt per quiz, averaged', assignment: 'Points earned divided by points possible', attendance: 'Present or late divided by counted sessions', overall: 'Equal average of available categories' },
     summary: {
       students: students.length, ranked: ranked.length,
       classAverage: ranked.length ? Math.round(ranked.reduce((sum, student) => sum + student.overallScore, 0) / ranked.length) : null
