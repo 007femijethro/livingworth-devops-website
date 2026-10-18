@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useState } from 'react';
+import useLearningFocus from './useLearningFocus';
 
 export function AttachmentDownload({ id, name, index = 0 }) {
   const [busy, setBusy] = useState(false);
@@ -23,6 +24,7 @@ export function SubmissionFiles({ submission, id = submission.id }) {
 }
 
 export default function AssignmentCard({ assignment: a, onSubmitted }) {
+  const destination = useLearningFocus("assignment", a.id);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState(false);
@@ -48,7 +50,7 @@ export default function AssignmentCard({ assignment: a, onSubmitted }) {
       setMessage('Your work has been submitted for mentor review.'); setFiles({}); setRedoOpen(false); form.querySelectorAll('input[type=file]').forEach(input => { input.value = ''; }); window.dispatchEvent(new Event('lw-assignments-changed')); onSubmitted();
     } catch (e) { setError(true); setMessage(e.message); } finally { setBusy(false); }
   }
-  return <section className="student-assignment assignment-card">
+  return <section {...destination} className="student-assignment assignment-card learning-destination">
     <header className="assignment-title"><div><span>{a.assignmentType === 'manual' ? 'Submit to mentor via DM' : 'Practical assignment'}</span><h4>{a.title}</h4></div><b className={`work-status ${a.submissionStatus || (a.closedAt ? 'closed' : 'not-started')}`}>{labels[a.submissionStatus] || (a.closedAt ? 'Closed' : 'Not submitted')}</b></header>
     <div className="assignment-meta"><span>Due {new Date(a.dueAt).toLocaleString()}</span><span>{a.maxScore} points</span><span>{a.assignmentType === 'manual' ? 'DM submission' : 'Portal submission'}</span>{a.isLate && <b>Submitted late</b>}</div>
     <details className="assignment-brief"><summary>Assignment instructions</summary><AssignmentMarkdown>{a.instructions}</AssignmentMarkdown></details>

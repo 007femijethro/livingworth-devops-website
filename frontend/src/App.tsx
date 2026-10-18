@@ -1,5 +1,7 @@
 // @ts-nocheck
 import LearningCalendar from './LearningCalendar';
+import ContinueLearning from './ContinueLearning';
+import useLearningFocus from './useLearningFocus';
 import PushSettings, { PushLifecycle } from './PushSettings';
 import { stopPhonePush } from './push-client';
 import { ProfileAvatar, ProfilePictureWelcome } from './ProfilePicture';
@@ -1359,13 +1361,14 @@ function MaterialFields({ initialType = "link", material = null, resourceRequire
 }
 
 function StudentMaterial({ material, onProgress }) {
+  const destination = useLearningFocus("material", material.id);
   function markOpened() {
     if ((material.progressStatus || "not_started") === "not_started") onProgress(material.id, "in_progress");
   }
   const content = material.materialType === "note"
     ? <details className="student-lesson-note" onToggle={(event) => { if (event.currentTarget.open) markOpened(); }}><summary><span><small>Lesson note</small><b>{material.title}</b></span><strong>View lesson note</strong></summary><div className="student-lesson-content"><AssignmentMarkdown>{material.lessonContent}</AssignmentMarkdown></div></details>
     : <a className={youtubeThumbnail(material.resourceUrl) ? "video-material" : ""} href={material.resourceUrl} target="_blank" rel="noreferrer" onClick={markOpened}>{youtubeThumbnail(material.resourceUrl) ? <img src={youtubeThumbnail(material.resourceUrl)} alt="" /> : <b>{material.materialType === "video" ? "▶" : "↗"}</b>}<span>{material.title}<small>{material.originalName || material.materialType}</small></span></a>;
-  return <div className={`material-with-progress ${material.progressStatus}`}>{content}<label>My progress<select value={material.progressStatus || "not_started"} onChange={(event) => onProgress(material.id, event.target.value)}><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="done">Done</option></select></label></div>;
+  return <div {...destination} className={`material-with-progress learning-destination ${material.progressStatus}`}>{content}<label>My progress<select value={material.progressStatus || "not_started"} onChange={(event) => onProgress(material.id, event.target.value)}><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="done">Done</option></select></label></div>;
 }
 
 function LearningCenter({ mode, demo = false }) {
@@ -1575,6 +1578,7 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
         <div><p className="eyebrow">DevOps student portal</p><h1>Welcome back, {firstName}.</h1><p>Here is your progress and what needs your attention next.</p></div>
         <ProfileAvatar user={user}/>
       </div>
+      <ContinueLearning />
       {message && <div className="progress-loading">{message}</div>}
       {!message && <>
         {data.announcements.announcements[0] && <button className="dashboard-announcement" onClick={() => onNavigate("Announcements")}><span>{data.announcements.announcements[0].category}</span><div><strong>{data.announcements.announcements[0].title}</strong><p>{data.announcements.announcements[0].message}</p></div><b>View update</b></button>}
