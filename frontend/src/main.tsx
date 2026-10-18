@@ -1,6 +1,7 @@
 import { startMobile } from './mobile';
 import './mobile.css';
-import React from 'react';
+import React, { useEffect } from 'react';
+import { startMobileUpdates } from './mobile-updates';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './styles.css';
@@ -35,6 +36,11 @@ startClientLogging();
 const root = document.getElementById('root');
 if (!root) throw new Error('Application root element was not found.');
 
+function MobileLifecycle() {
+  useEffect(() => { startMobileUpdates(); }, []);
+  return null;
+}
+
 createRoot(root).render(
-  <React.StrictMode><App /></React.StrictMode>
+  <React.StrictMode><MobileLifecycle /><App /></React.StrictMode>
 );
