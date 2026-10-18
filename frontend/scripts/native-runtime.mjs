@@ -8,6 +8,8 @@ export function nativeRuntime(root = fileURLToPath(new URL('..', import.meta.url
   const collect = directory => {
     for (const entry of fs.readdirSync(path.join(root, directory), { withFileTypes: true })) {
       const relative = path.posix.join(directory, entry.name);
+      // Capacitor creates this ignored Cordova config during sync, after the web build.
+      if (relative === 'android/app/src/main/res/xml/config.xml') continue;
       if (entry.isDirectory()) collect(relative);
       else if (entry.isFile()) files.push(relative);
     }
