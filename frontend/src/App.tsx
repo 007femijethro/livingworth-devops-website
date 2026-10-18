@@ -1,4 +1,7 @@
 // @ts-nocheck
+import AdminSettings from './AdminSettings';
+import { useAcademySettings } from './AcademySettingsContext';
+import { classSessionStatus } from './class-schedule';
 import WeekActivityPrompt from './WeekActivityPrompt';
 import { socketOrigin, isNative } from './mobile';
 import { UploadSlots } from './AssignmentFiles';
@@ -1517,24 +1520,9 @@ function LearningCenter({ mode, demo = false }) {
 
 const CLASS_MEETING_URL = "https://meet.google.com/paj-rthm-woe";
 
-function classSessionStatus(now = new Date()) {
-  const todayStart = new Date(now);
-  todayStart.setUTCHours(19, 0, 0, 0);
-  const todayEnd = new Date(todayStart);
-  todayEnd.setUTCHours(20, 0, 0, 0);
-  if ([1, 3, 5].includes(todayStart.getUTCDay()) && now >= todayStart && now < todayEnd) {
-    return { isLive: true, date: todayStart };
-  }
-  for (let offset = 0; offset < 8; offset += 1) {
-    const candidate = new Date(now);
-    candidate.setUTCDate(now.getUTCDate() + offset);
-    candidate.setUTCHours(19, 0, 0, 0);
-    if ([1, 3, 5].includes(candidate.getUTCDay()) && candidate > now) return { isLive: false, date: candidate };
-  }
-  return { isLive: false, date: null };
-}
 
 function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
+  const academy=useAcademySettings();
   const [data, setData] = useState({ learning: null, attendance: null, quizzes: null, pendingQuizzes: null, announcements: null, overall: null });
   const [message, setMessage] = useState("Loading your progress…");
   const [clock, setClock] = useState(() => new Date());
@@ -1551,7 +1539,7 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
     const timer = window.setInterval(() => setClock(new Date()), 30000);
     return () => window.clearInterval(timer);
   }, []);
-  const classSession = classSessionStatus(clock);
+  const classSession = classSessionStatus(clock,academy);
   const nextClass = classSession.date;
   const assignments = data.learning?.modules.flatMap((module) =>
     module.assignments.map((assignment) => ({ ...assignment, moduleTitle: module.title, weekNumber: module.weekNumber })),
@@ -1600,9 +1588,9 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
         <div className="progress-columns">
           <section className={`next-class-card ${classSession.isLive ? "live" : ""}`}>
             <span className="progress-kicker">{classSession.isLive ? <><i aria-hidden="true" /> Meeting is live</> : "Next live session"}</span>
-            <h2>{classSession.isLive ? "Class is live — join now" : nextClass ? new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "Africa/Lagos" }).format(nextClass) : "Class schedule"}</h2>
-            <p>Live DevOps class · 8:00–9:00 p.m. GMT+1</p>
-            <a className="button gold" href={CLASS_MEETING_URL} target="_blank" rel="noreferrer">{classSession.isLive ? "Join live meeting" : "Join meeting"}</a>
+            <h2>{classSession.isLive ? "Class is live — join now" : nextClass ? new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: academy.classTimezone }).format(nextClass) : "Class schedule"}</h2>
+            <p>Live DevOps class · {academy.classTime} · {academy.classDurationMinutes} minutes · {academy.classTimezone}</p>
+            <a className="button gold" href={academy.meetingUrl} target="_blank" rel="noreferrer">{classSession.isLive ? "Join live meeting" : "Join meeting"}</a>
           </section>
           <section className="attention-card pending-work-card">
             <div className="progress-section-title"><div><span>Your action list</span><h2>Pending on you</h2></div><strong>{outstanding.length + pendingQuizzes.length} pending</strong></div>
@@ -1929,6 +1917,7 @@ function StudentCertificates() {
 }
 
 function StaffCertificates({ demo = false }) {
+  const academy=useAcademySettings();
   const [certificates, setCertificates] = useState([]);
   const [students, setStudents] = useState([]);
   const [eligibilityByStudent, setEligibilityByStudent] = useState(new Map());
@@ -1940,10 +1929,10 @@ function StaffCertificates({ demo = false }) {
     try {
       const [certificateData, studentData, performanceData] = await Promise.all([api("/staff/certificates"), api("/staff/students"), api("/staff/overall-leaderboard")]);
       setCertificates(certificateData); setStudents(studentData);
-      setEligibilityByStudent(new Map(performanceData.leaderboard.map(student => [Number(student.id), { overallScore: student.overallScore, eligible: student.overallScore !== null && student.overallScore >= 75 }])));
+      setEligibilityByStudent(new Map(performanceData.leaderboard.map(student => [Number(student.id), { overallScore: student.overallScore, eligible: student.overallScore !== null && student.overallScore >= academy.certificateRequiredScore }])));
     } catch (error) { setMessage(error.message); }
   }
-  useEffect(() => { load(); }, [demo]);
+  useEffect(() => { load(); }, [demo, academy.certificateRequiredScore]);
   async function issue(event) {
     event.preventDefault(); setBusy(true);
     try {
@@ -1973,8 +1962,8 @@ function StaffCertificates({ demo = false }) {
   }
   if (demo) return <div className="empty">Connect the backend to issue and verify certificates.</div>;
   return <section className="certificates-center">
-    <div className="certificates-heading"><p className="eyebrow">Academy credentials</p><h2>Certificates</h2><p>Issue verifiable certificates to students whose overall score is at least 75/100.</p></div>
-    <form className="certificate-issue-form" onSubmit={issue}><label>Eligible student<select name="studentId" required><option value="">Choose eligible student</option>{students.map(student => { const result = eligibilityByStudent.get(Number(student.id)); return <option key={student.id} value={student.id} disabled={!result?.eligible}>{student.fullName} · {result?.overallScore == null ? "No overall score — not eligible" : `${result.overallScore}/100${result.eligible ? " — eligible" : " — not eligible"}`}</option>; })}</select><small>Students need an overall score of 75/100 or higher.</small></label><label>Course completed<input name="courseTitle" defaultValue="DevOps Engineering Bootcamp" maxLength="180" required /></label><label>Completion date<input name="completionDate" type="date" max={new Date().toISOString().slice(0, 10)} required /></label><button className="button primary" disabled={busy}>{busy ? "Issuing…" : "Issue certificate"}</button></form>
+    <div className="certificates-heading"><p className="eyebrow">Academy credentials</p><h2>Certificates</h2><p>Issue verifiable certificates to students whose overall score is at least {academy.certificateRequiredScore}/100.</p></div>
+    <form className="certificate-issue-form" onSubmit={issue}><label>Eligible student<select name="studentId" required><option value="">Choose eligible student</option>{students.map(student => { const result = eligibilityByStudent.get(Number(student.id)); return <option key={student.id} value={student.id} disabled={!result?.eligible}>{student.fullName} · {result?.overallScore == null ? "No overall score — not eligible" : `${result.overallScore}/100${result.eligible ? " — eligible" : " — not eligible"}`}</option>; })}</select><small>Students need an overall score of {academy.certificateRequiredScore}/100 or higher.</small></label><label>Course completed<input name="courseTitle" defaultValue="DevOps Engineering Bootcamp" maxLength="180" required /></label><label>Completion date<input name="completionDate" type="date" max={new Date().toISOString().slice(0, 10)} required /></label><button className="button primary" disabled={busy}>{busy ? "Issuing…" : "Issue certificate"}</button></form>
     <p className="form-message success">{message}</p>
     <div className="certificate-admin-list">{certificates.length === 0 ? <div className="empty">No certificates issued yet.</div> : certificates.map(certificate => <article key={certificate.id}><div><strong>{certificate.studentName}</strong><span>{certificate.courseTitle}</span><small>{certificate.certificateNumber} · issued {new Date(certificate.issuedAt).toLocaleDateString()}</small></div><b className={certificate.status === "valid" ? "certificate-valid" : "certificate-revoked"}>{certificate.status}</b><button className="button light-border" onClick={() => copyLink(certificate)}>Copy verification link</button>{certificate.status === "valid" ? <button className="button certificate-revoke-button" onClick={() => revoke(certificate)}>Revoke</button> : <button className="button certificate-delete-button" disabled={deletingCertificateId === certificate.id} onClick={() => deleteCertificate(certificate)}>{deletingCertificateId === certificate.id ? "Deleting…" : "Delete permanently"}</button>}</article>)}</div>
   </section>;
@@ -1982,6 +1971,7 @@ function StaffCertificates({ demo = false }) {
 
 
 function LiveClassCenter({ mode, user, demo = false }) {
+  const academy=useAcademySettings();
   const staff = mode === "staff";
   const [classes, setClasses] = useState([]), [selectedClass, setSelectedClass] = useState(null),
     [attendanceRoster, setAttendanceRoster] = useState([]), [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
@@ -2011,7 +2001,7 @@ function LiveClassCenter({ mode, user, demo = false }) {
         setMessage(result.message); item = { ...item, status: "live" }; await load();
       }
       if (item.status !== "live") return setMessage("This class has not started.");
-      window.open(item.meetingUrl || CLASS_MEETING_URL, "_blank", "noopener,noreferrer");
+      window.open(item.meetingUrl || academy.meetingUrl, "_blank", "noopener,noreferrer");
     } catch (error) { setMessage(error.message); }
   }
   async function endClass(item) {
@@ -2039,7 +2029,7 @@ function LiveClassCenter({ mode, user, demo = false }) {
   if (demo) return <div className="empty">Connect the backend to schedule Google Meet classes.</div>;
   return <section className="live-class-center">
     <header><div><p className="eyebrow">Google Meet classroom</p><h2>Live class & attendance</h2><p>Join class in Google Meet and record attendance securely before the configured deadline.</p></div></header>
-    {staff && <form className="live-class-form" onSubmit={createClass}><label>Class title<input name="title" placeholder="Friday DevOps live class" maxLength="180" required /></label><label>Date and time<input name="scheduledAt" type="datetime-local" required /></label><label>Duration<input name="durationMinutes" type="number" min="15" max="240" defaultValue="60" required /></label><label>Google Meet link<input name="meetingUrl" type="url" defaultValue={CLASS_MEETING_URL} pattern="https://meet\.google\.com/.*" required /></label><button className="button primary" disabled={busy}>{busy ? "Scheduling…" : "Schedule class"}</button></form>}
+    {staff && <form className="live-class-form" onSubmit={createClass}><label>Class title<input name="title" placeholder="Friday DevOps live class" maxLength="180" required /></label><label>Date and time<input name="scheduledAt" type="datetime-local" required /></label><label>Duration<input name="durationMinutes" type="number" min="15" max="240" defaultValue={academy.classDurationMinutes} required /></label><label>Google Meet link<input name="meetingUrl" type="url" defaultValue={academy.meetingUrl} pattern="https://meet\.google\.com/.*" required /></label><button className="button primary" disabled={busy}>{busy ? "Scheduling…" : "Schedule class"}</button></form>}
     {!staff && <form className="attendance-code-form" onSubmit={submitAttendance}><div><span>Class attendance</span><h3>Enter the code announced during class</h3><p>Submit it before the attendance deadline shown for the class.</p></div><input name="code" aria-label="Attendance code" placeholder="ABC234" minLength="6" maxLength="6" autoCapitalize="characters" required /><button className="button primary" disabled={busy}>{busy ? "Submitting…" : "Submit attendance"}</button></form>}
     <p className="form-message success">{message}</p>
     <div className="live-class-list">{classes.length ? classes.map(item => {
@@ -2051,22 +2041,6 @@ function LiveClassCenter({ mode, user, demo = false }) {
   </section>;
 }
 
-function AdminClassSettings({ demo = false }) {
-  const [expiryHours, setExpiryHours] = useState(72), [message, setMessage] = useState(""), [saving, setSaving] = useState(false);
-  useEffect(() => {
-    if (!demo) api("/admin/class-settings").then(data => setExpiryHours(data.expiryHours)).catch(error => setMessage(error.message));
-  }, [demo]);
-  async function save(event) {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      const data = await api("/admin/class-settings", { method: "PATCH", body: JSON.stringify({ expiryHours }) });
-      setMessage(data.message);
-    } catch (error) { setMessage(error.message); } finally { setSaving(false); }
-  }
-  if (demo) return <div className="empty">Connect the backend to manage class settings.</div>;
-  return <section className="portal-form-card"><p className="eyebrow">Class settings</p><h2>Attendance code deadline</h2><p>Set the global amount of time learners have to submit every class code.</p><form className="form" onSubmit={save}><label>Expiry time in hours<input type="number" min="1" max="720" value={expiryHours} onChange={event => setExpiryHours(Number(event.target.value))} required /></label><small>Between 1 and 720 hours. Saving recalculates every open code from its scheduled class time.</small><button className="button primary" disabled={saving}>{saving ? "Saving…" : "Save class setting"}</button></form><p className="form-message success">{message}</p></section>;
-}
 
 function StudentDashboard({ user, logout }) {
   const [active, setActive] = usePortalSection("student", user.mustChangePassword ? "Security" : "Overview");
@@ -3069,6 +3043,7 @@ function LearnerProfilePanel({ studentId, onClose, onDeleted }) {
 }
 
 function StudentDirectory({ demo = false, canDelete = false, canManageClassReps = false }) {
+  const academy = useAcademySettings();
   const [students, setStudents] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [search, setSearch] = useState("");
@@ -3096,7 +3071,7 @@ function StudentDirectory({ demo = false, canDelete = false, canManageClassReps 
     return (!query || searchable.includes(query)) && (!learningMode || student.learningMode === learningMode) && (!country || student.country === country);
   });
   return <section className="student-directory">
-    <div className="directory-heading"><div><p className="eyebrow">Student records</p><h2>Student directory</h2><p>Find a learner and open their complete registration and performance profile.</p>{canManageClassReps && <small className="class-rep-limit">Class representatives: <b>{classRepCount}/2</b> appointed. They can mark attendance only.</small>}</div><strong>{students.length}<span>approved student{students.length === 1 ? "" : "s"}</span></strong></div>
+    <div className="directory-heading"><div><p className="eyebrow">Student records</p><h2>Student directory</h2><p>Find a learner and open their complete registration and performance profile.</p>{canManageClassReps && <small className="class-rep-limit">Class representatives: <b>{classRepCount}/{academy.classRepLimit}</b> appointed. They can mark attendance only.</small>}</div><strong>{students.length}<span>approved student{students.length === 1 ? "" : "s"}</span></strong></div>
     <div className="directory-filters">
       <label>Search<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, email, phone or city" /></label>
       <label>Country<select value={country} onChange={(event) => setCountry(event.target.value)}><option value="">All countries</option>{countries.map((value) => <option key={value}>{value}</option>)}</select></label>
@@ -3108,7 +3083,7 @@ function StudentDirectory({ demo = false, canDelete = false, canManageClassReps 
     <div className="directory-grid">{!message && filtered.length === 0 ? <div className="empty">No students match these filters.</div> : filtered.map((student) => <article key={student.id}>
       <div className="directory-card-head"><span className="student-avatar">{student.fullName[0]}</span><div><h3>{student.fullName}</h3><p>{student.email}</p></div><b className={`status ${student.isClassRep ? "class-rep" : "approved"}`}>{student.isClassRep ? "class rep" : "active"}</b></div>
       <div className="student-facts"><span><small>Phone</small><b>{student.phone || "Not provided"}</b></span><span><small>Location</small><b>{[student.stateCity, student.country].filter(Boolean).join(", ") || "Not provided"}</b></span><span><small>Learning mode</small><b>{student.learningMode || "Not provided"}</b></span><span><small>Current status</small><b>{student.employmentStatus || "Not provided"}</b></span><span><small>Education</small><b>{student.educationalLevel || "Not provided"}</b></span><span><small>Tech experience</small><b>{student.techExperience || student.experienceLevel || "Not provided"}</b></span></div>
-      <button type="button" className="button primary full" onClick={() => setSelectedId(student.id)}>View full profile</button>{canManageClassReps && <button type="button" className="button light-border full" disabled={!student.isClassRep && classRepCount >= 2} onClick={() => setClassRep(student, !student.isClassRep)}>{student.isClassRep ? "Remove class rep" : "Appoint class rep"}</button>}
+      <button type="button" className="button primary full" onClick={() => setSelectedId(student.id)}>View full profile</button>{canManageClassReps && <button type="button" className="button light-border full" disabled={!student.isClassRep && classRepCount >= academy.classRepLimit} onClick={() => setClassRep(student, !student.isClassRep)}>{student.isClassRep ? "Remove class rep" : "Appoint class rep"}</button>}
     </article>)}</div>
     {selectedId && <LearnerProfilePanel studentId={selectedId} onClose={() => setSelectedId(null)} onDeleted={canDelete ? (notice) => { setSelectedId(null); setMessage(notice); load(); } : undefined} />}
   </section>;
@@ -3557,7 +3532,7 @@ function AdminDashboard({ user, logout }) {
         {active === "Assignments" && <AssignmentsCenter staff demo={user.demo} />}
         {active === "Live class" && <LiveClassCenter mode="staff" user={user} demo={user.demo} />}
         {active === "Live quiz" && <QuizCenter mode="admin" demo={user.demo} />}
-        {active === "Settings" && <AdminClassSettings demo={user.demo} />}
+        {active === "Settings" && <AdminSettings demo={user.demo} onNavigate={setActive} />}
         {active === "Security" && <SecurityCenter role="admin" demo={user.demo} />}
         {profileStudentId && <LearnerProfilePanel studentId={profileStudentId} onClose={() => setProfileStudentId(null)} onDeleted={(notice) => { setProfileStudentId(null); setMessage(notice); loadApplications(); }} />}
     </PortalShell>
@@ -3590,6 +3565,7 @@ function MentorDashboard({ user, logout }) {
 }
 
 export default function App() {
+  const academy=useAcademySettings();
   const query = new URLSearchParams(window.location.search);
   const resetToken = query.get("reset") || "";
   const verificationNumber = query.get("verify") || "";
@@ -3649,7 +3625,7 @@ export default function App() {
   if (page === "mobile-welcome") return (
     <main className="mobile-welcome">
       <img src="/livingworth-logo.jpeg" alt="Livingworth Academy" />
-      <h1>Sign in to your academy</h1>
+      <h1>Sign in to {academy.academyName}</h1>
       <p>Your classes, learning materials and academy tools in one place.</p>
       <button className="button primary" onClick={() => navigate("student-login")}>Student sign in</button>
       <button className="button" onClick={() => navigate("staff-login")}>Staff sign in</button>
@@ -3657,6 +3633,7 @@ export default function App() {
     </main>
   );
   if (page === "verify-certificate") return <CertificateVerification navigate={navigate} initialNumber={verificationNumber} />;
+  if (page === "register" && !academy.registrationOpen) return <main className="mobile-welcome"><h1>Applications are currently closed</h1><p>Contact the academy for the next intake.</p>{academy.supportEmail && <a href={`mailto:${academy.supportEmail}`}>Email the academy</a>}<button className="button" onClick={() => navigate("home")}>Back to homepage</button></main>;
   if (page === "register") return <Register navigate={navigate} />;
   if (page === "forgot-password") return <ForgotPassword navigate={navigate} />;
   if (page === "reset-password") return <ResetPassword navigate={navigate} token={resetToken} />;

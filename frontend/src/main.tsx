@@ -1,3 +1,4 @@
+import { AcademySettingsProvider } from './AcademySettingsContext';
 import { startMobile } from './mobile';
 import './mobile.css';
 import React, { useEffect } from 'react';
@@ -42,5 +43,5 @@ function MobileLifecycle() {
 }
 
 createRoot(root).render(
-  <React.StrictMode><MobileLifecycle /><App /></React.StrictMode>
+  <React.StrictMode><AcademySettingsProvider><MobileLifecycle /><App /></AcademySettingsProvider></React.StrictMode>
 );

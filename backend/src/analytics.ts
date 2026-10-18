@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { getAcademySettings } from './academy-settings.js';
 export const CERTIFICATE_ELIGIBILITY_SCORE = 75;
 
 export async function buildOverallLeaderboard(pool) {
@@ -85,9 +86,9 @@ export function registerAnalyticsRoutes(app, pool, requireAuth, requireStaff) {
         scoring: data.scoring,
         summary: { ranked: data.summary.ranked },
         certificateEligibility: {
-          requiredScore: CERTIFICATE_ELIGIBILITY_SCORE,
+          requiredScore: getAcademySettings().certificateRequiredScore,
           overallScore: currentStudent?.overallScore ?? null,
-          eligible: currentStudent?.overallScore != null && currentStudent.overallScore >= CERTIFICATE_ELIGIBILITY_SCORE
+          eligible: currentStudent?.overallScore != null && currentStudent.overallScore >= getAcademySettings().certificateRequiredScore
         },
         topTen: ranked.slice(0, 10).map((student, index) => ({ ...student, rank: index + 1, isCurrentStudent: student.id === Number(req.user.id) })),
         currentStudent,
@@ -132,7 +133,7 @@ export function registerAnalyticsRoutes(app, pool, requireAuth, requireStaff) {
       ]);
       const attention = learners.map(learner => {
         const reasons = [];
-        if (Number(learner.sessions) > 0 && Number(learner.attendance) < 75) reasons.push(`Attendance ${learner.attendance}%`);
+        if (Number(learner.sessions) > 0 && Number(learner.attendance) < getAcademySettings().attendanceAlertScore) reasons.push(`Attendance ${learner.attendance}%`);
         if (learner.quizAverage != null && Number(learner.quizAverage) < 50) reasons.push(`Quiz average ${learner.quizAverage}%`);
         if (Number(learner.overdue) > 0) reasons.push(`${learner.overdue} overdue assignment${Number(learner.overdue) === 1 ? '' : 's'}`);
         return { ...learner, reasons };

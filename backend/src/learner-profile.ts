@@ -1,11 +1,12 @@
 // @ts-nocheck
+import { getAcademySettings } from './academy-settings.js';
 function number(value) {
   return Number(value || 0);
 }
 
 function learnerStanding({ attendance, materials, quizzes, assignments }) {
   const needsAttention = [];
-  if (attendance.counted > 0 && attendance.percentage < 75) needsAttention.push(`Attendance is ${attendance.percentage}%`);
+  if (attendance.counted > 0 && attendance.percentage < getAcademySettings().attendanceAlertScore) needsAttention.push(`Attendance is ${attendance.percentage}%`);
   if (quizzes.attempts > 0 && quizzes.average < 50) needsAttention.push(`Quiz average is ${quizzes.average}%`);
   if (assignments.overdue > 0) needsAttention.push(`${assignments.overdue} overdue assignment${assignments.overdue === 1 ? '' : 's'}`);
   if (needsAttention.length) return { label: 'Needs attention', tone: 'attention', reasons: needsAttention };

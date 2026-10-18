@@ -1,5 +1,6 @@
 // @ts-nocheck
 import crypto from 'node:crypto';
+import { getAcademySettings } from './academy-settings.js';
 import { logger } from './logger.js';
 
 const publicClassFields = `lc.id, lc.title, lc.scheduled_at AS "scheduledAt", lc.duration_minutes AS "durationMinutes",
@@ -85,7 +86,7 @@ export function registerLiveClassRoutes(app, pool, requireAuth, requireStaff) {
       const title = String(req.body.title || '').trim().slice(0, 180);
       const scheduledAt = new Date(req.body.scheduledAt);
       const durationMinutes = Number.parseInt(req.body.durationMinutes, 10) || 60;
-      const meetingUrl = validMeetingUrl(req.body.meetingUrl || process.env.CLASS_MEETING_LINK);
+      const meetingUrl = validMeetingUrl(req.body.meetingUrl || getAcademySettings().meetingUrl);
       if (title.length < 3) return res.status(400).json({ message: 'Enter a class title.' });
       if (Number.isNaN(scheduledAt.getTime())) return res.status(400).json({ message: 'Choose a valid class date and time.' });
       if (durationMinutes < 15 || durationMinutes > 240) return res.status(400).json({ message: 'Class duration must be between 15 and 240 minutes.' });

@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import { createServer } from 'node:http';
 import { Server as SocketServer } from 'socket.io';
 import { pool } from './db.js';
+import { getAcademySettings, loadAcademySettings, registerAcademySettingsRoutes } from './academy-settings.js';
 import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } from './auth.js';
 import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
 import { configureEmailControl, isEmailDeliveryEnabled, sendApplicationDecision, sendApplicationEmails, sendEmailChangeCode, sendPasswordReset, sendTestEmail, verifyEmailConnection } from './mailer.js';
@@ -38,6 +39,7 @@ app.use(cors());
 app.use(requestLogger);
 app.use('/api/admin/quizzes/import', express.text({ type: ['text/csv', 'text/plain'], limit: '2mb' }));
 app.use(express.json());
+registerAcademySettingsRoutes(app, pool, requireAuth, requireAdmin);
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || '/app/uploads'));
 
 app.get('/api/health', async (_req, res) => {
@@ -78,6 +80,7 @@ app.patch('/api/staff/email-settings', requireAuth, requireStaff, async (req, re
       VALUES ('email_notifications', ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT (setting_key) DO UPDATE SET enabled = EXCLUDED.enabled, updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP`,
     [req.body.enabled, req.user.id]);
+    await loadAcademySettings(pool);
     res.json({ enabled: req.body.enabled, message: req.body.enabled
       ? 'Email notifications are ON. The system can send emails again.'
       : 'Email notifications are OFF. No system emails will be sent to anyone.' });
@@ -101,6 +104,7 @@ app.patch('/api/admin/class-settings', requireAuth, requireAdmin, async (req, re
     [String(expiryHours), req.user.id]);
     await pool.execute(`UPDATE live_classes SET attendance_expires_at=scheduled_at + (? * INTERVAL '1 hour')
       WHERE attendance_code IS NOT NULL AND attendance_finalized_at IS NULL`, [expiryHours]);
+    await loadAcademySettings(pool);
     res.json({ expiryHours, message: `Class attendance codes now expire after ${expiryHours} hours.` });
   } catch (error) { next(error); }
 });
@@ -118,6 +122,7 @@ app.get('/api/courses', async (_req, res, next) => {
 
 app.post('/api/auth/register', async (req, res, next) => {
   try {
+    if (!getAcademySettings().registrationOpen) return res.status(403).json({ message: 'Applications are currently closed. Please contact the academy for the next intake.' });
     const { firstName, lastName, email, password, phone = '', gender, country, stateCity,
       employmentStatus, educationalLevel, courseChoice, learningMode, techExperience, termsAccepted } = req.body;
     const required = [firstName, lastName, email, phone, gender, country, stateCity, employmentStatus,
@@ -506,9 +511,9 @@ app.patch('/api/admin/students/:id/class-rep', requireAuth, requireAdmin, async 
     }
     if (enabled && !students[0].isClassRep) {
       const [counts] = await connection.query("SELECT COUNT(*) AS count FROM users WHERE role='student' AND status='approved' AND is_class_rep=TRUE");
-      if (Number(counts[0].count) >= 2) {
+      if (Number(counts[0].count) >= getAcademySettings().classRepLimit) {
         await connection.rollback(); transactionStarted = false;
-        return res.status(409).json({ message: 'You can appoint a maximum of two class representatives.' });
+        return res.status(409).json({ message: `You can appoint a maximum of ${getAcademySettings().classRepLimit} class representatives.` });
       }
     }
     await connection.execute("UPDATE users SET is_class_rep=? WHERE id=? AND role='student'", [enabled, studentId]);
@@ -740,6 +745,7 @@ app.use((error, req, res, _next) => {
 
 async function start() {
   await ensurePostgresSchema(pool);
+  await loadAcademySettings(pool);
   await regradeShortAnswers(pool);
   await pool.execute(`INSERT INTO courses (title, description, duration, level)
     VALUES ('DevOps Engineering', 'Practical DevOps training from foundations to production delivery.', '14 weeks', 'Beginner–Intermediate')

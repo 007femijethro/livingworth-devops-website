@@ -1,5 +1,6 @@
 // @ts-nocheck
 import path from 'node:path';
+import { getAcademySettings } from './academy-settings.js';
 
 export function registerMobileUpdateRoutes(app, directories = {}) {
   const publicDir = directories.publicDir || path.resolve(process.env.UPLOAD_DIR || '/app/uploads', 'mobile-updates');
@@ -15,6 +16,7 @@ export function registerMobileUpdateRoutes(app, directories = {}) {
   app.get('/api/mobile-updates/public-key.pem', (_req, res, next) => send(res, next, path.join(privateDir, 'update-public.pem')));
   app.get('/api/mobile-updates/android/:version/manifest.json', (req, res, next) => {
     if (!/^[1-9][0-9]{0,5}$/.test(req.params.version)) return res.status(400).json({ message: 'Invalid Android version.' });
+    if (!getAcademySettings().mobileUpdatesEnabled) return res.status(204).set('Cache-Control','no-store').end();
     send(res, next, path.join(publicDir, 'android', req.params.version, 'manifest.json'));
   });
   app.get('/api/mobile-updates/bundles/:bundle', (req, res, next) => {

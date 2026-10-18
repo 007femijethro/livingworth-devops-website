@@ -1,5 +1,6 @@
 // @ts-nocheck
 import jwt from 'jsonwebtoken';
+import { getAcademySettings } from './academy-settings.js';
 import { pool } from './db.js';
 
 const secret = () => {
@@ -17,7 +18,7 @@ export function createToken(user) {
     mustChangePassword: Boolean(user.must_change_password ?? user.mustChangePassword)
   };
   return user.role === 'student'
-    ? jwt.sign(payload, secret(), { expiresIn: '8h' })
+    ? jwt.sign(payload, secret(), { expiresIn: getAcademySettings().studentSessionHours * 3600 })
     : jwt.sign(payload, secret());
 }
 

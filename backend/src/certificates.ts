@@ -1,6 +1,7 @@
 // @ts-nocheck
+import { getAcademySettings } from './academy-settings.js';
 import crypto from 'node:crypto';
-import { buildOverallLeaderboard, CERTIFICATE_ELIGIBILITY_SCORE } from './analytics.js';
+import { buildOverallLeaderboard } from './analytics.js';
 
 function certificateNumber() {
   return `LWA-${new Date().getUTCFullYear()}-${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
@@ -39,7 +40,7 @@ export function registerCertificateRoutes(app, pool, requireAuth, requireStaff) 
       const data = await buildOverallLeaderboard(pool);
       const student = data.leaderboard.find(entry => entry.id === Number(req.user.id));
       const overallScore = student?.overallScore ?? null;
-      res.json({ overallScore, requiredScore: CERTIFICATE_ELIGIBILITY_SCORE, eligible: overallScore !== null && overallScore >= CERTIFICATE_ELIGIBILITY_SCORE });
+      res.json({ overallScore, requiredScore: getAcademySettings().certificateRequiredScore, eligible: overallScore !== null && overallScore >= getAcademySettings().certificateRequiredScore });
     } catch (error) { next(error); }
   });
 
@@ -68,7 +69,7 @@ export function registerCertificateRoutes(app, pool, requireAuth, requireStaff) 
       const studentPerformance = performance.leaderboard.find(student => student.id === studentId);
       const overallScore = studentPerformance?.overallScore ?? null;
       if (overallScore === null) return res.status(422).json({ message: 'This student is not yet eligible for a certificate because they do not have an overall score.' });
-      if (overallScore < CERTIFICATE_ELIGIBILITY_SCORE) return res.status(422).json({ message: `This student is not eligible for a certificate. Their overall score is ${overallScore}/100; at least ${CERTIFICATE_ELIGIBILITY_SCORE}/100 is required.` });
+      if (overallScore < getAcademySettings().certificateRequiredScore) return res.status(422).json({ message: `This student is not eligible for a certificate. Their overall score is ${overallScore}/100; at least ${getAcademySettings().certificateRequiredScore}/100 is required.` });
       const [existing] = await pool.execute("SELECT id FROM certificates WHERE student_id = ? AND LOWER(course_title) = LOWER(?) AND status = 'valid'", [studentId, courseTitle]);
       if (existing.length) return res.status(409).json({ message: 'This student already has a valid certificate for that course.' });
 
