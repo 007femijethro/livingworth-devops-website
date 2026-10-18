@@ -16,7 +16,7 @@ export default function ModernHome({ navigate, stories }: { navigate: Navigate; 
   return <div className="modern-site">
     <header className="modern-nav">
       <a className="modern-logo" href="#top"><img src="/livingworth-logo.jpeg" alt="Livingworth Academy" /></a>
-      <nav><a href="#mentor">Your mentor</a><a href="#experience">Experience</a><a href="#roadmap">Roadmap</a></nav>
+      <nav><a href="/portfolio/">Your mentor</a><a href="#experience">Experience</a><a href="#roadmap">Roadmap</a></nav>
       <div><button className="modern-link" onClick={() => navigate('verify-certificate')}>Verify certificate</button><button className="modern-login" onClick={() => navigate('student-login')}>Log in</button><button className="modern-apply" onClick={() => navigate('register')}>Apply now <span>↗</span></button></div>
     </header>
 
@@ -44,7 +44,7 @@ export default function ModernHome({ navigate, stories }: { navigate: Navigate; 
       <section className="modern-marquee"><span>LINUX</span><i>◆</i><span>GIT</span><i>◆</i><span>AWS</span><i>◆</i><span>TERRAFORM</span><i>◆</i><span>DOCKER</span><i>◆</i><span>KUBERNETES</span><i>◆</i><span>CI/CD</span></section>
 
       <section className="home-mentor" id="mentor" aria-labelledby="mentor-heading">
-        <div className="home-mentor-identity"><span className="modern-kicker">Meet your mentor</span><div className="home-mentor-monogram" aria-hidden="true">JF<span>Livingworth Academy</span></div><h2 id="mentor-heading">Jethro F.M</h2><p>Lead DevOps Mentor<br/>Managing Director</p><a href="#roadmap">Explore what you’ll learn ↗</a></div>
+        <div className="home-mentor-identity"><span className="modern-kicker">Meet your mentor</span><a href="/portfolio/" className="home-mentor-portrait" aria-label="View Jethro F.M’s portfolio"><img src="/portfolio/jethro-portrait.webp" alt="Jethro F.M, DevOps engineer and lead mentor" loading="lazy" width="240" height="300"/></a><h2 id="mentor-heading"><a href="/portfolio/">Jethro F.M</a></h2><p><a href="/portfolio/">Lead DevOps Mentor<br/>Managing Director</a></p><a href="/portfolio/" className="home-portfolio-link">View my full portfolio ↗</a></div>
         <div className="home-mentor-copy"><span>Practical experience. Personal guidance.</span><h3>Understand the tools.<br/>Learn the thinking.</h3><p>The programme is led with practical engineering experience, simple explanations and live troubleshooting. Students learn not only which commands to run, but how to reason through failures, communicate technical decisions and deliver reliable systems.</p><p>From your first Linux commands to your final project, live demonstrations and feedback help you turn each lesson into work you can explain with confidence.</p><ul><li>Cloud &amp; infrastructure</li><li>CI/CD &amp; automation</li><li>Containers &amp; orchestration</li><li>Production troubleshooting</li></ul></div>
       </section>
 
