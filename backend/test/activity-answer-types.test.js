@@ -65,3 +65,44 @@ test('grading accepts answer variants in any case and scores true/false correctl
     assert.equal(wrong.score, 0);
   });
 });
+
+test('extending an attempted activity keeps original questions and results intact', async () => {
+  const existing = [
+    { id: 41, prompt: 'Existing choice', questionType: 'single_choice', options: ['A', 'B'], correctIndex: 1, correctAnswers: [], correctText: null, explanation: 'Existing explanation' },
+    { id: 42, prompt: 'Existing short answer', questionType: 'short_answer', options: [], correctIndex: null, correctAnswers: [], correctText: 'SSH|Secure Shell', explanation: 'A protocol' }
+  ];
+  const inserted = [], updatedKeys = [];
+  const execute = async (sql, params = []) => {
+    if (sql.includes('SELECT id, week_number')) return [[{ id: 1, weekNumber: 1 }]];
+    if (sql.includes('SELECT id FROM learning_activities')) return [[{ id: 9 }]];
+    if (sql.includes('SELECT COUNT(*) AS count')) return [[{ count: 1 }]];
+    if (sql.includes('FROM activity_questions WHERE activity_id')) return [structuredClone(existing)];
+    if (sql.includes('UPDATE activity_questions SET correct_text')) { updatedKeys.push(params); return [{ affectedRows: 1 }]; }
+    if (sql.includes('UPDATE learning_activities')) return [{ affectedRows: 1 }];
+    if (sql.includes('INSERT INTO activity_questions')) { inserted.push(params); return [{ affectedRows: 1 }]; }
+    throw new Error(sql);
+  };
+  await withServer({ getConnection: async () => transaction(execute) }, 'admin', async base => {
+    const save = async questions => fetch(`${base}/api/staff/class-activities/1`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Expanded activity', questions }) });
+    const proposed = structuredClone(existing);
+    proposed[1].correctText += '|SSH protocol|the SSH protocol';
+    proposed.push({ prompt: 'New false statement', questionType: 'true_false', correctIndex: 1 });
+    assert.equal((await save(proposed)).status, 200);
+    assert.equal(inserted.length, 1);
+    assert.equal(inserted[0][4], 1);
+    assert.equal(inserted[0][8], 3);
+    assert.equal(updatedKeys[0][1], 42);
+    for (const mutate of [
+      qs => { qs[0].correctIndex = 0; },
+      qs => { qs[0].options.reverse(); },
+      qs => { qs[1].correctText = 'SSH'; },
+      qs => { qs[0].prompt = 'Changed prompt'; },
+      qs => { qs.reverse(); },
+      qs => { qs.splice(0, 1); }
+    ]) {
+      const invalid = structuredClone(proposed); mutate(invalid);
+      assert.equal((await save(invalid)).status, 409);
+    }
+    assert.equal(inserted.length, 1);
+  });
+});

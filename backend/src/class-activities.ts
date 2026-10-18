@@ -37,6 +37,23 @@ function validateQuiz(title, instructions, questions) {
   });
 }
 
+function canExtendAttemptedQuiz(existing, proposed) {
+  if (proposed.length < existing.length) return false;
+  return existing.every((before, index) => {
+    const after = proposed[index];
+    if (before.prompt !== after.prompt || before.questionType !== after.questionType ||
+        String(before.explanation || '') !== after.explanation ||
+        JSON.stringify(before.options) !== JSON.stringify(after.options) ||
+        JSON.stringify(before.correctAnswers.map(Number).sort((a, b) => a - b)) !== JSON.stringify(after.correctAnswers)) return false;
+    if (['single_choice', 'true_false'].includes(before.questionType) && Number(before.correctIndex) !== after.correctIndex) return false;
+    if (before.questionType === 'short_answer') {
+      const accepted = new Set(after.correctText.split('|').map(normalizeAnswer));
+      return String(before.correctText || '').split('|').every(value => accepted.has(normalizeAnswer(value)));
+    }
+    return true;
+  });
+}
+
 async function materialsFor(pool, moduleId, studentId = null) {
   const [materials] = studentId
     ? await pool.execute(`SELECT lm.id, lm.title, lm.material_type AS materialType, lm.resource_url AS resourceUrl,
@@ -111,16 +128,28 @@ export function registerClassActivityRoutes(app, pool, requireAuth, requireStaff
       await connection.beginTransaction();
       const [activities] = await connection.execute('SELECT id FROM learning_activities WHERE module_id = ? FOR UPDATE', [req.params.moduleId]);
       let activityId = activities[0]?.id;
+      let preservedQuestionCount = 0;
       if (activityId) {
         const [attempts] = await connection.execute('SELECT COUNT(*) AS count FROM activity_attempts WHERE activity_id = ?', [activityId]);
-        if (Number(attempts[0].count) > 0) { await connection.rollback(); return res.status(409).json({ message: 'This activity already has learner attempts, so its questions are locked to protect saved results.' }); }
+        if (Number(attempts[0].count) > 0) {
+          const existingQuestions = await questionsFor(connection, activityId, true);
+          if (!canExtendAttemptedQuiz(existingQuestions, questions)) {
+            await connection.rollback();
+            return res.status(409).json({ message: 'This activity has learner attempts. Keep its original questions and answers in the same order; you can append questions and add accepted short-answer variants.' });
+          }
+          preservedQuestionCount = existingQuestions.length;
+          for (let index = 0; index < preservedQuestionCount; index += 1) {
+            if (questions[index].questionType === 'short_answer') await connection.execute(
+              'UPDATE activity_questions SET correct_text = ? WHERE id = ?', [questions[index].correctText, existingQuestions[index].id]);
+          }
+        }
         await connection.execute('UPDATE learning_activities SET title = ?, instructions = ?, allow_retakes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [String(req.body.title).trim(), String(req.body.instructions || '').trim(), Boolean(req.body.allowRetakes), activityId]);
-        await connection.execute('DELETE FROM activity_questions WHERE activity_id = ?', [activityId]);
+        if (!preservedQuestionCount) await connection.execute('DELETE FROM activity_questions WHERE activity_id = ?', [activityId]);
       } else {
         const [inserted] = await connection.execute('INSERT INTO learning_activities (module_id, title, instructions, created_by, allow_retakes) VALUES (?, ?, ?, ?, ?)', [req.params.moduleId, String(req.body.title).trim(), String(req.body.instructions || '').trim(), req.user.id, Boolean(req.body.allowRetakes)]);
         activityId = inserted.insertId;
       }
-      for (let index = 0; index < questions.length; index += 1) {
+      for (let index = preservedQuestionCount; index < questions.length; index += 1) {
         const question = questions[index];
         await connection.execute(`INSERT INTO activity_questions
           (activity_id, prompt, question_type, options_json, correct_index, correct_answers_json, correct_text, explanation, sequence_no)
