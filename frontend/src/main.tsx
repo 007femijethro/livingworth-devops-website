@@ -29,6 +29,7 @@ import './learning-platform.css';
 import './structural-platform.css';
 import './profile-changes.css';
 import './account-settings.css';
+import './brand-display.css';
 import { startClientLogging } from './client-logging';
 
 startMobile();
