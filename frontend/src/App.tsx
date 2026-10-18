@@ -77,15 +77,15 @@ const Logo = () => (
 );
 
 const portalItems = {
-  admin: ["Overview", "Applications", "Profile requests", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Settings", "Security"],
-  mentor: ["Overview", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
-  student: ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security"],
+  admin: ["Overview", "Applications", "Profile requests", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Class Activity", "Assignments", "Attendance", "Live class", "Live quiz", "Settings", "Security"],
+  mentor: ["Overview", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Class Activity", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
+  student: ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Class Activity", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security"],
 };
 
 const portalIcons = {
   Overview: "⌂", Applications: "◎", Students: "♙", Certificates: "◇", Leaderboard: "↗", Mentors: "♟",
   Stories: "✦", "My stories": "✦", Announcements: "◉", Programme: "▦", Learning: "▤", Assignments: "✓",
-  Attendance: "◷", "Live class": "●", "Live quiz": "⚡", Notifications: "◌", Settings: "⚙", Security: "⌾",
+  Attendance: "◷", "Live class": "●", "Live quiz": "⚡", "Class Activity": "✎", Notifications: "◌", Settings: "⚙", Security: "⌾",
   Profile: "♙", "Profile requests": "◫",
 };
 
@@ -1363,7 +1363,6 @@ function LearningCenter({ mode, demo = false }) {
   const staff = mode === "staff";
   const [modules, setModules] = useState([]);
   const [submissions, setSubmissions] = useState([]);
-  const [activitySubmissions, setActivitySubmissions] = useState([]);
   const [materialProgress, setMaterialProgress] = useState([]);
   const [progress, setProgress] = useState({ completed: 0, total: 0, percentage: 0 });
   const [message, setMessage] = useState("");
@@ -1380,7 +1379,6 @@ function LearningCenter({ mode, demo = false }) {
       const data = await api(staff ? "/staff/learning" : "/student/learning");
       setModules(data.modules || []);
       setSubmissions(data.submissions || []);
-      setActivitySubmissions(data.activitySubmissions || []);
       setMaterialProgress(data.materialProgress || []);
       if (data.progress) setProgress(data.progress);
       setMessage("");
@@ -1452,29 +1450,6 @@ function LearningCenter({ mode, demo = false }) {
       setMessage(data.message); form.reset(); load();
     } catch (error) { setMessage(error.message); }
   }
-  async function addActivity(event, moduleId) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    try {
-      const data = await api(`/staff/learning/modules/${moduleId}/activity`, { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
-      setMessage(data.message); form.reset(); load();
-    } catch (error) { setMessage(error.message); }
-  }
-  async function deleteActivity(activity) {
-    if (!window.confirm(`Remove “${activity.title}” from this week? Its submitted responses will also be removed.`)) return;
-    try {
-      const data = await api(`/staff/learning/activities/${activity.id}`, { method: "DELETE" });
-      setMessage(data.message); setEditing(""); load();
-    } catch (error) { setMessage(error.message); }
-  }
-  async function submitActivity(event, activityId) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    try {
-      const data = await api(`/student/learning/activities/${activityId}/submission`, { method: "PUT", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
-      setMessage(data.message); load();
-    } catch (error) { setMessage(error.message); }
-  }
   async function submitAssignment(event, assignmentId) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1512,7 +1487,7 @@ function LearningCenter({ mode, demo = false }) {
   }
   if (staff) return (
     <section className="learning-center">
-      <div className="learning-head"><div><p className="eyebrow">Course workspace</p><h2>Learning & assignments</h2><p>Build the weekly programme, publish resources and review student work.</p></div><div className="learning-tabs"><button className={view === "modules" ? "active" : ""} onClick={() => setView("modules")}>Modules</button><button className={view === "progress" ? "active" : ""} onClick={() => setView("progress")}>Material progress</button><button className={view === "activities" ? "active" : ""} onClick={() => setView("activities")}>Activity responses ({activitySubmissions.length})</button><button className={view === "submissions" ? "active" : ""} onClick={() => setView("submissions")}>Submissions ({submissions.filter((item) => item.status === "submitted").length})</button></div></div>
+      <div className="learning-head"><div><p className="eyebrow">Course workspace</p><h2>Learning & assignments</h2><p>Build the weekly programme, publish resources and review student work.</p></div><div className="learning-tabs"><button className={view === "modules" ? "active" : ""} onClick={() => setView("modules")}>Modules</button><button className={view === "progress" ? "active" : ""} onClick={() => setView("progress")}>Material progress</button><button className={view === "submissions" ? "active" : ""} onClick={() => setView("submissions")}>Submissions ({submissions.filter((item) => item.status === "submitted").length})</button></div></div>
       <p className="form-message success">{message}</p>
       {view === "modules" && <div className="learning-staff-grid">
         <form className="learning-form" onSubmit={createModule}><h3>Create weekly module</h3><label>Week number<input name="weekNumber" type="number" min="1" max="52" required /></label><label>Module title<input name="title" required /></label><label>Summary<textarea name="summary" rows="4" /></label><label className="inline-check"><input name="published" type="checkbox" /> Publish immediately</label><button className="button primary">Create module</button></form>
@@ -1522,20 +1497,19 @@ function LearningCenter({ mode, demo = false }) {
             <form className="edit-module-form" onSubmit={(event) => saveEdit(event, `/staff/learning/modules/${module.id}`)}><h4>Edit module details</h4><label>Week number<input name="weekNumber" type="number" min="1" max="52" defaultValue={module.weekNumber} required /></label><label>Module title<input name="title" defaultValue={module.title} required /></label><label>Summary<textarea name="summary" rows="3" defaultValue={module.summary || ""} /></label><button className="button light-border">Save module changes</button></form>
             <div className="module-resources"><h4>Current learning materials ({module.materials.length})</h4>{module.materials.length === 0 && <small>No learning materials yet.</small>}{module.materials.map((material, index) => <div className={`editable-content ${material.visible ? "" : "material-hidden"}`} key={material.id}>{editing === `material-${material.id}` ? <form onSubmit={(event) => saveEdit(event, `/staff/learning/materials/${material.id}`)}><label>Title<input name="title" defaultValue={material.title} required /></label><MaterialFields initialType={material.materialType} material={material} /><div className="edit-buttons"><button className="button light-border">Save</button><button type="button" onClick={() => setEditing("")}>Cancel</button></div></form> : <><div><b>{material.title}</b><small>{material.materialType === "note" ? `${material.lessonContent?.slice(0, 80)}${material.lessonContent?.length > 80 ? "…" : ""}` : material.materialType}</small><span className={`material-visibility ${material.visible ? "visible" : "hidden"}`}>{material.visible ? "Visible to students" : "Hidden from students"}</span></div><div className="content-actions"><button aria-label={`Move ${material.title} up`} disabled={index === 0} onClick={() => move("materials", module.materials, index, -1)}>↑</button><button aria-label={`Move ${material.title} down`} disabled={index === module.materials.length - 1} onClick={() => move("materials", module.materials, index, 1)}>↓</button><button className={`material-eye ${material.visible ? "visible" : "hidden"}`} aria-label={material.visible ? `Hide ${material.title} from students` : `Show ${material.title} to students`} title={material.visible ? "Hide from students" : "Show to students"} onClick={() => toggleMaterialVisibility(material)}><span aria-hidden="true">👁</span></button><button onClick={() => setEditing(`material-${material.id}`)}>Edit</button><button className="delete-content" onClick={() => deleteMaterial(material)}>Delete</button></div></>}</div>)}</div>
             <div className="module-resources"><h4>Current assignments</h4>{module.assignments.length === 0 && <small>No assignments yet.</small>}{module.assignments.map((assignment, index) => <div className="editable-content" key={assignment.id}>{editing === `assignment-${assignment.id}` ? <form onSubmit={(event) => saveEdit(event, `/staff/learning/assignments/${assignment.id}`)}><label>Title<input name="title" defaultValue={assignment.title} required /></label><AssignmentInstructions defaultValue={assignment.instructions} /><UploadSlots defaultValue={assignment.uploadSlots || []} /><label>Deadline<input name="dueAt" type="datetime-local" defaultValue={new Date(assignment.dueAt).toISOString().slice(0, 16)} required /></label><label>Maximum score<input name="maxScore" type="number" min="1" max="1000" defaultValue={assignment.maxScore} required /></label><div className="edit-buttons"><button className="button light-border">Save</button><button type="button" onClick={() => setEditing("")}>Cancel</button></div></form> : <><div><b>{assignment.title}</b><small>Due {new Date(assignment.dueAt).toLocaleString()}</small></div><div className="content-actions"><button disabled={index === 0} onClick={() => move("assignments", module.assignments, index, -1)}>↑</button><button disabled={index === module.assignments.length - 1} onClick={() => move("assignments", module.assignments, index, 1)}>↓</button><button onClick={() => setEditing(`assignment-${assignment.id}`)}>Edit</button></div></>}</div>)}</div>
-            <div className="module-resources activity-admin"><h4>Class activity</h4>{module.activity ? editing === `activity-${module.activity.id}` ? <form onSubmit={(event) => saveEdit(event, `/staff/learning/activities/${module.activity.id}`)}><label>Title<input name="title" defaultValue={module.activity.title} required /></label><AssignmentInstructions defaultValue={module.activity.instructions} /><div className="edit-buttons"><button className="button light-border">Save activity</button><button type="button" onClick={() => setEditing("")}>Cancel</button></div></form> : <><div><b>{module.activity.title}</b><small>{activitySubmissions.filter((item) => Number(item.activityId) === Number(module.activity.id)).length} responses received</small></div><div className="content-actions"><button onClick={() => setEditing(`activity-${module.activity.id}`)}>Edit</button><button className="delete-content" onClick={() => deleteActivity(module.activity)}>Delete</button></div></> : <form onSubmit={(event) => addActivity(event, module.id)}><p className="material-help">Add one practical activity for this week. Students complete it after marking the visible materials Done.</p><label>Activity title<input name="title" placeholder="e.g. Launch a Linux web server" required /></label><AssignmentInstructions /><button className="button light-border">Add class activity</button></form>}</div>
+
             <form className="combined-material-form" onSubmit={(event) => addMaterial(event, module.id)}><h4>Add learning content</h4><p className="material-help">Use one topic for everything below. Add a note, video, link or file—or add several together.</p><label>Topic or title<input name="title" placeholder="e.g. Introduction to Linux" required /></label><fieldset><legend>Lesson note</legend><label>Lesson note<textarea name="lessonContent" rows="8" placeholder="Write or paste the lesson note here…" /></label></fieldset><fieldset><legend>YouTube video</legend><label>YouTube URL<input name="videoUrl" type="url" placeholder="https://youtube.com/watch?v=…" /></label></fieldset><fieldset><legend>Resource link or file</legend><label>Resource URL<input name="resourceUrl" type="url" placeholder="https://…" /></label><label>Upload file<input name="file" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.zip" /></label><small>Maximum file size: 10 MB.</small></fieldset><button className="button light-border">Add selected content to this week</button></form>
             <form onSubmit={(event) => addAssignment(event, module.id)}><h4>Create assignment</h4><label>Title<input name="title" required /></label><AssignmentInstructions /><UploadSlots /><label>Deadline<input name="dueAt" type="datetime-local" required /></label><label>Maximum score<input name="maxScore" type="number" min="1" max="1000" defaultValue="100" required /></label><button className="button light-border">Create assignment</button></form>
             <button className="button primary full" onClick={() => togglePublished(module)}>{module.published ? "Return module to draft" : "Publish module to students"}</button>
           </div>}
         </article>)}</div>
       </div>}
-      {view === "activities" && <div className="activity-submission-list">{activitySubmissions.length === 0 ? <div className="empty">No class activity responses yet. Add an activity to a weekly module to get started.</div> : activitySubmissions.map((submission) => <article key={submission.id}><header><div><span>Week {submission.weekNumber} · {submission.moduleTitle}</span><h3>{submission.activityTitle}</h3><p>{submission.studentName} · {submission.email}</p></div><time>{new Date(submission.submittedAt).toLocaleString()}</time></header><div className="activity-response"><AssignmentMarkdown>{submission.response}</AssignmentMarkdown></div></article>)}</div>}
       {view === "submissions" && <div className="submission-review-list">{submissions.length === 0 ? <div className="empty">No assignment submissions yet.</div> : submissions.map((submission) => <article key={submission.id}><div className="submission-heading"><div><span>{submission.assignmentTitle}</span><h3>{submission.studentName}</h3><p>{submission.email} · Submitted {new Date(submission.submittedAt).toLocaleString()}</p></div><div><b className={`work-status ${submission.status}`}>{submissionLabel(submission.status)}</b>{submission.isLate ? <b className="late-flag">Late</b> : null}</div></div>{submission.submissionUrl && <a href={submission.submissionUrl} target="_blank" rel="noreferrer">Open submitted project ↗</a>}<SubmissionFiles submission={submission} />{submission.note && <p className="student-note">“{submission.note}”</p>}<form onSubmit={(event) => reviewSubmission(event, submission.id)}><label>Final score<input name="score" type="number" min="0" max="1000" defaultValue={submission.score ?? ""} required /></label><label className="review-feedback">Final feedback<textarea name="feedback" rows="3" defaultValue={submission.feedback || ""} required /></label><button className="button primary">Publish final result</button></form></article>)}</div>}
       {view === "progress" && <div className="material-progress-monitor"><div className="progress-status-summary">{["done", "in_progress", "not_started"].map((status) => <article key={status}><span>{submissionLabel(status)}</span><strong>{materialProgress.filter((item) => item.status === status).length}</strong></article>)}</div>{materialProgress.length === 0 ? <div className="empty">Progress will appear when approved students and learning materials are available.</div> : <><div className="material-progress-filters"><label>Learning material<select value={progressMaterial} onChange={(event) => setProgressMaterial(event.target.value)}><option value="">All materials</option>{progressMaterials.map((item) => <option key={item.materialId} value={item.materialId}>Week {item.weekNumber} · {item.materialTitle} ({item.materialType})</option>)}</select></label><label>Week<select value={progressWeek} onChange={(event) => setProgressWeek(event.target.value)}><option value="">All weeks</option>{progressWeeks.map((week) => <option key={week} value={week}>Week {week}</option>)}</select></label><label>Status<select value={progressStatus} onChange={(event) => setProgressStatus(event.target.value)}><option value="">All statuses</option><option value="done">Done</option><option value="in_progress">In progress</option><option value="not_started">Not started</option></select></label><label>Find learner<input type="search" value={progressSearch} onChange={(event) => setProgressSearch(event.target.value)} placeholder="Name or email" /></label><button type="button" className="button light-border" onClick={clearProgressFilters} disabled={!progressMaterial && !progressWeek && !progressStatus && !progressSearch}>Clear filters</button></div><div className="progress-filter-result" role="status"><b>{filteredMaterialProgress.length}</b> of {materialProgress.length} learner-material records shown</div>{filteredMaterialProgress.length === 0 ? <div className="empty">No students match these filters.</div> : <div className="progress-table"><div className="progress-table-head"><b>Learner</b><b>Material</b><b>Week</b><b>Status</b></div>{filteredMaterialProgress.map((item) => <article key={`${item.studentId}-${item.materialId}`}><span><b>{item.studentName}</b><small>{item.email}</small></span><span><b>{item.materialTitle}</b><small>{item.materialType}</small></span><span>Week {item.weekNumber}</span><b className={`material-progress-status ${item.status}`}>{submissionLabel(item.status)}</b></article>)}</div>}</>}</div>}
     </section>
   );
   return (
-    <section className="learning-center student-learning"><div className="learning-head"><div><p className="eyebrow">DevOps programme</p><h2>Learning workspace</h2><p>Open your lessons, complete class activities and assignments, and track mentor feedback.</p></div><div className="course-progress"><strong>{progress.percentage}%</strong><span>{progress.completed} of {progress.total} assignments completed</span></div></div><div className="progress-track"><span style={{ width: `${progress.percentage}%` }} /></div><p className="form-message success">{message}</p>{modules.length === 0 ? <div className="empty">Your learning modules will appear here when they are published.</div> : <div className="student-modules">{modules.map((module) => { const materialsDone = module.materials.every((material) => material.progressStatus === "done"); return <article key={module.id}><div className="student-module-head"><span>Week {module.weekNumber}</span><div><h3>{module.title}</h3><p>{module.summary}</p></div>{module.isComplete && <b className="week-complete">Week complete</b>}</div>{module.materials.length > 0 && <div className="student-materials"><h4>1. Learning materials</h4>{module.materials.map((material) => <StudentMaterial key={material.id} material={material} onProgress={updateMaterialProgress} />)}</div>}{module.activity && <section className={`student-class-activity ${module.activity.submittedAt ? "submitted" : ""}`}><div className="class-activity-heading"><span>2. Class activity</span>{module.activity.submittedAt && <b>Completed</b>}</div><h4>{module.activity.title}</h4><AssignmentMarkdown>{module.activity.instructions}</AssignmentMarkdown>{!materialsDone ? <p className="activity-locked">Mark all visible learning materials for this week as Done to unlock the class activity.</p> : <form onSubmit={(event) => submitActivity(event, module.activity.id)}><label htmlFor={`activity-response-${module.activity.id}`}>Your response</label><textarea id={`activity-response-${module.activity.id}`} name="response" rows="6" maxLength="10000" defaultValue={module.activity.submissionResponse || ""} required placeholder="Describe what you did, include key commands or decisions, and note the result." /><button className="button primary">{module.activity.submittedAt ? "Update response" : "Submit class activity"}</button></form>}</section>}{module.assignments.map((assignment) => <AssignmentCard key={assignment.id} assignment={assignment} onSubmitted={load} />)}</article>; })}</div>}</section>
+    <section className="learning-center student-learning"><div className="learning-head"><div><p className="eyebrow">DevOps programme</p><h2>Learning workspace</h2><p>Open your lessons, mark your progress and review learning resources.</p></div><div className="course-progress"><strong>{progress.percentage}%</strong><span>{progress.completed} of {progress.total} assignments completed</span></div></div><div className="progress-track"><span style={{ width: `${progress.percentage}%` }} /></div><p className="form-message success">{message}</p>{modules.length === 0 ? <div className="empty">Your learning modules will appear here when they are published.</div> : <div className="student-modules">{modules.map((module) => { return <article key={module.id}><div className="student-module-head"><span>Week {module.weekNumber}</span><div><h3>{module.title}</h3><p>{module.summary}</p></div>{module.isComplete && <b className="week-complete">Week complete</b>}</div>{module.materials.length > 0 && <div className="student-materials"><h4>1. Learning materials</h4>{module.materials.map((material) => <StudentMaterial key={material.id} material={material} onProgress={updateMaterialProgress} />)}</div>}{module.assignments.map((assignment) => <AssignmentCard key={assignment.id} assignment={assignment} onSubmitted={load} />)}</article>; })}</div>}</section>
   );
 }
 
@@ -2132,6 +2106,7 @@ function StudentDashboard({ user, logout }) {
         )}
         {active === "Attendance" && <AttendanceCenter mode={isClassRep ? "rep" : "student"} />}
         {active === "Learning" && <LearningCenter mode="student" />}
+        {active === "Class Activity" && <ClassActivityCenter mode="student" />}
         {active === "Assignments" && <AssignmentsCenter />}
         {active === "Certificates" && <StudentCertificates />}
         {active === "Leaderboard" && <StudentOverallLeaderboard user={user} />}
@@ -2140,6 +2115,98 @@ function StudentDashboard({ user, logout }) {
         {active === "Security" && <div className="student-account-settings"><StudentProfileEditor /><SecurityCenter role="student" currentEmail={user.email} /></div>}
     </PortalShell>
   );
+}
+
+function ClassActivityCenter({ mode, demo = false }) {
+  const staff = mode !== "student";
+  const [weeks, setWeeks] = useState([]), [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
+  const [selectedWeekId, setSelectedWeekId] = useState(null), [draft, setDraft] = useState(null);
+  const [activeActivityId, setActiveActivityId] = useState(null), [answers, setAnswers] = useState({}), [result, setResult] = useState(null);
+  const [attempts, setAttempts] = useState([]), [selectedAttempt, setSelectedAttempt] = useState(null);
+  const load = async () => {
+    if (demo) { setMessage("Connect the backend to manage private class activities."); return; }
+    try {
+      const data = await api(staff ? "/staff/class-activities" : "/student/class-activities");
+      setWeeks(data || []);
+      if (staff && selectedWeekId && !data.some(week => Number(week.id) === Number(selectedWeekId))) setSelectedWeekId(null);
+      if (!staff && activeActivityId && !data.some(week => Number(week.activity?.id) === Number(activeActivityId))) setActiveActivityId(null);
+    } catch (error) { setMessage(error.message); }
+  };
+  useEffect(() => { load(); }, [mode, demo]);
+  useEffect(() => { if (staff && !selectedWeekId && weeks.length) setSelectedWeekId(weeks[0].id); }, [staff, selectedWeekId, weeks]);
+  useEffect(() => {
+    if (!staff || !selectedWeekId || demo) { setAttempts([]); setSelectedAttempt(null); return; }
+    setSelectedAttempt(null);
+    api(`/staff/class-activities/${selectedWeekId}/results`).then(setAttempts).catch(error => setMessage(error.message));
+  }, [staff, selectedWeekId, demo, weeks]);
+  const selectedWeek = weeks.find(week => Number(week.id) === Number(selectedWeekId));
+  useEffect(() => {
+    if (!staff || !selectedWeek) { setDraft(null); return; }
+    const activity = selectedWeek.activity;
+    setDraft({ title: activity?.title || `Week ${selectedWeek.weekNumber} Class Activity`, instructions: activity?.instructions || "Complete this private knowledge check after reviewing this week's learning materials.", allowRetakes: Boolean(activity?.allowRetakes), questions: activity?.questions?.length ? activity.questions.map(q => ({ ...q, options: q.options?.length ? q.options : ["", "", "", ""], correctAnswers: q.correctAnswers || [] })) : [newActivityQuestion()] });
+  }, [staff, selectedWeekId, weeks]);
+
+  async function saveActivity(event) {
+    event.preventDefault(); setBusy(true);
+    try {
+      const data = await api(`/staff/class-activities/${selectedWeekId}`, { method: "PUT", body: JSON.stringify(draft) });
+      setMessage(data.message); await load();
+    } catch (error) { setMessage(error.message); }
+    finally { setBusy(false); }
+  }
+  async function removeActivity() {
+    if (!selectedWeek?.activity || !window.confirm(`Remove the private activity for Week ${selectedWeek.weekNumber}? This also removes its attempts and results.`)) return;
+    try { const data = await api(`/staff/class-activities/${selectedWeekId}`, { method: "DELETE" }); setMessage(data.message); await load(); }
+    catch (error) { setMessage(error.message); }
+  }
+  async function submitQuiz(event) {
+    event.preventDefault(); setBusy(true);
+    try {
+      const data = await api(`/student/class-activities/${activeActivityId}/submit`, { method: "POST", body: JSON.stringify({ answers }) });
+      setResult(data); setMessage(data.message); await load();
+    } catch (error) { setMessage(error.message); }
+    finally { setBusy(false); }
+  }
+  function updateQuestion(index, field, value) {
+    setDraft(current => ({ ...current, questions: current.questions.map((question, i) => i === index ? { ...question, [field]: value } : question) }));
+  }
+  function updateOption(qIndex, optionIndex, value) {
+    setDraft(current => ({ ...current, questions: current.questions.map((question, i) => i === qIndex ? { ...question, options: question.options.map((option, j) => j === optionIndex ? value : option) } : question) }));
+  }
+  function updateMultiAnswer(qIndex, optionIndex, checked) {
+    const current = draft.questions[qIndex].correctAnswers || [];
+    updateQuestion(qIndex, "correctAnswers", checked ? [...new Set([...current, optionIndex])] : current.filter(index => index !== optionIndex));
+  }
+  async function showAttempt(attemptId) {
+    try { setSelectedAttempt(await api(`/staff/class-activities/attempts/${attemptId}`)); }
+    catch (error) { setMessage(error.message); }
+  }
+
+  if (staff) return <section className="class-activity-center">
+    <header className="class-activity-page-head"><div><p className="eyebrow">Private knowledge checks</p><h2>Class Activity</h2><p>Create a self-paced quiz for each week. Learners see their own score and answer review; the class has no public leaderboard.</p></div></header>
+    {message && <p className="form-message success" role="status">{message}</p>}
+    <div className="class-activity-staff-layout"><nav className="class-activity-week-list" aria-label="Weekly activities">{weeks.map(week => <button key={week.id} className={Number(week.id) === Number(selectedWeekId) ? "active" : ""} onClick={() => setSelectedWeekId(week.id)}><span>Week {week.weekNumber}</span><b>{week.title}</b><small>{week.activity ? `${week.activity.questions.length} questions · ${week.activity.stats.attempts} attempts` : "Activity not set"}</small></button>)}{!weeks.length && <div className="empty">No weekly modules are available yet.</div>}</nav>
+      {selectedWeek && draft && <div className="class-activity-editor"><div className="class-activity-materials"><div><p className="eyebrow">Week {selectedWeek.weekNumber} materials</p><h3>{selectedWeek.title}</h3><p>Review these resources before writing questions.</p></div>{selectedWeek.materials.length ? selectedWeek.materials.map(material => <article key={material.id}><b>{material.title}</b><small>{material.materialType}{material.visible === false ? " · hidden from students" : " · visible to students"}</small>{material.lessonContent && <details><summary>Read lesson note</summary><div className="class-activity-note"><AssignmentMarkdown>{material.lessonContent}</AssignmentMarkdown></div></details>}{material.resourceUrl && <a href={material.resourceUrl} target="_blank" rel="noreferrer">Open material ↗</a>}</article>) : <p className="empty">No learning materials are attached to this week.</p>}</div>
+        <form className="class-activity-form" onSubmit={saveActivity}><h3>{selectedWeek.activity ? "Edit private class activity" : "Create private class activity"}</h3>{selectedWeek.activity?.stats.attempts > 0 && <p className="activity-lock-note">Learners have submitted attempts, so these questions are locked to protect their saved results.</p>}<label>Activity title<input value={draft.title} maxLength="180" onChange={event => setDraft({ ...draft, title: event.target.value })} required /></label><label>Opening instructions<textarea value={draft.instructions} maxLength="10000" rows="3" onChange={event => setDraft({ ...draft, instructions: event.target.value })} /></label><label className="inline-check"><input type="checkbox" checked={draft.allowRetakes} onChange={event => setDraft({ ...draft, allowRetakes: event.target.checked })} /> Allow learners to retake this activity</label>
+          <div className="class-activity-question-list">{draft.questions.map((question, qIndex) => <article className="class-activity-question-editor" key={question.id || `new-${qIndex}`}><header><b>Question {qIndex + 1}</b><button type="button" className="delete-content" disabled={draft.questions.length <= 1} onClick={() => setDraft({ ...draft, questions: draft.questions.filter((_, index) => index !== qIndex) })}>Remove</button></header><label>Question type<select value={question.questionType || "single_choice"} onChange={event => updateQuestion(qIndex, "questionType", event.target.value)}><option value="single_choice">Objective · one correct option</option><option value="multiple_selection">Objective · select all correct options</option><option value="true_false">True or false</option><option value="short_answer">Question and answer · short answer</option></select></label><label>Question<textarea value={question.prompt} rows="3" maxLength="1200" onChange={event => updateQuestion(qIndex, "prompt", event.target.value)} required /></label>
+            {question.questionType === "short_answer" ? <label>Accepted answer(s)<small>For alternate accepted answers, separate each with |</small><input value={question.correctText || ""} maxLength="500" placeholder="e.g. git status | git status --short" onChange={event => updateQuestion(qIndex, "correctText", event.target.value)} required /></label> : question.questionType === "true_false" ? <label>Correct answer<select value={question.correctIndex ?? 0} onChange={event => updateQuestion(qIndex, "correctIndex", Number(event.target.value))}><option value={0}>True</option><option value={1}>False</option></select></label> : <div className="activity-answer-options"><span>Answer options <small>{question.questionType === "multiple_selection" ? "Mark every correct option" : "Choose the correct option"}</small></span>{(question.options || ["", "", "", ""]).map((option, optionIndex) => <label key={optionIndex} className="activity-option-row">{question.questionType === "multiple_selection" ? <input type="checkbox" checked={(question.correctAnswers || []).includes(optionIndex)} onChange={event => updateMultiAnswer(qIndex, optionIndex, event.target.checked)} /> : <input type="radio" name={`correct-${selectedWeek.id}-${qIndex}`} checked={Number(question.correctIndex || 0) === optionIndex} onChange={() => updateQuestion(qIndex, "correctIndex", optionIndex)} />}<input value={option} placeholder={`Option ${optionIndex + 1}`} onChange={event => updateOption(qIndex, optionIndex, event.target.value)} required /></label>)}</div>}
+            <label>Explanation after submission<textarea value={question.explanation || ""} rows="2" maxLength="1500" onChange={event => updateQuestion(qIndex, "explanation", event.target.value)} placeholder="Explain why the answer is correct." /></label></article>)}</div>
+          <button type="button" className="button light-border" onClick={() => setDraft({ ...draft, questions: [...draft.questions, newActivityQuestion()] })} disabled={draft.questions.length >= 50}>Add question</button><div className="class-activity-save-row"><button className="button primary" disabled={busy || selectedWeek.activity?.stats.attempts > 0}>{busy ? "Saving…" : "Save class activity"}</button>{selectedWeek.activity && <button type="button" className="button light-border" onClick={removeActivity}>Remove activity</button>}</div></form>
+        {selectedWeek.activity && <section className="class-activity-attempts"><h3>Learner attempts</h3>{attempts.length ? attempts.map(attempt => <article key={attempt.id}><div><b>{attempt.studentName}</b><small>{attempt.email} · Attempt {attempt.attemptNo} · {new Date(attempt.completedAt).toLocaleString()}</small></div><strong>{attempt.score}%</strong><button className="button light-border" onClick={() => showAttempt(attempt.id)}>Review</button></article>) : <p className="empty">No learner attempts for this week yet.</p>}{selectedAttempt && <div className="staff-activity-review"><h4>Attempt {selectedAttempt.attemptNo} · {selectedAttempt.score}%</h4>{selectedAttempt.answers.map((answer, index) => <article key={index}><b>{index + 1}. {answer.prompt}</b><small>{answer.isCorrect ? "Correct" : "Incorrect"} · Learner answer: {Array.isArray(answer.answer) ? answer.answer.join(", ") : answer.answer || "No answer"}</small></article>)}</div>}</section>}
+      </div>}
+    </div>
+  </section>;
+
+  const activeWeek = weeks.find(week => Number(week.activity?.id) === Number(activeActivityId));
+  const activeActivity = activeWeek?.activity;
+  if (demo) return <section className="class-activity-center"><h2>Class Activity</h2><p>Connect the backend to see private weekly activities.</p></section>;
+  if (activeActivity && !result) return <section className="class-activity-center"><button className="button light-border" onClick={() => { setActiveActivityId(null); setAnswers({}); }}>← Back to activities</button><header className="class-activity-page-head"><div><p className="eyebrow">Week {activeWeek.weekNumber} · Private activity</p><h2>{activeActivity.title}</h2><p>{activeActivity.instructions}</p><small>{activeActivity.questions.length} questions · Your answers and result are private.</small></div></header><form className="student-private-quiz" onSubmit={submitQuiz}>{activeActivity.questions.map((question, index) => <article key={question.id}><span>Question {index + 1} of {activeActivity.questions.length}</span><h3>{question.prompt}</h3>{question.questionType === "short_answer" ? <label>Your answer<input value={answers[question.id] || ""} onChange={event => setAnswers({ ...answers, [question.id]: event.target.value })} required /></label> : question.questionType === "multiple_selection" ? <fieldset>{question.options.map((option, optionIndex) => <label key={optionIndex}><input type="checkbox" checked={(answers[question.id] || []).includes(optionIndex)} onChange={event => { const current = answers[question.id] || []; setAnswers({ ...answers, [question.id]: event.target.checked ? [...current, optionIndex] : current.filter(value => value !== optionIndex) }); }} />{option}</label>)}</fieldset> : question.options.map((option, optionIndex) => <label className="student-quiz-option" key={optionIndex}><input type="radio" name={`answer-${question.id}`} checked={Number(answers[question.id]) === optionIndex} onChange={() => setAnswers({ ...answers, [question.id]: optionIndex })} required />{option}</label>)}</article>)}<button className="button primary" disabled={busy}>{busy ? "Submitting…" : "Submit private activity"}</button></form></section>;
+  if (result) return <section className="class-activity-center"><div className="private-quiz-result"><p className="eyebrow">Private result</p><h2>{activeActivity?.title || "Class activity complete"}</h2><strong>{result.score}%</strong><p>{result.correctCount} of {result.totalQuestions} correct</p><div>{result.review?.map((answer, index) => <article key={index} className={answer.isCorrect ? "correct" : "incorrect"}><h3>{index + 1}. {answer.prompt}</h3><p>Your answer: <b>{Array.isArray(answer.answer) ? answer.answer.map(value => answer.options[value]).join(", ") : answer.questionType === "single_choice" || answer.questionType === "true_false" ? answer.options[answer.answer] : answer.answer}</b></p><p>Correct answer: <b>{answer.questionType === "short_answer" ? answer.correctText : answer.questionType === "multiple_selection" ? answer.correctAnswers.map(value => answer.options[value]).join(", ") : answer.options[answer.correctIndex]}</b></p>{answer.explanation && <small>{answer.explanation}</small>}</article>)}</div><button className="button primary" onClick={() => { setResult(null); setActiveActivityId(null); setAnswers({}); load(); }}>Back to class activities</button></div></section>;
+  return <section className="class-activity-center"><header className="class-activity-page-head"><div><p className="eyebrow">Your weekly knowledge checks</p><h2>Class Activity</h2><p>After you finish a week’s visible materials, complete its private activity to finish the week. Only you and your mentors can see your result.</p></div></header>{message && <p className="form-message success" role="status">{message}</p>}<div className="student-class-activity-list">{weeks.length ? weeks.map(week => <article key={week.id}><header><span>Week {week.weekNumber}</span><div><h3>{week.activity.title}</h3><p>{week.title}</p></div>{week.activity.lastAttempt && <strong className="private-score">{week.activity.lastAttempt.score}%</strong>}</header>{week.activity.lastAttempt ? <><p>Completed {new Date(week.activity.lastAttempt.completedAt).toLocaleString()} · Attempt {week.activity.lastAttempt.attemptNo}</p><button className="button light-border" onClick={() => { setActiveActivityId(week.activity.id); setResult({ score: week.activity.lastAttempt.score, correctCount: week.activity.lastAttempt.correctCount, totalQuestions: week.activity.lastAttempt.totalQuestions, review: week.activity.review }); }}>Review answers</button>{week.activity.allowRetakes && <button className="button primary" onClick={() => { setResult(null); setAnswers({}); setActiveActivityId(week.activity.id); }}>Retake activity</button>}</> : week.activity.canStart ? <><p>{week.activity.instructions || `${week.activity.questions.length} private questions`}</p><p className="activity-material-ready">All visible materials complete. Activity unlocked.</p><button className="button primary" onClick={() => { setResult(null); setAnswers({}); setActiveActivityId(week.activity.id); }}>Start private activity</button></> : <p className="activity-locked">Complete all visible materials for this week to unlock the activity. Later weeks unlock in order.</p>}</article>) : <div className="empty">No class activities are available yet.</div>}</div></section>;
+}
+
+function newActivityQuestion() {
+  return { prompt: "", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "", explanation: "" };
 }
 
 function QuizResults({ mode, onLive }) {
@@ -3462,6 +3529,7 @@ function AdminDashboard({ user, logout }) {
           <AttendanceCenter mode="staff" demo={user.demo} />
         )}{" "}
         {active === "Learning" && <LearningCenter mode="staff" demo={user.demo} />}
+        {active === "Class Activity" && <ClassActivityCenter mode="admin" demo={user.demo} />}
         {active === "Assignments" && <AssignmentsCenter staff demo={user.demo} />}
         {active === "Live class" && <LiveClassCenter mode="staff" user={user} demo={user.demo} />}
         {active === "Live quiz" && <QuizCenter mode="admin" demo={user.demo} />}
@@ -3488,6 +3556,7 @@ function MentorDashboard({ user, logout }) {
         {active === "Leaderboard" && <OverallLeaderboard />}
         {active === "Attendance" && <AttendanceCenter mode="staff" />}
         {active === "Learning" && <LearningCenter mode="staff" />}
+        {active === "Class Activity" && <ClassActivityCenter mode="admin" />}
         {active === "Assignments" && <AssignmentsCenter staff />}
         {active === "Live class" && <LiveClassCenter mode="staff" user={user} />}
         {active === "Live quiz" && <QuizCenter mode="admin" />}

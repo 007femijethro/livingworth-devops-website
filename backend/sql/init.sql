@@ -220,6 +220,7 @@ CREATE TABLE IF NOT EXISTS learning_activities (
   module_id INT NOT NULL UNIQUE,
   title VARCHAR(180) NOT NULL,
   instructions TEXT NOT NULL,
+  allow_retakes BOOLEAN NOT NULL DEFAULT FALSE,
   created_by INT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -236,6 +237,46 @@ CREATE TABLE IF NOT EXISTS activity_submissions (
   UNIQUE KEY one_submission_per_activity (activity_id, student_id),
   FOREIGN KEY (activity_id) REFERENCES learning_activities(id) ON DELETE CASCADE,
   FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS activity_questions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  activity_id INT NOT NULL,
+  prompt TEXT NOT NULL,
+  question_type VARCHAR(30) NOT NULL,
+  options_json JSON NOT NULL,
+  correct_index SMALLINT,
+  correct_answers_json JSON NOT NULL,
+  correct_text VARCHAR(500),
+  explanation TEXT,
+  sequence_no INT NOT NULL,
+  FOREIGN KEY (activity_id) REFERENCES learning_activities(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS activity_attempts (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  activity_id INT NOT NULL,
+  student_id INT NOT NULL,
+  attempt_no INT NOT NULL DEFAULT 1,
+  score INT NOT NULL DEFAULT 0,
+  correct_count INT NOT NULL DEFAULT 0,
+  total_questions INT NOT NULL DEFAULT 0,
+  started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY one_attempt_number (activity_id, student_id, attempt_no),
+  FOREIGN KEY (activity_id) REFERENCES learning_activities(id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS activity_attempt_answers (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  attempt_id BIGINT NOT NULL,
+  question_id INT NOT NULL,
+  answer_json JSON,
+  is_correct BOOLEAN NOT NULL DEFAULT FALSE,
+  UNIQUE KEY one_answer_per_question (attempt_id, question_id),
+  FOREIGN KEY (attempt_id) REFERENCES activity_attempts(id) ON DELETE CASCADE,
+  FOREIGN KEY (question_id) REFERENCES activity_questions(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS assignments (
