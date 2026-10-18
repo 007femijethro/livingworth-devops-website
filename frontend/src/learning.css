@@ -240,3 +240,12 @@
   .student-class-activity { padding: 16px 12px; }
   .student-class-activity textarea { min-width: 0; max-width: 100%; font-size: 16px; }
 }
+
+/* Make the required weekly activity visible at the end of the learning work. */
+.week-activity-next { display:flex; align-items:center; justify-content:space-between; gap:24px; margin:28px 0 0; padding:24px; border:2px solid #e2b653; border-radius:16px; background:#fff9e9; }
+.week-activity-next h4 { margin:8px 0; color:#142f46; font-size:1.2rem; }
+.week-activity-next p { margin:0; max-width:680px; color:#43596a; line-height:1.6; }
+.week-activity-next .button { flex-shrink:0; white-space:normal; text-align:center; }
+.student-class-activity-list .activity-requested-week { border:2px solid #b17b16; box-shadow:0 0 0 4px #fff1cc; scroll-margin-top:100px; }
+.student-class-activity-list .activity-requested-week:focus-visible { outline:3px solid #092d58; outline-offset:4px; }
+@media(max-width:760px) { .week-activity-next { flex-direction:column; align-items:stretch; padding:20px; gap:18px; } .week-activity-next .button { width:100%; min-height:48px; } }
