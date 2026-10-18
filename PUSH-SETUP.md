@@ -18,7 +18,7 @@ node frontend/scripts/prepare-push-android.mjs /path/to/google-services.json
 ```
 
 The helper installs pinned Capacitor push support, prepares Android version
-1.2 / versionCode 3, creates the notification icon/channel configuration and
+the next native version (currently 1.3 / versionCode 4), creates the notification icon/channel configuration and
 builds with the new native fingerprint. It validates the package and rejects
 service-account files. It does NOT upload any client or server credentials.
 
@@ -28,7 +28,7 @@ repository secret before `android:sync`, or supply it locally when building.
 Build and test the APK on a physical Android device. Do not distribute an APK
 whose native inputs have not been committed: later signed web updates must
 match that native fingerprint. Existing version 1.1 updates stay on channel 2;
-version 1.2 uses channel 3.
+the next push release uses its new versionCode channel.
 
 ## 2. Private server credential
 
