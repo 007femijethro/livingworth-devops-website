@@ -23,11 +23,13 @@ function validateQuiz(title, instructions, questions) {
     const correctAnswers = [...new Set((Array.isArray(question.correctAnswers) ? question.correctAnswers : []).map(Number))].sort((a, b) => a - b);
     const correctText = String(question.correctText || '').trim().slice(0, 500);
     const badOptions = ['single_choice', 'multiple_selection'].includes(questionType) && (options.length < 2 || options.length > 6 || options.some(option => !option));
-    const badSingle = questionType === 'single_choice' && (!Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex >= options.length);
+    const singleAnswer = ['single_choice', 'true_false'].includes(questionType);
+    const missingIndex = question.correctIndex == null || String(question.correctIndex).trim() === '';
+    const badSingle = singleAnswer && (missingIndex || !Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex >= options.length);
     const badMulti = questionType === 'multiple_selection' && (!correctAnswers.length || correctAnswers.some(answer => !Number.isInteger(answer) || answer < 0 || answer >= options.length));
     if (!questionType || !prompt || prompt.length > 1200 || badOptions || badSingle || badMulti || (questionType === 'short_answer' && !correctText)) throw new Error(`Question ${index + 1} is incomplete.`);
     return {
-      prompt, questionType, options, correctIndex: questionType === 'single_choice' ? correctIndex : null,
+      prompt, questionType, options, correctIndex: singleAnswer ? correctIndex : null,
       correctAnswers: questionType === 'multiple_selection' ? correctAnswers : [],
       correctText: questionType === 'short_answer' ? correctText : null,
       explanation: String(question.explanation || '').trim().slice(0, 1500)
