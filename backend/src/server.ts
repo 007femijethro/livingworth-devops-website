@@ -13,6 +13,7 @@ import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
 import { configureEmailControl, isEmailDeliveryEnabled, sendApplicationDecision, sendApplicationEmails, sendEmailChangeCode, sendPasswordReset, sendTestEmail, verifyEmailConnection } from './mailer.js';
 import { registerLearningRoutes } from './learning.js';
 import { registerClassActivityRoutes } from './class-activities.js';
+import { registerMaterialExportRoutes } from './material-export.js';
 import { registerAnnouncementRoutes } from './announcements.js';
 import { registerAnalyticsRoutes } from './analytics.js';
 import { registerLearnerProfileRoutes } from './learner-profile.js';
@@ -687,6 +688,7 @@ app.get('/api/staff/attendance/export', requireAuth, requireStaff, async (req, r
 registerQuizRoutes(app, pool, requireAuth, requireStaff);
 registerLearningRoutes(app, pool, requireAuth, requireStaff);
 registerClassActivityRoutes(app, pool, requireAuth, requireStaff);
+registerMaterialExportRoutes(app, pool, requireAuth, requireStaff);
 registerAnnouncementRoutes(app, pool, requireAuth, requireStaff);
 registerAnalyticsRoutes(app, pool, requireAuth, requireStaff);
 registerLearnerProfileRoutes(app, pool, requireAuth, requireStaff);

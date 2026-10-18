@@ -35,6 +35,7 @@
     panel.innerHTML = `
       <summary>Import weekly activities</summary>
       <p>Paste the JSON file contents below. This saves through your signed-in staff session. Weeks with learner attempts are protected.</p>
+      <button type="button" data-download-materials>Download all course materials (.zip)</button>
       <button type="button" data-template>Download JSON template</button>
       <label>Weekly activity JSON<textarea rows="9" spellcheck="false" placeholder='{"activities":[{"weekNumber":1,"title":"Week 1 Class Activity","questions":[...]}]}'></textarea></label>
       <button type="button" data-import>Import activities</button>
@@ -49,6 +50,28 @@
     const textarea = panel.querySelector("textarea");
     Object.assign(textarea.style, { display: "block", boxSizing: "border-box", width: "100%", marginTop: "6px", padding: "10px", border: "1px solid #bdccd3", borderRadius: "8px", font: "12px/1.5 ui-monospace, monospace" });
     panel.querySelectorAll("button").forEach(button => Object.assign(button.style, { margin: "4px 8px 4px 0", padding: "8px 12px", border: "1px solid #bdccd3", borderRadius: "7px", background: "#f5f9fa", color: "#123a65", cursor: "pointer", fontWeight: "700" }));
+
+    panel.querySelector("[data-download-materials]").addEventListener("click", async event => {
+      const button = event.currentTarget;
+      const status = panel.querySelector("[data-status]");
+      button.disabled = true;
+      status.textContent = "Preparing course materials ZIP…";
+      try {
+        const response = await fetch("/api/staff/learning/materials/export.zip", { headers: { Authorization: `Bearer ${token()}` } });
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({}));
+          throw new Error(result.message || `Download failed (HTTP ${response.status}).`);
+        }
+        const url = URL.createObjectURL(await response.blob());
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "livingworth-course-materials.zip";
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        status.textContent = "Download started. Check your Downloads folder.";
+      } catch (error) { status.textContent = error.message || "Could not prepare the ZIP download."; }
+      finally { button.disabled = false; }
+    });
 
     panel.querySelector("[data-template]").addEventListener("click", () => {
       const link = document.createElement("a");
