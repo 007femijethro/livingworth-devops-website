@@ -81,7 +81,7 @@ const demoStudents = [
 
 const Logo = () => (
   <a className="brand" href="#home">
-    <img src="/livingworth-logo.jpeg" alt="Livingworth Academy" />
+    <img src="/livingworth-wordmark.png" alt="Livingworth Academy" />
   </a>
 );
 
@@ -1864,7 +1864,7 @@ function CertificateDocument({ certificate }) {
   const valid = certificate.status === "valid";
   return <article className="certificate-document">
     <div className="certificate-border">
-      <img src="/livingworth-logo.jpeg" alt="Livingworth Academy" />
+      <img src="/livingworth-wordmark.png" alt="Livingworth Academy" />
       <p className="certificate-kicker">Livingworth Academy</p>
       <h2>Certificate of Completion</h2>
       <p>This certificate is proudly presented to</p>
@@ -3640,7 +3640,7 @@ export default function App() {
     return <div className="loading">Loading Livingworth Academy…</div>;
   if (page === "mobile-welcome") return (
     <main className="mobile-welcome">
-      <img src="/livingworth-logo.jpeg" alt="Livingworth Academy" />
+      <img src="/livingworth-wordmark.png" alt="Livingworth Academy" />
       <h1>Sign in to {academy.academyName}</h1>
       <p>Your classes, learning materials and academy tools in one place.</p>
       <button className="button primary" onClick={() => navigate("student-login")}>Student sign in</button>

@@ -15,7 +15,7 @@ export default function ModernHome({ navigate, stories }: { navigate: Navigate; 
   const [openTrack, setOpenTrack] = useState<number | null>(null);
   return <div className="modern-site">
     <header className="modern-nav">
-      <a className="modern-logo" href="#top"><img src="/livingworth-logo.jpeg" alt="Livingworth Academy" /></a>
+      <a className="modern-logo" href="#top"><img src="/livingworth-wordmark.png" alt="Livingworth Academy" /></a>
       <nav><a href="/portfolio/">Your mentor</a><a href="#experience">Experience</a><a href="#roadmap">Roadmap</a></nav>
       <div><button className="modern-link" onClick={() => navigate('verify-certificate')}>Verify certificate</button><button className="modern-login" onClick={() => navigate('student-login')}>Log in</button><button className="modern-apply" onClick={() => navigate('register')}>Apply now <span>↗</span></button></div>
     </header>
@@ -91,6 +91,6 @@ export default function ModernHome({ navigate, stories }: { navigate: Navigate; 
 
       <section className="modern-final"><span>Applications are open</span><h2>Ready to build your<br/>DevOps future?</h2><p>Join the next Livingworth Academy cohort and turn curiosity into practical engineering confidence.</p><button onClick={() => navigate('register')}>Apply for the next cohort <b>↗</b></button></section>
     </main>
-    <footer className="modern-footer"><a className="modern-logo" href="#top"><img src="/livingworth-logo.jpeg" alt="Livingworth Academy" /></a><p>Practical learning. Real engineering confidence.</p><div><button onClick={() => navigate('student-login')}>Student portal</button><button onClick={() => navigate('staff-login')}>Staff portal</button></div><small>© {new Date().getFullYear()} Livingworth Academy</small></footer>
+    <footer className="modern-footer"><a className="modern-logo" href="#top"><img src="/livingworth-wordmark.png" alt="Livingworth Academy" /></a><p>Practical learning. Real engineering confidence.</p><div><button onClick={() => navigate('student-login')}>Student portal</button><button onClick={() => navigate('staff-login')}>Staff portal</button></div><small>© {new Date().getFullYear()} Livingworth Academy</small></footer>
   </div>;
 }
