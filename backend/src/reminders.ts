@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { notifyStudents } from './notifications.js';
+import { notifyStudents, notifyUser } from './notifications.js';
 
 const reminderMinutes = Math.max(5, Number(process.env.REMINDER_CHECK_MINUTES || 5));
 import { getAcademySettings } from './academy-settings.js';
@@ -49,9 +49,15 @@ async function sendQuizReminders(pool) {
   }
 }
 
+async function sendAssignmentReminders(pool) {
+ const lead=getAcademySettings().assignmentReminderMinutes;
+ const [items]=await pool.execute(`SELECT a.id,a.title,a.due_at AS dueAt,u.id AS userId FROM assignments a JOIN learning_modules m ON m.id=a.module_id CROSS JOIN users u LEFT JOIN assignment_submissions s ON s.assignment_id=a.id AND s.student_id=u.id WHERE m.published=TRUE AND a.closed_at IS NULL AND u.role='student' AND u.status='approved' AND a.due_at>NOW() AND a.due_at<=NOW()+(? * INTERVAL '1 minute') AND (s.id IS NULL OR s.status IN ('needs_correction','rejected'))`,[lead]);
+ for(const item of items){if(!await claim(pool,`assignment:${item.id}:${item.userId}:${new Date(item.dueAt).toISOString()}`,'assignment_reminder'))continue;await notifyUser(pool,item.userId,{title:`Assignment due soon: ${item.title}`,message:`${item.title} is due ${new Date(item.dueAt).toLocaleString('en-GB',{timeZone:getAcademySettings().classTimezone})}. Open Assignments to finish your work.`,category:'learning',actionTarget:'Assignments'})}
+}
+
 async function run(pool) {
   if (!getAcademySettings().remindersEnabled) return;
-  try { await Promise.all([sendClassReminder(pool), sendQuizReminders(pool)]); }
+  try { await Promise.all([sendClassReminder(pool), sendQuizReminders(pool), sendAssignmentReminders(pool)]); }
   catch (error) { console.error('Email reminder check failed:', error.message); }
 }
 

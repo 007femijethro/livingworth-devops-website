@@ -8,6 +8,8 @@ import crypto from 'node:crypto';
 import { createServer } from 'node:http';
 import { Server as SocketServer } from 'socket.io';
 import { pool } from './db.js';
+import { registerCalendarRoutes } from './calendar.js';
+import { registerPushRoutes,startPushWorker } from './push.js';
 import { registerProfilePictureRoutes } from './profile-pictures.js';
 import { getAcademySettings, loadAcademySettings, registerAcademySettingsRoutes } from './academy-settings.js';
 import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } from './auth.js';
@@ -703,6 +705,8 @@ registerAnalyticsRoutes(app, pool, requireAuth, requireStaff);
 registerLearnerProfileRoutes(app, pool, requireAuth, requireStaff);
 registerProfileChangeRoutes(app, pool, requireAuth, requireAdmin);
 registerNotificationRoutes(app, pool, requireAuth);
+registerCalendarRoutes(app, pool, requireAuth);
+registerPushRoutes(app, pool, requireAuth, requireAdmin);
 registerStoryRoutes(app, pool, requireAuth, requireStaff);
 registerCertificateRoutes(app, pool, requireAuth, requireStaff);
 registerLiveClassRoutes(app, pool, requireAuth, requireStaff);
@@ -772,6 +776,7 @@ async function start() {
     );
   }
   startReminderScheduler(pool);
+  startPushWorker(pool);
   startLiveClassAttendanceScheduler(pool);
   httpServer.listen(port, '0.0.0.0', () => logger.info('server_started', { port }));
 }

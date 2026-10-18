@@ -64,3 +64,9 @@ test('public routes expose only manifests, bundles and public key with appropria
   }
  } finally {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 }));
+
+
+test('ZIP timestamps remain valid and deterministic in western and eastern time zones', async () => fixture(async options => {
+ const previous=process.env.TZ;
+ try {let checksum;for(const zone of ['UTC','America/Los_Angeles','Africa/Lagos']){process.env.TZ=zone;const result=await publishMobileUpdate(options);if(checksum)assert.equal(result.checksum,checksum);checksum=result.checksum}}finally{if(previous===undefined)delete process.env.TZ;else process.env.TZ=previous}
+}));

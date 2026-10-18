@@ -1,4 +1,7 @@
 // @ts-nocheck
+import LearningCalendar from './LearningCalendar';
+import PushSettings, { PushLifecycle } from './PushSettings';
+import { stopPhonePush } from './push-client';
 import { ProfileAvatar, ProfilePictureWelcome } from './ProfilePicture';
 import AdminSettings from './AdminSettings';
 import { useAcademySettings } from './AcademySettingsContext';
@@ -83,13 +86,13 @@ const Logo = () => (
 );
 
 const portalItems = {
-  admin: ["Overview", "Applications", "Profile requests", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Class Activity", "Assignments", "Attendance", "Live class", "Live quiz", "Settings", "Security"],
-  mentor: ["Overview", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Class Activity", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
-  student: ["Overview", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Class Activity", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security"],
+  admin: ["Overview", "Calendar", "Applications", "Profile requests", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Class Activity", "Assignments", "Attendance", "Live class", "Live quiz", "Settings", "Security"],
+  mentor: ["Overview", "Calendar", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Class Activity", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
+  student: ["Overview", "Calendar", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Class Activity", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security"],
 };
 
 const portalIcons = {
-  Overview: "⌂", Applications: "◎", Students: "♙", Certificates: "◇", Leaderboard: "↗", Mentors: "♟",
+  Overview: "⌂", Calendar: "▦", Applications: "◎", Students: "♙", Certificates: "◇", Leaderboard: "↗", Mentors: "♟",
   Stories: "✦", "My stories": "✦", Announcements: "◉", Programme: "▦", Learning: "▤", Assignments: "✓",
   Attendance: "◷", "Live class": "●", "Live quiz": "⚡", "Class Activity": "✎", Notifications: "◌", Settings: "⚙", Security: "⌾",
   Profile: "♙", "Profile requests": "◫",
@@ -1671,7 +1674,7 @@ function AnnouncementsCenter({ mode, demo = false, onUnreadChange = () => {} }) 
   </section>;
 }
 
-function NotificationsCenter({ onNavigate }) {
+function NotificationsCenter({ onNavigate, userId }) {
   const [items, setItems] = useState([]);
   const [message, setMessage] = useState("Loading notifications…");
   const [deletingId, setDeletingId] = useState(null);
@@ -2047,12 +2050,14 @@ function StudentDashboard({ user, logout }) {
   const [active, setActive] = usePortalSection("student", user.mustChangePassword ? "Security" : "Overview");
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [isClassRep, setIsClassRep] = useState(Boolean(user.isClassRep));
+  useEffect(() => { const open = (event) => { const target=event?.detail||sessionStorage.getItem('lw_push_pending_target'); if (portalItems.student.includes(target)) setActive(target); sessionStorage.removeItem('lw_push_pending_target'); }; open(null); window.addEventListener('lw-push-open',open); return()=>window.removeEventListener('lw-push-open',open); }, []);
   useEffect(() => { api("/announcements").then((data) => setUnreadAnnouncements(data.unreadCount)).catch(() => {}); }, []);
   useEffect(() => { if (active === "Attendance") api("/auth/me").then(data => setIsClassRep(Boolean(data.isClassRep))).catch(() => {}); }, [active]);
   return (
     <PortalShell role="student" user={user} active={active} items={portalItems.student} onSelect={setActive} logout={logout} unreadAnnouncements={unreadAnnouncements} forceSecurity={user.mustChangePassword}>
         {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} onUnreadChange={setUnreadAnnouncements} />}
-        {active === "Notifications" && <NotificationsCenter onNavigate={setActive} />}
+        {active === "Calendar" && <LearningCalendar onNavigate={setActive} demo={user.demo}/> }
+        {active === "Notifications" && <><PushSettings userId={user.id}/><NotificationsCenter onNavigate={setActive} userId={user.id}/></>}
         {active === "My stories" && <StudentStoriesCenter />}
         {active === "Announcements" && <AnnouncementsCenter mode="student" onUnreadChange={setUnreadAnnouncements} />}
         {active === "Programme" && (
@@ -3457,6 +3462,7 @@ function AdminDashboard({ user, logout }) {
   );
   return (
     <PortalShell role="admin" user={user} active={active} items={portalItems.admin} onSelect={setActive} logout={logout} forceSecurity={user.mustChangePassword}>
+      {active === "Calendar" && <LearningCalendar onNavigate={setActive} demo={user.demo}/> }
         {user.demo && (
           <div className="demo-banner">
             <b>Offline demo mode</b>
@@ -3546,6 +3552,7 @@ function MentorDashboard({ user, logout }) {
     [profileStudentId, setProfileStudentId] = useState(null);
   return (
     <PortalShell role="mentor" user={user} active={active} items={portalItems.mentor} onSelect={setActive} logout={logout} forceSecurity={user.mustChangePassword}>
+      {active === "Calendar" && <LearningCalendar onNavigate={setActive}/> }
         <p className="form-message">{message}</p>
         {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} onViewLearner={setProfileStudentId} />}
         {active === "Announcements" && <AnnouncementsCenter mode="staff" />}
@@ -3590,7 +3597,8 @@ export default function App() {
     setUser(u);
     setPage("dashboard");
   };
-  const logout = () => {
+  const logout = async () => {
+    if (user?.role === "student") await stopPhonePush(user.id);
     localStorage.removeItem("lw_token");
     localStorage.removeItem("lw_demo_admin");
     setUser(null);
@@ -3656,7 +3664,7 @@ export default function App() {
       return <AdminDashboard user={user} logout={logout} />;
     if (user.role === "mentor")
       return <MentorDashboard user={user} logout={logout} />;
-    return <StudentDashboard user={user} logout={logout} />;
+    return <><PushLifecycle user={user}/><StudentDashboard user={user} logout={logout} /></>;
   }
   return <Home navigate={navigate} />;
 }

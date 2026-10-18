@@ -12,7 +12,7 @@ export function settingsDefaults() {
     remindersEnabled: String(process.env.EMAIL_REMINDERS_ENABLED).toLowerCase() === 'true',
     classReminderMinutes: Math.max(5, Number(process.env.CLASS_REMINDER_MINUTES || 60)),
     quizReminderMinutes: Math.max(5, Number(process.env.QUIZ_REMINDER_MINUTES || 30)),
-    certificateRequiredScore: 75, attendanceAlertScore: 75, studentSessionHours: 8, classRepLimit: 2, mobileUpdatesEnabled: true,
+    certificateRequiredScore: 75, attendanceAlertScore: 75, studentSessionHours: 8, classRepLimit: 2, mobileUpdatesEnabled: true, pushEnabled: true, assignmentReminderMinutes: 1440,
   };
 }
 let current = settingsDefaults();
@@ -23,13 +23,13 @@ const keys = Object.keys(settingsDefaults());
 export function validateSettings(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) || !Object.keys(input).length) throw new Error('Choose settings to save.');
   const result = {};
-  const ranges = { expiryHours:[1,720], classDurationMinutes:[15,240], classReminderMinutes:[5,1440], quizReminderMinutes:[5,1440], certificateRequiredScore:[1,100], attendanceAlertScore:[1,100], studentSessionHours:[1,24], classRepLimit:[1,5] };
+  const ranges = { assignmentReminderMinutes:[5,10080], expiryHours:[1,720], classDurationMinutes:[15,240], classReminderMinutes:[5,1440], quizReminderMinutes:[5,1440], certificateRequiredScore:[1,100], attendanceAlertScore:[1,100], studentSessionHours:[1,24], classRepLimit:[1,5] };
   for (const [key, value] of Object.entries(input)) {
     if (!keys.includes(key)) throw new Error(`Unknown setting: ${key}`);
     if (ranges[key]) {
       if (typeof value !== 'number' || !Number.isInteger(value) || value < ranges[key][0] || value > ranges[key][1]) throw new Error(`${key} must be a whole number between ${ranges[key][0]} and ${ranges[key][1]}.`);
       result[key] = value;
-    } else if (['registrationOpen','emailEnabled','remindersEnabled','mobileUpdatesEnabled'].includes(key)) {
+    } else if (['registrationOpen','emailEnabled','remindersEnabled','mobileUpdatesEnabled','pushEnabled'].includes(key)) {
       if (typeof value !== 'boolean') throw new Error(`${key} must be on or off.`);
       result[key] = value;
     } else if (key === 'classDays') {

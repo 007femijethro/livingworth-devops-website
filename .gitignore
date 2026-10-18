@@ -4,3 +4,8 @@ dist/
 *.log
 .DS_Store
 
+
+# Firebase client configuration is supplied per native build; private credentials
+# must always remain outside tracked source.
+**/google-services.json
+**/firebase-service-account.json

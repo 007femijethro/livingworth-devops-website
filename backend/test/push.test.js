@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {protectPushToken,revealPushToken,pushMessage,queuePush,deliverPushJobs} from '../dist/push.js';
+test('device tokens are encrypted, authenticated and never included in alert data',()=>{
+ process.env.JWT_SECRET='test-only-secret';const token='private-device-token-123456789';const encrypted=protectPushToken(token);assert.ok(!encrypted.includes(token));assert.equal(revealPushToken(encrypted),token);assert.notEqual(protectPushToken(token),encrypted);assert.throws(()=>revealPushToken(encrypted.slice(0,-3)+'abc'));
+ const message=pushMessage({title:'Assignment feedback',message:'Your grade is 50',actionTarget:'https://untrusted.example'});assert.equal(message.data.actionTarget,'Notifications');assert.equal(JSON.stringify(message).includes('Your grade is 50'),false);assert.equal(message.android.notification.channel_id,'academy-learning');
+});
+test('unconfigured push never queues work or sends messages',async()=>{process.env.GOOGLE_APPLICATION_CREDENTIALS='/nonexistent/livingworth-test-credentials.json';await queuePush({execute:()=>{throw new Error('must not query')}},{title:'Class'});});
+test('push delivery retries failures, disables expired tokens, and excludes inactive accounts',async()=>{
+ const token=protectPushToken('token-12345678901234567890'),calls=[];
+ const pool={execute:async(sql,params=[])=>{calls.push({sql,params});if(sql.startsWith('WITH claimed'))return [[{id:1,userId:7,title:'Reminder',actionTarget:'Calendar',attempts:1},{id:2,userId:8,title:'Second',attempts:2}]];if(sql.startsWith('SELECT d.id')){assert.match(sql,/u.status='approved'/);return [[{id:30,encryptedToken:token}]]}return [{}]}};
+ let count=0;await deliverPushJobs(pool,async()=>{count++;if(count===1)return 'unregistered';throw new Error('temporary failure')});
+ assert.ok(calls.some(call=>call.sql.startsWith('DELETE FROM push_devices')&&call.params[1]===7));assert.ok(calls.some(call=>call.sql.includes('delivered_at=NOW()')&&call.params[0]===1));assert.ok(calls.some(call=>call.sql.includes('available_at=NOW()')&&call.params[0]===4&&call.params[1]===2));
+});
+
+test('push registration requires a learner, saves atomically, and deletion stays scoped to the account',async()=>{
+ const {default:express}=await import('express');const {requireAdmin}=await import('../dist/auth.js');const {registerPushRoutes}=await import('../dist/push.js');const fs=await import('node:fs/promises');const os=await import('node:os');const path=await import('node:path');const crypto=await import('node:crypto');
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'lw-push-test-')),previous=process.env.GOOGLE_APPLICATION_CREDENTIALS;
+ const pair=crypto.generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});process.env.GOOGLE_APPLICATION_CREDENTIALS=path.join(root,'service.json');await fs.writeFile(process.env.GOOGLE_APPLICATION_CREDENTIALS,JSON.stringify({project_id:'livingworth-test',client_email:'test@example.com',private_key:pair.privateKey}));
+ const calls=[];const pool={execute:async(sql,params=[])=>{calls.push({sql,params});return [[{count:1,pending:0,failed:0}]]},getConnection:async()=>({...pool,beginTransaction:async()=>calls.push({sql:'BEGIN'}),commit:async()=>calls.push({sql:'COMMIT'}),rollback:async()=>calls.push({sql:'ROLLBACK'}),release:()=>{}})};
+ const app=express();app.use(express.json());registerPushRoutes(app,pool,(req,res,next)=>{const role=req.get('x-role');if(!role)return res.sendStatus(401);req.user={id:7,role};next()},requireAdmin);const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));const base=`http://127.0.0.1:${server.address().port}/api`;
+ const post=role=>fetch(base+'/push/devices',{method:'POST',headers:{'Content-Type':'application/json',...(role?{'x-role':role}:{})},body:JSON.stringify({token:'test-token-that-is-long-enough',installationId:'12345678-abcd-1234-abcd-123456789abc',userId:999})});
+ try{assert.equal((await post()).status,401);assert.equal((await post('mentor')).status,403);assert.equal((await post('student')).status,200);assert.ok(calls.some(c=>c.sql==='COMMIT'));const insert=calls.find(c=>c.sql.startsWith('INSERT'));assert.equal(insert.params[0],7);assert.ok(!insert.params[3].includes('test-token'));assert.equal((await fetch(base+'/admin/push-status',{headers:{'x-role':'student'}})).status,403);await fetch(base+'/push/devices/12345678-abcd-1234-abcd-123456789abc',{method:'DELETE',headers:{'x-role':'student'}});assert.ok(calls.some(c=>c.sql.includes('WHERE user_id=? AND installation_id=?')&&c.params[0]===7))}finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await fs.rm(root,{recursive:true,force:true});if(previous===undefined)delete process.env.GOOGLE_APPLICATION_CREDENTIALS;else process.env.GOOGLE_APPLICATION_CREDENTIALS=previous}
+});

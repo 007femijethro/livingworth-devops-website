@@ -14,6 +14,7 @@ export function nativeRuntime(root = fileURLToPath(new URL('..', import.meta.url
       else if (entry.isFile()) files.push(relative);
     }
   };
+  if (fs.existsSync(path.join(root, 'android/app/google-services.json'))) files.push('android/app/google-services.json');
   collect('android/app/src/main/java');
   collect('android/app/src/main/res');
   const hash = createHash('sha256');

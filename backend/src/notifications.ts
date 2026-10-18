@@ -1,8 +1,10 @@
 // @ts-nocheck
+import { queuePush } from './push.js';
 export async function notifyStudents(pool, notification) {
   await pool.execute(`INSERT INTO notifications (user_id, title, message, category, action_target)
     SELECT id, ?, ?, ?, ? FROM users WHERE role = 'student' AND status = 'approved'`,
     [notification.title, notification.message, notification.category, notification.actionTarget || null]);
+  await queuePush(pool,notification).catch(()=>{});
   const [students] = await pool.query("SELECT full_name AS fullName, email FROM users WHERE role = 'student' AND status = 'approved'");
   await Promise.allSettled(students.map(student => sendStudentNotification(student, notification)));
 }
@@ -17,7 +19,7 @@ export async function notifyUser(pool, userId, notification) {
     "SELECT full_name AS fullName, email FROM users WHERE id = ? AND role = 'student' AND status = 'approved'",
     [userId]
   );
-  if (students[0]) await sendStudentNotification(students[0], notification);
+  if (students[0]) { await queuePush(pool,notification,userId).catch(()=>{}); await sendStudentNotification(students[0], notification); }
 }
 
 export function registerNotificationRoutes(app, pool, requireAuth) {

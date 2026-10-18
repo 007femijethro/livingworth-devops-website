@@ -39,7 +39,7 @@ export async function publishMobileUpdate({ webDir, privateDir, publicDir, origi
         const bytes = await fs.readFile(path.join(directory, entry.name));
         totalBytes += bytes.length;
         if (totalBytes > 50 * 1024 * 1024) throw new Error('Mobile web bundle exceeds 50 MiB');
-        files[relative] = [bytes, { mtime: new Date('1980-01-01T00:00:00Z') }];
+        files[relative] = [bytes, { mtime: new Date(1980, 0, 1, 0, 0, 0) }];
       } else throw new Error('Only regular web assets are allowed');
     }
   }
