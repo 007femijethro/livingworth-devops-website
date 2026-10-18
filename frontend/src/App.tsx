@@ -1,6 +1,7 @@
 // @ts-nocheck
 import LearningCalendar from './LearningCalendar';
 import ContinueLearning from './ContinueLearning';
+import ProgrammeProgress from './ProgrammeProgress';
 import useLearningFocus from './useLearningFocus';
 import PushSettings, { PushLifecycle } from './PushSettings';
 import { stopPhonePush } from './push-client';
@@ -1372,6 +1373,7 @@ function StudentMaterial({ material, onProgress }) {
 }
 
 function LearningCenter({ mode, demo = false }) {
+  const requestedWeekFocused = useRef(false);
   const staff = mode === "staff";
   const [modules, setModules] = useState([]);
   const [submissions, setSubmissions] = useState([]);
@@ -1397,6 +1399,13 @@ function LearningCenter({ mode, demo = false }) {
     } catch (error) { setMessage(error.message); }
   }
   useEffect(() => { load(); }, [mode, demo]);
+  useEffect(() => {
+    if (staff || requestedWeekFocused.current) return;
+    const week = Number(new URLSearchParams(window.location.search).get('week'));
+    if (!week || new URLSearchParams(window.location.search).has('material')) return;
+    const frame = requestAnimationFrame(() => { const card = document.getElementById(`learning-week-${week}`); if (card) { requestedWeekFocused.current = true; card.scrollIntoView({block:'start'}); card.focus({preventScroll:true}); } });
+    return () => cancelAnimationFrame(frame);
+  }, [staff, modules]);
   async function createModule(event) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1521,7 +1530,7 @@ function LearningCenter({ mode, demo = false }) {
     </section>
   );
   return (
-    <section className="learning-center student-learning"><div className="learning-head"><div><p className="eyebrow">DevOps programme</p><h2>Learning workspace</h2><p>Open your lessons, mark your progress and review learning resources.</p></div><div className="course-progress"><strong>{progress.percentage}%</strong><span>{progress.completed} of {progress.total} assignments completed</span></div></div><div className="progress-track"><span style={{ width: `${progress.percentage}%` }} /></div><p className="form-message success">{message}</p>{modules.length === 0 ? <div className="empty">Your learning modules will appear here when they are published.</div> : <div className="student-modules">{modules.map((module) => { return <article key={module.id}><div className="student-module-head"><span>Week {module.weekNumber}</span><div><h3>{module.title}</h3><p>{module.summary}</p></div>{module.isComplete && <b className="week-complete">Week complete</b>}</div>{module.materials.length > 0 && <div className="student-materials"><h4>1. Learning materials</h4>{module.materials.map((material) => <StudentMaterial key={material.id} material={material} onProgress={updateMaterialProgress} />)}</div>}{module.assignments.map((assignment) => <AssignmentCard key={assignment.id} assignment={assignment} onSubmitted={load} />)}<WeekActivityPrompt module={module} /></article>; })}</div>}</section>
+    <section className="learning-center student-learning"><div className="learning-head"><div><p className="eyebrow">DevOps programme</p><h2>Learning workspace</h2><p>Open your lessons, mark your progress and review learning resources.</p></div><div className="course-progress"><strong>{progress.percentage}%</strong><span>{progress.completed} of {progress.total} assignments completed</span></div></div><div className="progress-track"><span style={{ width: `${progress.percentage}%` }} /></div><p className="form-message success">{message}</p>{modules.length === 0 ? <div className="empty">Your learning modules will appear here when they are published.</div> : <div className="student-modules">{modules.map((module) => { return <article key={module.id} id={`learning-week-${module.weekNumber}`} tabIndex={-1} className="learning-destination"><div className="student-module-head"><span>Week {module.weekNumber}</span><div><h3>{module.title}</h3><p>{module.summary}</p></div>{module.isComplete && <b className="week-complete">Week complete</b>}</div>{module.materials.length > 0 && <div className="student-materials"><h4>1. Learning materials</h4>{module.materials.map((material) => <StudentMaterial key={material.id} material={material} onProgress={updateMaterialProgress} />)}</div>}{module.assignments.map((assignment) => <AssignmentCard key={assignment.id} assignment={assignment} onSubmitted={load} />)}<WeekActivityPrompt module={module} /></article>; })}</div>}</section>
   );
 }
 
@@ -2065,32 +2074,7 @@ function StudentDashboard({ user, logout }) {
         {active === "Notifications" && <><PushSettings userId={user.id}/><NotificationsCenter onNavigate={setActive} userId={user.id}/></>}
         {active === "My stories" && <StudentStoriesCenter />}
         {active === "Announcements" && <AnnouncementsCenter mode="student" onUnreadChange={setUnreadAnnouncements} />}
-        {active === "Programme" && (
-          <section className="portal-path">
-            <p className="eyebrow">Your learning path</p>
-            <h2>From foundations to production</h2>
-            <div>
-              {[
-                "DevOps & SDLC",
-                "Linux & Bash",
-                "Git & GitHub",
-                "AWS",
-                "Ansible",
-                "Terraform",
-                "Docker",
-                "Kubernetes",
-                "CI/CD",
-                "Monitoring",
-                "Capstone",
-              ].map((x, i) => (
-                <span key={x}>
-                  <b>{i + 1}</b>
-                  {x}
-                </span>
-              ))}
-            </div>
-          </section>
-        )}
+        {active === "Programme" && <ProgrammeProgress />}
         {active === "Attendance" && <AttendanceCenter mode={isClassRep ? "rep" : "student"} />}
         {active === "Learning" && <LearningCenter mode="student" />}
         {active === "Class Activity" && <ClassActivityCenter mode="student" />}

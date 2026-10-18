@@ -1,5 +1,6 @@
 // @ts-nocheck
 import crypto from 'node:crypto';
+import { programmeProgress } from './programme-progress.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
@@ -93,6 +94,16 @@ async function modulesFor(pool, studentId = null, staff = false, assignmentsOnly
 }
 
 export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
+  app.get('/api/student/programme-progress', requireAuth, async (req, res, next) => {
+    try {
+      if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
+      const unlocked = await modulesFor(pool, req.user.id);
+      const [published] = await pool.query(`SELECT id, week_number AS weekNumber, title
+        FROM learning_modules WHERE published = TRUE ORDER BY display_order, week_number`);
+      res.set('Cache-Control', 'private, no-store');
+      res.json(programmeProgress(published, unlocked));
+    } catch (error) { next(error); }
+  });
   app.get('/api/assignments/pending-count', requireAuth, async (req, res, next) => {
     try {
       if (req.user.role === 'student') {
