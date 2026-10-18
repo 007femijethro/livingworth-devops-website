@@ -130,3 +130,31 @@
 @media (max-width: 560px) {
   .student-lesson-note .student-lesson-content { padding: 14px 12px; }
 }
+
+.activity-admin { align-content: start; }
+.activity-admin > div:first-of-type { display: grid; gap: 4px; }
+.activity-admin .content-actions { justify-content: flex-end; }
+.activity-submission-list { display: grid; gap: 14px; margin-top: 24px; }
+.activity-submission-list > article { padding: 20px; border: 1px solid #d8e4e9; background: #fff; }
+.activity-submission-list header { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
+.activity-submission-list header span { color: #059cac; font-size: .78rem; font-weight: 800; }
+.activity-submission-list h3 { margin: 5px 0; font: 800 1.2rem Manrope; }
+.activity-submission-list header p,.activity-submission-list time { margin: 0; color: #71828d; font-size: .85rem; }
+.activity-response { margin-top: 16px; padding: 16px; background: #f4f8f9; color: #405966; overflow-wrap: anywhere; }
+.student-class-activity { margin: 0; padding: 22px; border-top: 1px solid #dce6ea; border-bottom: 1px solid #dce6ea; background: #f8fbfb; }
+.student-class-activity.submitted { background: #f1faf6; }
+.class-activity-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.class-activity-heading > span { color: #087d89; font-size: .78rem; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; }
+.class-activity-heading > b,.week-complete { padding: 5px 9px; border-radius: 16px; background: #d9f2e9; color: #087451; font-size: .75rem; }
+.student-class-activity h4 { margin: 12px 0; font: 800 1.2rem Manrope; color: #082d65; }
+.student-class-activity form { display: grid; gap: 10px; margin-top: 18px; }
+.student-class-activity form label { color: #536b79; font-weight: 800; }
+.student-class-activity textarea { width: 100%; padding: 12px; border: 1px solid #b9cad3; background: #fff; resize: vertical; }
+.student-class-activity .button { justify-self: start; }
+.activity-locked { margin: 16px 0 0; padding: 12px 14px; border-left: 3px solid #e0a523; background: #fff8e6; color: #72540d; }
+.week-complete { justify-self: start; align-self: start; }
+@media (max-width: 700px) {
+  .activity-submission-list header { flex-direction: column; }
+  .student-class-activity { padding: 16px 12px; }
+  .student-class-activity textarea { min-width: 0; max-width: 100%; font-size: 16px; }
+}

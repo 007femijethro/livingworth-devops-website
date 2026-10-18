@@ -70,13 +70,20 @@ async function modulesFor(pool, studentId = null, staff = false, assignmentsOnly
           'SELECT id, title, instructions, due_at AS dueAt, max_score AS maxScore, upload_slots AS uploadSlots, assignment_type AS assignmentType, closed_at AS closedAt FROM assignments WHERE module_id = ? ORDER BY display_order, due_at, id',
           [module.id]
         );
+    const [activities] = studentId
+      ? await pool.execute(`SELECT a.id, a.title, a.instructions, s.response AS submissionResponse, s.submitted_at AS submittedAt
+          FROM learning_activities a LEFT JOIN activity_submissions s ON s.activity_id = a.id AND s.student_id = ?
+          WHERE a.module_id = ? LIMIT 1`, [studentId, module.id])
+      : await pool.execute('SELECT id, title, instructions FROM learning_activities WHERE module_id = ? LIMIT 1', [module.id]);
     module.materials = materials;
     module.assignments = assignments;
+    module.activity = activities[0] || null;
     if (studentId) {
-      const hasLearningWork = materials.length > 0 || assignments.length > 0;
+      const hasLearningWork = materials.length > 0 || assignments.length > 0 || Boolean(module.activity);
       module.isComplete = hasLearningWork
         && materials.every(material => material.progressStatus === 'done')
-        && assignments.filter(assignment => assignment.assignmentType !== 'manual').every(assignment => Boolean(assignment.closedAt || assignment.submissionId));
+        && assignments.filter(assignment => assignment.assignmentType !== 'manual').every(assignment => Boolean(assignment.closedAt || assignment.submissionId))
+        && (!module.activity || Boolean(module.activity.submittedAt));
       visibleModules.push(module);
       if (!assignmentsOnly && !module.isComplete) break;
     }
@@ -159,7 +166,13 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
         WHERE u.role = 'student' AND u.status = 'approved'
         ORDER BY u.full_name, m.display_order, lm.display_order`);
       const [students] = await pool.query("SELECT id, full_name AS fullName, email FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name, id");
-      res.json({ modules, submissions, materialProgress, students });
+      const [activitySubmissions] = await pool.query(`SELECT s.id, s.activity_id AS activityId, s.student_id AS studentId,
+        u.full_name AS studentName, u.email, s.response, s.submitted_at AS submittedAt,
+        a.title AS activityTitle, m.week_number AS weekNumber, m.title AS moduleTitle
+        FROM activity_submissions s JOIN users u ON u.id = s.student_id
+        JOIN learning_activities a ON a.id = s.activity_id JOIN learning_modules m ON m.id = a.module_id
+        ORDER BY s.submitted_at DESC`);
+      res.json({ modules, submissions, materialProgress, activitySubmissions, students });
     } catch (error) { next(error); }
   });
 
@@ -194,6 +207,54 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'A module already exists for that week.' });
       next(error);
     }
+  });
+
+  app.post('/api/staff/learning/modules/:id/activity', requireAuth, requireStaff, async (req, res, next) => {
+    try {
+      const title = String(req.body.title || '').trim();
+      const instructions = String(req.body.instructions || '').trim();
+      if (!title || title.length > 180 || !instructions || instructions.length > 10000) return res.status(400).json({ message: 'Add an activity title and instructions (up to 10,000 characters).' });
+      const [modules] = await pool.execute('SELECT id, week_number AS weekNumber, published FROM learning_modules WHERE id = ?', [req.params.id]);
+      if (!modules.length) return res.status(404).json({ message: 'Learning week not found.' });
+      const [existing] = await pool.execute('SELECT id FROM learning_activities WHERE module_id = ?', [req.params.id]);
+      if (existing.length) return res.status(409).json({ message: 'This week already has a class activity. Edit the existing activity.' });
+      await pool.execute('INSERT INTO learning_activities (module_id, title, instructions, created_by) VALUES (?, ?, ?, ?)', [req.params.id, title, instructions, req.user.id]);
+      res.status(201).json({ message: `Class activity added to Week ${modules[0].weekNumber}.` });
+    } catch (error) { next(error); }
+  });
+
+  app.patch('/api/staff/learning/activities/:id', requireAuth, requireStaff, async (req, res, next) => {
+    try {
+      const title = String(req.body.title || '').trim();
+      const instructions = String(req.body.instructions || '').trim();
+      if (!title || title.length > 180 || !instructions || instructions.length > 10000) return res.status(400).json({ message: 'Add an activity title and instructions (up to 10,000 characters).' });
+      const [result] = await pool.execute('UPDATE learning_activities SET title = ?, instructions = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [title, instructions, req.params.id]);
+      if (!result.affectedRows) return res.status(404).json({ message: 'Class activity not found.' });
+      res.json({ message: 'Class activity updated.' });
+    } catch (error) { next(error); }
+  });
+
+  app.delete('/api/staff/learning/activities/:id', requireAuth, requireStaff, async (req, res, next) => {
+    try {
+      const [result] = await pool.execute('DELETE FROM learning_activities WHERE id = ?', [req.params.id]);
+      if (!result.affectedRows) return res.status(404).json({ message: 'Class activity not found.' });
+      res.json({ message: 'Class activity removed from this week.' });
+    } catch (error) { next(error); }
+  });
+
+  app.put('/api/student/learning/activities/:id/submission', requireAuth, async (req, res, next) => {
+    try {
+      if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
+      const response = String(req.body.response || '').trim();
+      if (!response || response.length > 10000) return res.status(400).json({ message: 'Write your response to the class activity (up to 10,000 characters).' });
+      const modules = await modulesFor(pool, req.user.id, false, false);
+      const module = modules.find(item => Number(item.activity?.id) === Number(req.params.id));
+      if (!module) return res.status(404).json({ message: 'Class activity is not available yet.' });
+      if (!module.materials.every(material => material.progressStatus === 'done')) return res.status(409).json({ message: 'Mark all visible learning materials for this week as done before submitting the class activity.' });
+      await pool.execute(`INSERT INTO activity_submissions (activity_id, student_id, response) VALUES (?, ?, ?)
+        ON CONFLICT (activity_id, student_id) DO UPDATE SET response = EXCLUDED.response, submitted_at = CURRENT_TIMESTAMP`, [req.params.id, req.user.id, response]);
+      res.json({ message: 'Class activity submitted. This week is now complete.' });
+    } catch (error) { next(error); }
   });
 
   app.patch('/api/staff/learning/materials/:id', requireAuth, requireStaff, async (req, res, next) => {

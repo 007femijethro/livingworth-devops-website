@@ -104,6 +104,7 @@ test('a rejected assignment can be redone even after the assignment is closed', 
     query: async () => [[{ id: 1 }]],
     execute: async sql => {
       if (sql.includes('learning_materials')) return [[]];
+      if (sql.includes('learning_activities')) return [[]];
       if (sql.includes('FROM assignments a LEFT JOIN')) return [[{ id: 1, assignmentType: 'portal', closedAt: '2026-09-20T20:00:00Z', uploadSlots: [], submissionId: 4, submissionStatus: 'rejected' }]];
       if (sql.includes('FROM assignment_submissions')) return [[{ status: 'rejected', files: [] }]];
       if (sql.includes('INSERT INTO assignment_submissions')) {

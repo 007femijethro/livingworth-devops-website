@@ -215,6 +215,29 @@ CREATE TABLE IF NOT EXISTS learning_materials (
   FOREIGN KEY (uploaded_by) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS learning_activities (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  module_id INT NOT NULL UNIQUE,
+  title VARCHAR(180) NOT NULL,
+  instructions TEXT NOT NULL,
+  created_by INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (module_id) REFERENCES learning_modules(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS activity_submissions (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  activity_id INT NOT NULL,
+  student_id INT NOT NULL,
+  response TEXT NOT NULL,
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY one_submission_per_activity (activity_id, student_id),
+  FOREIGN KEY (activity_id) REFERENCES learning_activities(id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS assignments (
   id INT AUTO_INCREMENT PRIMARY KEY,
   module_id INT NOT NULL,
