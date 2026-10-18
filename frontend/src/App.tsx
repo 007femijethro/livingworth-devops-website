@@ -2123,6 +2123,7 @@ function ClassActivityCenter({ mode, demo = false }) {
   const [selectedWeekId, setSelectedWeekId] = useState(null), [draft, setDraft] = useState(null);
   const [activeActivityId, setActiveActivityId] = useState(null), [answers, setAnswers] = useState({}), [result, setResult] = useState(null);
   const [attempts, setAttempts] = useState([]), [selectedAttempt, setSelectedAttempt] = useState(null);
+  const [deletingAttemptId, setDeletingAttemptId] = useState(null), [attemptMessage, setAttemptMessage] = useState("");
   const load = async () => {
     if (demo) { setMessage("Connect the backend to manage private class activities."); return; }
     try {
@@ -2134,6 +2135,7 @@ function ClassActivityCenter({ mode, demo = false }) {
   };
   useEffect(() => { load(); }, [mode, demo]);
   useEffect(() => { if (staff && !selectedWeekId && weeks.length) setSelectedWeekId(weeks[0].id); }, [staff, selectedWeekId, weeks]);
+  useEffect(() => { setAttemptMessage(""); }, [selectedWeekId]);
   useEffect(() => {
     if (!staff || !selectedWeekId || demo) { setAttempts([]); setSelectedAttempt(null); return; }
     setSelectedAttempt(null);
@@ -2181,6 +2183,17 @@ function ClassActivityCenter({ mode, demo = false }) {
     try { setSelectedAttempt(await api(`/staff/class-activities/attempts/${attemptId}`)); }
     catch (error) { setMessage(error.message); }
   }
+  async function removeAttempt(attempt) {
+    if (!window.confirm(`Delete attempt ${attempt.attemptNo} for ${attempt.studentName} (${attempt.score}%) in Week ${selectedWeek.weekNumber}?\n\nThis permanently removes this attempt and its saved answers. If it is their only completed attempt, they can take the activity again.`)) return;
+    setDeletingAttemptId(attempt.id); setAttemptMessage("");
+    try {
+      const data = await api(`/staff/class-activities/attempts/${attempt.id}`, { method: "DELETE" });
+      setAttempts(current => current.filter(item => Number(item.id) !== Number(attempt.id)));
+      setSelectedAttempt(current => Number(current?.id) === Number(attempt.id) ? null : current);
+      await load(); setAttemptMessage(data.message);
+    } catch (error) { setAttemptMessage(error.message); }
+    finally { setDeletingAttemptId(null); }
+  }
 
   if (staff) return <section className="class-activity-center">
     <header className="class-activity-page-head"><div><p className="eyebrow">Private knowledge checks</p><h2>Class Activity</h2><p>Create a self-paced quiz for each week. Learners see their own score and answer review; the class has no public leaderboard.</p></div></header>
@@ -2192,7 +2205,7 @@ function ClassActivityCenter({ mode, demo = false }) {
             {question.questionType === "short_answer" ? <label>Accepted answer(s)<small>For alternate accepted answers, separate each with |</small><input value={question.correctText || ""} maxLength="500" placeholder="e.g. git status | git status --short" onChange={event => updateQuestion(qIndex, "correctText", event.target.value)} required /></label> : question.questionType === "true_false" ? <label>Correct answer<select value={question.correctIndex ?? 0} onChange={event => updateQuestion(qIndex, "correctIndex", Number(event.target.value))}><option value={0}>True</option><option value={1}>False</option></select></label> : <div className="activity-answer-options"><span>Answer options <small>{question.questionType === "multiple_selection" ? "Mark every correct option" : "Choose the correct option"}</small></span>{(question.options || ["", "", "", ""]).map((option, optionIndex) => <label key={optionIndex} className="activity-option-row">{question.questionType === "multiple_selection" ? <input type="checkbox" checked={(question.correctAnswers || []).includes(optionIndex)} onChange={event => updateMultiAnswer(qIndex, optionIndex, event.target.checked)} /> : <input type="radio" name={`correct-${selectedWeek.id}-${qIndex}`} checked={Number(question.correctIndex || 0) === optionIndex} onChange={() => updateQuestion(qIndex, "correctIndex", optionIndex)} />}<input value={option} placeholder={`Option ${optionIndex + 1}`} onChange={event => updateOption(qIndex, optionIndex, event.target.value)} required /></label>)}</div>}
             <label>Explanation after submission<textarea value={question.explanation || ""} rows="2" maxLength="1500" onChange={event => updateQuestion(qIndex, "explanation", event.target.value)} placeholder="Explain why the answer is correct." /></label></article>)}</div>
           <button type="button" className="button light-border" onClick={() => setDraft({ ...draft, questions: [...draft.questions, newActivityQuestion()] })} disabled={draft.questions.length >= 50}>Add question</button><div className="class-activity-save-row"><button className="button primary" disabled={busy || selectedWeek.activity?.stats.attempts > 0}>{busy ? "Saving…" : "Save class activity"}</button>{selectedWeek.activity && <button type="button" className="button light-border" onClick={removeActivity}>Remove activity</button>}</div></form>
-        {selectedWeek.activity && <section className="class-activity-attempts"><h3>Learner attempts</h3>{attempts.length ? attempts.map(attempt => <article key={attempt.id}><div><b>{attempt.studentName}</b><small>{attempt.email} · Attempt {attempt.attemptNo} · {new Date(attempt.completedAt).toLocaleString()}</small></div><strong>{attempt.score}%</strong><button className="button light-border" onClick={() => showAttempt(attempt.id)}>Review</button></article>) : <p className="empty">No learner attempts for this week yet.</p>}{selectedAttempt && <div className="staff-activity-review"><h4>Attempt {selectedAttempt.attemptNo} · {selectedAttempt.score}%</h4>{selectedAttempt.answers.map((answer, index) => <article key={index}><b>{index + 1}. {answer.prompt}</b><small>{answer.isCorrect ? "Correct" : "Incorrect"} · Learner answer: {Array.isArray(answer.answer) ? answer.answer.join(", ") : answer.answer || "No answer"}</small></article>)}</div>}</section>}
+        {selectedWeek.activity && <section className="class-activity-attempts"><h3>Learner attempts</h3>{attemptMessage && <p className="form-message" role="status">{attemptMessage}</p>}{attempts.length ? attempts.map(attempt => <article key={attempt.id}><div><b>{attempt.studentName}</b><small>{attempt.email} · Attempt {attempt.attemptNo} · {new Date(attempt.completedAt).toLocaleString()}</small></div><strong>{attempt.score}%</strong><div className="class-activity-attempt-actions"><button className="button light-border" onClick={() => showAttempt(attempt.id)}>Review</button><button className="button light-border activity-delete-attempt" aria-label={`Delete attempt ${attempt.attemptNo} for ${attempt.studentName}`} disabled={deletingAttemptId !== null} onClick={() => removeAttempt(attempt)}>{Number(deletingAttemptId) === Number(attempt.id) ? "Deleting…" : "Delete attempt"}</button></div></article>) : <p className="empty">No learner attempts for this week yet.</p>}{selectedAttempt && <div className="staff-activity-review"><h4>Attempt {selectedAttempt.attemptNo} · {selectedAttempt.score}%</h4>{selectedAttempt.answers.map((answer, index) => <article key={index}><b>{index + 1}. {answer.prompt}</b><small>{answer.isCorrect ? "Correct" : "Incorrect"} · Learner answer: {Array.isArray(answer.answer) ? answer.answer.join(", ") : answer.answer || "No answer"}</small></article>)}</div>}</section>}
       </div>}
     </div>
   </section>;

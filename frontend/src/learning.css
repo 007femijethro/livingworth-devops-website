@@ -88,6 +88,8 @@
 .activity-lock-note { padding: 12px; border-radius: 9px; background: #fff6de; color: #76570a; }
 .class-activity-attempts > article { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 12px; align-items: center; padding: 13px 0; border-top: 1px solid #e8eef1; }
 .class-activity-attempts > article div { display: grid; gap: 4px; }
+.class-activity-attempts > article .class-activity-attempt-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.class-activity-attempts .activity-delete-attempt { color: #9c2634; border-color: #d8a6ac; background: #fff6f6; }
 .class-activity-attempts > article small,.staff-activity-review small { color: #758792; }
 .staff-activity-review { grid-column: 1 / -1; display: grid; gap: 12px; padding: 15px; border-radius: 10px; background: #f5f9fa; }
 .staff-activity-review h4 { margin: 0; color: #123a65; }
@@ -127,7 +129,7 @@
 @media (max-width: 520px) {
   .class-activity-week-list { grid-template-columns: 1fr; }
   .class-activity-attempts > article { grid-template-columns: minmax(0,1fr) auto; }
-  .class-activity-attempts > article > button { grid-column: 1 / -1; justify-self: start; }
+  .class-activity-attempts > article .class-activity-attempt-actions { grid-column: 1 / -1; justify-content: flex-start; }
   .student-private-quiz > article,.student-class-activity-list > article { padding: 16px 12px; }
 }
 

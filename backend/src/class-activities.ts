@@ -194,6 +194,18 @@ export function registerClassActivityRoutes(app, pool, requireAuth, requireStaff
     } catch (error) { next(error); }
   });
 
+  app.delete('/api/staff/class-activities/attempts/:attemptId', requireAuth, requireStaff, async (req, res, next) => {
+    try {
+      if (!/^[1-9]\d*$/.test(req.params.attemptId)) return res.status(400).json({ message: 'Choose a valid learner attempt.' });
+      const [result] = await pool.execute(`DELETE FROM activity_attempts WHERE id = ?
+        RETURNING activity_id AS activityId, student_id AS studentId`, [req.params.attemptId]);
+      if (!result.affectedRows) return res.status(404).json({ message: 'Learner attempt not found. It may already have been deleted.' });
+      const deleted = result.rows[0];
+      logger.info('class_activity_attempt_deleted', { actorId: req.user.id, attemptId: req.params.attemptId, activityId: deleted.activityId, studentId: deleted.studentId });
+      res.json({ message: 'Learner attempt deleted. If no other completed attempt remains, the learner can take this activity again.' });
+    } catch (error) { next(error); }
+  });
+
   app.get('/api/student/class-activities', requireAuth, async (req, res, next) => {
     try {
       if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
