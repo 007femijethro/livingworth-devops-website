@@ -58,10 +58,10 @@ test('grading accepts answer variants in any case and scores true/false correctl
       assert.equal(response.status, 200);
       return response.json();
     };
-    const right = await submit({ 1: ' aMaZoN   sImPlE sToRaGe SeRvIcE. ', 2: 'sEcUrE ShElL', 3: 0, 4: 1 });
+    const right = await submit({ 1: ' I use aMaZoN   sImPlE sToRaGe SeRvIcE and EC2. ', 2: 'I connect using sEcUrE ShElL.', 3: 0, 4: 1 });
     assert.equal(right.score, 100);
     assert.ok(right.review.every(answer => answer.isCorrect));
-    const wrong = await submit({ 1: 'S3 is not the answer', 2: 'FTP', 3: 1, 4: 0 });
+    const wrong = await submit({ 1: 'S30', 2: 'FTP', 3: 1, 4: 0 });
     assert.equal(wrong.score, 0);
   });
 });
@@ -104,5 +104,23 @@ test('extending an attempted activity keeps original questions and results intac
       assert.equal((await save(invalid)).status, 409);
     }
     assert.equal(inserted.length, 1);
+  });
+});
+
+
+test('saved short-answer reviews preserve PostgreSQL JSONB text', async () => {
+  const execute = async sql => {
+    if (sql.includes('FROM activity_attempts WHERE id')) return [[{ id: 21, score: 100 }]];
+    if (sql.includes('FROM activity_attempt_answers aa JOIN activity_questions')) return [[
+      { prompt: 'Account?', questionType: 'short_answer', options: [], correctAnswers: [], answer: 'github and aws', isCorrect: true },
+      { prompt: 'Exit code?', questionType: 'short_answer', options: [], correctAnswers: [], answer: '0', isCorrect: true }
+    ]];
+    throw new Error(sql);
+  };
+  await withServer({ execute }, 'admin', async base => {
+    const response = await fetch(`${base}/api/staff/class-activities/attempts/21`);
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.deepEqual(result.answers.map(row => row.answer), ['github and aws', '0']);
   });
 });

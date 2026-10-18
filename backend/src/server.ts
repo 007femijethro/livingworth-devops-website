@@ -12,7 +12,7 @@ import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } fro
 import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
 import { configureEmailControl, isEmailDeliveryEnabled, sendApplicationDecision, sendApplicationEmails, sendEmailChangeCode, sendPasswordReset, sendTestEmail, verifyEmailConnection } from './mailer.js';
 import { registerLearningRoutes } from './learning.js';
-import { registerClassActivityRoutes } from './class-activities.js';
+import { registerClassActivityRoutes, regradeShortAnswers } from './class-activities.js';
 import { registerMaterialExportRoutes } from './material-export.js';
 import { registerAnnouncementRoutes } from './announcements.js';
 import { registerAnalyticsRoutes } from './analytics.js';
@@ -738,6 +738,7 @@ app.use((error, req, res, _next) => {
 
 async function start() {
   await ensurePostgresSchema(pool);
+  await regradeShortAnswers(pool);
   await pool.execute(`INSERT INTO courses (title, description, duration, level)
     VALUES ('DevOps Engineering', 'Practical DevOps training from foundations to production delivery.', '14 weeks', 'Beginner–Intermediate')
     ON CONFLICT (title) DO UPDATE SET duration = EXCLUDED.duration`);

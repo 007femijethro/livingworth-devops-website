@@ -12,6 +12,51 @@ function normalizeAnswer(value) {
   return String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[.!?]+$/g, '');
 }
 
+export function matchesShortAnswer(answer, correctText) {
+  const normalized = normalizeAnswer(answer);
+  if (!normalized) return false;
+  return String(correctText || '').split('|').some(value => {
+    const expected = normalizeAnswer(value);
+    if (!expected) return false;
+    const escaped = expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}(?=$|[^\\p{L}\\p{N}_])`, 'u').test(normalized);
+  });
+}
+
+// Apply the same grading policy to saved answers without changing learner responses.
+export async function regradeShortAnswers(pool) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [answers] = await connection.execute(`SELECT aa.id, aa.attempt_id AS attemptId,
+      aa.answer_json #>> '{}' AS answer, q.correct_text AS correctText
+      FROM activity_attempt_answers aa JOIN activity_questions q ON q.id = aa.question_id
+      JOIN activity_attempts a ON a.id = aa.attempt_id
+      WHERE aa.is_correct = FALSE AND q.question_type = 'short_answer'
+      ORDER BY a.id, aa.id FOR UPDATE OF a, aa`);
+    const attempts = new Set();
+    let corrected = 0;
+    for (const answer of answers) {
+      if (!matchesShortAnswer(answer.answer, answer.correctText)) continue;
+      await connection.execute('UPDATE activity_attempt_answers SET is_correct = TRUE WHERE id = ?', [answer.id]);
+      attempts.add(answer.attemptId);
+      corrected += 1;
+    }
+    for (const attemptId of attempts) await connection.execute(`UPDATE activity_attempts a
+      SET correct_count = totals.correct_count,
+          score = ROUND(totals.correct_count * 100.0 / NULLIF(a.total_questions, 0))
+      FROM (SELECT attempt_id, COUNT(*) FILTER (WHERE is_correct) AS correct_count
+        FROM activity_attempt_answers WHERE attempt_id = ? GROUP BY attempt_id) totals
+      WHERE a.id = totals.attempt_id`, [attemptId]);
+    await connection.commit();
+    if (corrected) logger.info('class_activity_answers_regraded', { correctedAnswers: corrected, attempts: attempts.size });
+    return { correctedAnswers: corrected, attempts: attempts.size };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally { connection.release(); }
+}
+
 function validateQuiz(title, instructions, questions) {
   if (!String(title || '').trim() || String(title).trim().length > 180) throw new Error('Add a class activity title (up to 180 characters).');
   if (!Array.isArray(questions) || questions.length < 1 || questions.length > 50) throw new Error('Add between 1 and 50 questions.');
@@ -281,7 +326,7 @@ export function registerClassActivityRoutes(app, pool, requireAuth, requireStaff
           ? answer === Number(question.correctIndex)
           : question.questionType === 'multiple_selection'
             ? JSON.stringify(answer) === JSON.stringify([...correctAnswers].map(Number).sort((a, b) => a - b))
-            : normalizeAnswer(answer) !== '' && String(question.correctText || '').split('|').some(expected => normalizeAnswer(expected) === normalizeAnswer(answer));
+            : matchesShortAnswer(answer, question.correctText);
         return { question, answer, isCorrect, options: parseJson(question.options), correctAnswers };
       });
       await connection.beginTransaction();
@@ -313,5 +358,5 @@ async function reviewFor(pool, attemptId) {
     q.explanation, aa.answer_json AS answer, aa.is_correct AS isCorrect
     FROM activity_attempt_answers aa JOIN activity_questions q ON q.id = aa.question_id
     WHERE aa.attempt_id = ? ORDER BY q.sequence_no`, [attemptId]);
-  return rows.map(row => ({ ...row, options: parseJson(row.options), correctAnswers: parseJson(row.correctAnswers), answer: parseJson(row.answer) }));
+  return rows.map(row => ({ ...row, options: parseJson(row.options), correctAnswers: parseJson(row.correctAnswers), answer: row.questionType === 'short_answer' ? row.answer : parseJson(row.answer) }));
 }
