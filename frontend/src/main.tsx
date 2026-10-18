@@ -1,3 +1,5 @@
+import { startMobile } from './mobile';
+import './mobile.css';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
@@ -27,6 +29,7 @@ import './profile-changes.css';
 import './account-settings.css';
 import { startClientLogging } from './client-logging';
 
+startMobile();
 startClientLogging();
 
 const root = document.getElementById('root');

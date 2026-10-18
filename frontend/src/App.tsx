@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { socketOrigin } from './mobile';
 import { UploadSlots } from './AssignmentFiles';
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
@@ -2380,7 +2381,7 @@ function QuizCenter({ mode, demo = false }) {
     }
     load();
     if (mode === "admin") api("/staff/learning").then(data => setMaterials(data.modules.flatMap(module => module.materials.map(material => ({ ...material, weekNumber: module.weekNumber }))))).catch(() => {});
-    const s = io({
+    const s = io(socketOrigin, {
       auth: { token: localStorage.getItem("lw_token") },
       autoConnect: true,
     });
