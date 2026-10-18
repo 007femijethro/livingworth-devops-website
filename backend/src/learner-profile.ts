@@ -25,7 +25,7 @@ export function registerLearnerProfileRoutes(app, pool, requireAuth, requireStaf
       const studentId = Number.parseInt(req.params.id, 10);
       if (!studentId) return res.status(400).json({ message: 'Choose a valid learner.' });
 
-      const [students] = await pool.execute(`SELECT id, full_name AS fullName, first_name AS firstName,
+      const [students] = await pool.execute(`SELECT id, full_name AS fullName, profile_picture AS profilePicture, first_name AS firstName,
         last_name AS lastName, email, phone, gender, country, state_city AS stateCity,
         employment_status AS employmentStatus, educational_level AS educationalLevel,
         course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience,

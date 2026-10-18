@@ -4,6 +4,7 @@ const statements = [
 `ALTER TABLE lw_users ADD COLUMN IF NOT EXISTS expelled_reason VARCHAR(500)`,
 `ALTER TABLE lw_users ADD COLUMN IF NOT EXISTS expelled_at TIMESTAMPTZ`,
 `ALTER TABLE lw_users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0`,
+`ALTER TABLE lw_users ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(80)`,
 `ALTER TABLE lw_users ADD COLUMN IF NOT EXISTS is_class_rep BOOLEAN NOT NULL DEFAULT FALSE`,
 `ALTER TABLE lw_users DROP CONSTRAINT IF EXISTS lw_users_status_check`,
 `ALTER TABLE lw_users ADD CONSTRAINT lw_users_status_check CHECK (status IN ('pending','approved','rejected','expelled'))`,

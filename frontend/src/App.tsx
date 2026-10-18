@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { ProfileAvatar, ProfilePictureWelcome } from './ProfilePicture';
 import AdminSettings from './AdminSettings';
 import { useAcademySettings } from './AcademySettingsContext';
 import { classSessionStatus } from './class-schedule';
@@ -1122,7 +1123,7 @@ function AttendanceReports({ onDaily }) {
       {!studentId && <div className="learner-attendance-list">
         {report.students.map((student) => (
           <article key={student.studentId} className={student.warning || (student.counted > 0 && student.percentage < 75) ? "needs-attention" : ""}>
-            <div className="attendance-person"><span className="student-avatar">{student.fullName[0]}</span><div><strong>{student.fullName}</strong><small>{student.email}</small></div></div>
+            <div className="attendance-person"><ProfileAvatar user={student} className="student-avatar"/><div><strong>{student.fullName}</strong><small>{student.email}</small></div></div>
             <div className="attendance-breakdown"><span>{student.present} present</span><span>{student.late} late</span><span>{student.absent} absent</span><span>{student.excused} excused</span><span>{student.notRecorded} not recorded</span></div>
             <strong className={`attendance-percentage ${student.counted > 0 && student.percentage < 75 ? "low" : ""}`}>{student.percentage}%</strong>
             <div className="attendance-flags">{student.warning && <b>Missed Mon & Wed</b>}{student.counted > 0 && student.percentage < 75 && <b>Below 75%</b>}</div>
@@ -1569,7 +1570,7 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
     <section className="student-progress-overview">
       <div className="progress-welcome">
         <div><p className="eyebrow">DevOps student portal</p><h1>Welcome back, {firstName}.</h1><p>Here is your progress and what needs your attention next.</p></div>
-        <span className="avatar">{user.fullName[0]}</span>
+        <ProfileAvatar user={user}/>
       </div>
       {message && <div className="progress-loading">{message}</div>}
       {!message && <>
@@ -3081,7 +3082,7 @@ function StudentDirectory({ demo = false, canDelete = false, canManageClassReps 
     {message && <p className="form-message" role="status">{message}</p>}
     {!message && <p className="directory-result-count">Showing {filtered.length} of {students.length} students</p>}
     <div className="directory-grid">{!message && filtered.length === 0 ? <div className="empty">No students match these filters.</div> : filtered.map((student) => <article key={student.id}>
-      <div className="directory-card-head"><span className="student-avatar">{student.fullName[0]}</span><div><h3>{student.fullName}</h3><p>{student.email}</p></div><b className={`status ${student.isClassRep ? "class-rep" : "approved"}`}>{student.isClassRep ? "class rep" : "active"}</b></div>
+      <div className="directory-card-head"><ProfileAvatar user={student} className="student-avatar"/><div><h3>{student.fullName}</h3><p>{student.email}</p></div><b className={`status ${student.isClassRep ? "class-rep" : "approved"}`}>{student.isClassRep ? "class rep" : "active"}</b></div>
       <div className="student-facts"><span><small>Phone</small><b>{student.phone || "Not provided"}</b></span><span><small>Location</small><b>{[student.stateCity, student.country].filter(Boolean).join(", ") || "Not provided"}</b></span><span><small>Learning mode</small><b>{student.learningMode || "Not provided"}</b></span><span><small>Current status</small><b>{student.employmentStatus || "Not provided"}</b></span><span><small>Education</small><b>{student.educationalLevel || "Not provided"}</b></span><span><small>Tech experience</small><b>{student.techExperience || student.experienceLevel || "Not provided"}</b></span></div>
       <button type="button" className="button primary full" onClick={() => setSelectedId(student.id)}>View full profile</button>{canManageClassReps && <button type="button" className="button light-border full" disabled={!student.isClassRep && classRepCount >= academy.classRepLimit} onClick={() => setClassRep(student, !student.isClassRep)}>{student.isClassRep ? "Remove class rep" : "Appoint class rep"}</button>}
     </article>)}</div>
@@ -3384,7 +3385,7 @@ function AdminDashboard({ user, logout }) {
           <div className="empty">No applications match this view.</div>
         ) : students.map((student) => (
           <article key={student.id}>
-            <span className="student-avatar">{student.fullName[0]}</span>
+            <ProfileAvatar user={student} className="student-avatar"/>
             <div className="student-info">
               <h3>{student.fullName}</h3>
               <p>{student.email} · {student.phone || "No phone"}</p>
@@ -3573,12 +3574,19 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authNotice, setAuthNotice] = useState("");
+  const [picturePromptDismissed, setPicturePromptDismissed] = useState(false);
+  useEffect(() => {
+    const changed = (event) => setUser(current => current && String(current.id) === String(event.detail.userId) ? {...current, profilePicture:event.detail.profilePicture} : current);
+    window.addEventListener("lw-profile-picture-changed", changed);
+    return () => window.removeEventListener("lw-profile-picture-changed", changed);
+  }, []);
   const navigate = (p) => {
     if (window.location.search) window.history.replaceState({}, "", window.location.pathname);
     setPage(p);
     scrollTo(0, 0);
   };
   const onLogin = (u) => {
+    setPicturePromptDismissed(false);
     setUser(u);
     setPage("dashboard");
   };
@@ -3642,6 +3650,8 @@ export default function App() {
   if (["staff-login", "mentor-login", "admin-login"].includes(page))
     return <Login portal="staff" navigate={navigate} onLogin={onLogin} />;
   if (page === "dashboard" && user) {
+    if (user.role === "student" && !user.demo && !user.mustChangePassword && !user.profilePicture && !picturePromptDismissed)
+      return <ProfilePictureWelcome user={user} onContinue={() => setPicturePromptDismissed(true)} logout={logout}/>;
     if (user.role === "admin")
       return <AdminDashboard user={user} logout={logout} />;
     if (user.role === "mentor")

@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import { createServer } from 'node:http';
 import { Server as SocketServer } from 'socket.io';
 import { pool } from './db.js';
+import { registerProfilePictureRoutes } from './profile-pictures.js';
 import { getAcademySettings, loadAcademySettings, registerAcademySettingsRoutes } from './academy-settings.js';
 import { createToken, requireAdmin, requireAuth, requireStaff, verifyToken } from './auth.js';
 import { configureQuizSockets, registerQuizRoutes } from './quiz.js';
@@ -40,6 +41,7 @@ app.use(requestLogger);
 app.use('/api/admin/quizzes/import', express.text({ type: ['text/csv', 'text/plain'], limit: '2mb' }));
 app.use(express.json());
 registerAcademySettingsRoutes(app, pool, requireAuth, requireAdmin);
+registerProfilePictureRoutes(app, pool, requireAuth);
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || '/app/uploads'));
 
 app.get('/api/health', async (_req, res) => {
@@ -182,7 +184,7 @@ app.post('/api/auth/login', async (req, res, next) => {
     }
     await pool.execute('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?', [user.id]);
     logger.info('login_succeeded', { requestId: req.requestId, userId: user.id, role: user.role, portal });
-    res.json({ token: createToken(user), user: { id: user.id, fullName: user.full_name, email: user.email, role: user.role, status: user.status, isClassRep: Boolean(user.is_class_rep), mustChangePassword: Boolean(user.must_change_password) } });
+    res.json({ token: createToken(user), user: { id: user.id, fullName: user.full_name, email: user.email, role: user.role, status: user.status, isClassRep: Boolean(user.is_class_rep), profilePicture: user.profile_picture || null, mustChangePassword: Boolean(user.must_change_password) } });
   } catch (error) { next(error); }
 });
 
@@ -297,7 +299,7 @@ app.patch('/api/admin/users/:id/password', requireAuth, requireAdmin, async (req
 
 app.get('/api/auth/me', requireAuth, async (req, res, next) => {
   try {
-    const [rows] = await pool.execute('SELECT id, full_name AS fullName, email, phone, experience_level AS experienceLevel, learning_goal AS learningGoal, role, status, is_class_rep AS isClassRep, must_change_password AS mustChangePassword, created_at AS createdAt FROM users WHERE id = ?', [req.user.id]);
+    const [rows] = await pool.execute('SELECT id, full_name AS fullName, email, phone, experience_level AS experienceLevel, learning_goal AS learningGoal, role, status, is_class_rep AS isClassRep, profile_picture AS profilePicture, must_change_password AS mustChangePassword, created_at AS createdAt FROM users WHERE id = ?', [req.user.id]);
     if (!rows.length) return res.status(404).json({ message: 'Account not found.' });
     res.json(rows[0]);
   } catch (error) { next(error); }
@@ -327,7 +329,7 @@ app.get('/api/admin/students', requireAuth, requireAdmin, async (req, res, next)
       `SELECT id, full_name AS fullName, first_name AS firstName, last_name AS lastName, email, phone, gender,
         country, state_city AS stateCity, employment_status AS employmentStatus, educational_level AS educationalLevel,
         course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience,
-        experience_level AS experienceLevel, learning_goal AS learningGoal, status, is_class_rep AS isClassRep,
+        experience_level AS experienceLevel, learning_goal AS learningGoal, status, is_class_rep AS isClassRep, profile_picture AS profilePicture,
         rejection_reason AS rejectionReason, expelled_reason AS expelledReason, expelled_at AS expelledAt,
         created_at AS createdAt, updated_at AS updatedAt
        FROM users WHERE ${where.join(' AND ')}
@@ -455,7 +457,7 @@ app.get('/api/staff/students', requireAuth, requireStaff, async (_req, res, next
     const [rows] = await pool.query(`SELECT id, full_name AS fullName, email, phone, gender, country,
       state_city AS stateCity, employment_status AS employmentStatus, educational_level AS educationalLevel,
       course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience,
-      experience_level AS experienceLevel, learning_goal AS learningGoal, status, is_class_rep AS isClassRep, created_at AS createdAt
+      experience_level AS experienceLevel, learning_goal AS learningGoal, status, is_class_rep AS isClassRep, profile_picture AS profilePicture, created_at AS createdAt
       FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name`);
     res.json(rows);
   } catch (error) { next(error); }
