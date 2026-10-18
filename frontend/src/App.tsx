@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { socketOrigin } from './mobile';
+import { socketOrigin, isNative } from './mobile';
 import { UploadSlots } from './AssignmentFiles';
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
@@ -1967,7 +1967,7 @@ function StaffCertificates({ demo = false }) {
     finally { setDeletingCertificateId(null); }
   }
   function copyLink(certificate) {
-    navigator.clipboard.writeText(`${window.location.origin}/?verify=${encodeURIComponent(certificate.certificateNumber)}`);
+    navigator.clipboard.writeText(`${socketOrigin}/?verify=${encodeURIComponent(certificate.certificateNumber)}`);
     setMessage("Verification link copied.");
   }
   if (demo) return <div className="empty">Connect the backend to issue and verify certificates.</div>;
@@ -3583,7 +3583,7 @@ export default function App() {
   const query = new URLSearchParams(window.location.search);
   const resetToken = query.get("reset") || "";
   const verificationNumber = query.get("verify") || "";
-  const [page, setPage] = useState(resetToken ? "reset-password" : verificationNumber ? "verify-certificate" : "home");
+  const [page, setPage] = useState(resetToken ? "reset-password" : verificationNumber ? "verify-certificate" : isNative ? "mobile-welcome" : "home");
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authNotice, setAuthNotice] = useState("");
@@ -3600,7 +3600,7 @@ export default function App() {
     localStorage.removeItem("lw_token");
     localStorage.removeItem("lw_demo_admin");
     setUser(null);
-    setPage("home");
+    setPage(isNative ? "mobile-welcome" : "home");
     window.history.replaceState({}, "", "/");
   };
   useEffect(() => {
@@ -3636,6 +3636,16 @@ export default function App() {
   }, []);
   if (loading)
     return <div className="loading">Loading Livingworth Academy…</div>;
+  if (page === "mobile-welcome") return (
+    <main className="mobile-welcome">
+      <img src="/livingworth-logo.jpeg" alt="Livingworth Academy" />
+      <h1>Sign in to your academy</h1>
+      <p>Your classes, learning materials and academy tools in one place.</p>
+      <button className="button primary" onClick={() => navigate("student-login")}>Student sign in</button>
+      <button className="button" onClick={() => navigate("staff-login")}>Staff sign in</button>
+      <button className="mobile-explore" onClick={() => navigate("home")}>Explore the academy</button>
+    </main>
+  );
   if (page === "verify-certificate") return <CertificateVerification navigate={navigate} initialNumber={verificationNumber} />;
   if (page === "register") return <Register navigate={navigate} />;
   if (page === "forgot-password") return <ForgotPassword navigate={navigate} />;
