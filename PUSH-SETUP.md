@@ -18,7 +18,7 @@ node frontend/scripts/prepare-push-android.mjs /path/to/google-services.json
 ```
 
 The helper installs pinned Capacitor push support, prepares Android version
-the next native version (currently 1.3 / versionCode 4), creates the notification icon/channel configuration and
+the next native version (computed automatically from the current app version), creates the notification icon/channel configuration and
 builds with the new native fingerprint. It validates the package and rejects
 service-account files. It does NOT upload any client or server credentials.
 

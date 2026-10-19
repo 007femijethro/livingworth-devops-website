@@ -1,5 +1,8 @@
 // @ts-nocheck
 import LearningCalendar from './LearningCalendar';
+import BiometricSettings from './BiometricSettings';
+import { rememberedEmail, rememberEmail, savedBiometric, biometricAvailability, loginWithBiometric, forgetBiometric } from './biometric-login';
+import './biometric-login.css';
 import ContinueLearning from './ContinueLearning';
 import ProgrammeProgress from './ProgrammeProgress';
 import useLearningFocus from './useLearningFocus';
@@ -573,6 +576,18 @@ function PasswordInput({ name, autoComplete, minLength, required = true, placeho
 
 function Login({ portal, navigate, onLogin, notice = "" }) {
   const [message, setMessage] = useState(notice);
+  const [email, setEmail] = useState(() => rememberedEmail(portal));
+  const [remember, setRemember] = useState(true);
+  const [biometric, setBiometric] = useState({available:false,label:'biometrics'});
+  const [saved, setSaved] = useState(savedBiometric);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setEmail(rememberedEmail(portal)); setSaved(savedBiometric()); setRemember(true); void biometricAvailability().then(setBiometric); }, [portal]);
+  async function biometricSignIn() {
+    setBusy(true);setMessage('Confirm your identity on your phone…');
+    try { const data=await loginWithBiometric(); localStorage.setItem('lw_token',data.token); onLogin(data.user); }
+    catch(error) { if ([401,403].includes(error.status)) { await forgetBiometric().catch(()=>{});setSaved(savedBiometric());setMessage('Saved sign-in has expired or changed. Please use your password and enable it again.'); } else setMessage('Biometric sign-in was not completed. Try again or use your password.'); }
+    finally {setBusy(false)}
+  }
   function openOfflineDemo() {
     const user = {
       id: "demo-admin",
@@ -587,6 +602,8 @@ function Login({ portal, navigate, onLogin, notice = "" }) {
   }
   async function submit(e) {
     e.preventDefault();
+    if (busy) return;
+    setBusy(true);
     setMessage("Signing in…");
     try {
       const data = await api("/auth/login", {
@@ -596,13 +613,14 @@ function Login({ portal, navigate, onLogin, notice = "" }) {
           portal,
         }),
       });
+      rememberEmail(portal, data.user.email, remember);
       localStorage.setItem("lw_token", data.token);
       onLogin(data.user);
     } catch (err) {
       setMessage(
         `${err.message} ${portal === "staff" ? "You can still open the offline admin preview below." : ""}`,
       );
-    }
+    } finally { setBusy(false); }
   }
   const titles = {
     staff: "Staff login",
@@ -635,18 +653,21 @@ function Login({ portal, navigate, onLogin, notice = "" }) {
       <form className="form" onSubmit={submit}>
         <label>
           Email address
-          <input name="email" type="email" autoComplete="email" required />
+          <input name="email" type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} required disabled={busy} />
         </label>
         <label>
           Password
           <PasswordInput name="password" autoComplete="current-password" />
         </label>
         <button type="button" className="forgot-link" onClick={() => navigate("forgot-password")}>Forgot password?</button>
-        <button className="button primary full">
+        <label className="remember-email"><input type="checkbox" checked={remember} onChange={event=>{setRemember(event.target.checked);if(!event.target.checked)rememberEmail(portal,'',false)}}/> Remember my email on this device</label>
+        <button className="button primary full" disabled={busy}>
           Sign in to {portal} portal
         </button>
         <p className="form-message">{message}</p>
       </form>
+      {biometric.available && saved?.portal===portal && saved.email.toLowerCase()===email.trim().toLowerCase() && <button type="button" className="button biometric-login-button" disabled={busy} onClick={biometricSignIn}>Sign in with {biometric.label}</button>}
+      {isNative && <p className="biometric-signin-help">Enable biometric sign-in under Security after signing in with your password.</p>}
       {portal === "staff" && (
         <div className="offline-box">
           <b>Backend unavailable?</b>
@@ -1751,7 +1772,7 @@ function SecurityCenter({ role, currentEmail = "", demo = false }) {
       setEmailMessage(data.message); setTimeout(() => window.location.reload(), 800);
     } catch (error) { setEmailMessage(error.message); setEmailBusy(false); }
   }
-  return <><section className="security-center"><div><p className="eyebrow">Account security</p><h2>Change password</h2><p>{role === "student" ? "Student sessions expire after eight hours. You will be asked to sign in again." : "Your portal session remains active until you log out."}</p></div><form className="security-form" onSubmit={submit}><label>Current password<PasswordInput name="currentPassword" autoComplete="current-password" /></label><label>New password<PasswordInput name="newPassword" autoComplete="new-password" minLength="8" /></label><label>Confirm new password<PasswordInput name="confirmPassword" autoComplete="new-password" minLength="8" /></label><button className="button primary" disabled={demo}>Change password</button><p className="form-message success">{message}</p></form></section>{role === "student" && <section className="security-center email-change-center"><div><p className="eyebrow">Account email</p><h2>Change email</h2><p>Your current email is <strong>{currentEmail}</strong>. For security, you must enter your password and verify the new address with a code.</p></div>{emailStep === "request" ? <form className="security-form" onSubmit={requestEmailChange}><label>New email address<input name="newEmail" type="email" autoComplete="email" required /></label><label>Current password<PasswordInput name="currentPassword" autoComplete="current-password" /></label><button className="button primary" disabled={demo || emailBusy}>{emailBusy ? "Sending…" : "Send verification code"}</button><p className="form-message" role="status">{emailMessage}</p></form> : <form className="security-form" onSubmit={confirmEmailChange}><div className="verification-destination">Code sent to <strong>{pendingEmail}</strong></div><label>6-digit verification code<input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength="6" placeholder="000000" required /></label><button className="button primary" disabled={emailBusy}>{emailBusy ? "Verifying…" : "Verify and change email"}</button><button type="button" className="button light-border" disabled={emailBusy} onClick={() => { setEmailStep("request"); setEmailMessage(""); }}>Use a different email</button><p className="form-message" role="status">{emailMessage}</p></form>}</section>}{role !== "student" && <EmailNotificationControl demo={demo} />}</>;
+  return <><BiometricSettings currentEmail={currentEmail} demo={demo}/><section className="security-center"><div><p className="eyebrow">Account security</p><h2>Change password</h2><p>{role === "student" ? "Student sessions expire after eight hours. You will be asked to sign in again." : "Your portal session remains active until you log out."}</p></div><form className="security-form" onSubmit={submit}><label>Current password<PasswordInput name="currentPassword" autoComplete="current-password" /></label><label>New password<PasswordInput name="newPassword" autoComplete="new-password" minLength="8" /></label><label>Confirm new password<PasswordInput name="confirmPassword" autoComplete="new-password" minLength="8" /></label><button className="button primary" disabled={demo}>Change password</button><p className="form-message success">{message}</p></form></section>{role === "student" && <section className="security-center email-change-center"><div><p className="eyebrow">Account email</p><h2>Change email</h2><p>Your current email is <strong>{currentEmail}</strong>. For security, you must enter your password and verify the new address with a code.</p></div>{emailStep === "request" ? <form className="security-form" onSubmit={requestEmailChange}><label>New email address<input name="newEmail" type="email" autoComplete="email" required /></label><label>Current password<PasswordInput name="currentPassword" autoComplete="current-password" /></label><button className="button primary" disabled={demo || emailBusy}>{emailBusy ? "Sending…" : "Send verification code"}</button><p className="form-message" role="status">{emailMessage}</p></form> : <form className="security-form" onSubmit={confirmEmailChange}><div className="verification-destination">Code sent to <strong>{pendingEmail}</strong></div><label>6-digit verification code<input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength="6" placeholder="000000" required /></label><button className="button primary" disabled={emailBusy}>{emailBusy ? "Verifying…" : "Verify and change email"}</button><button type="button" className="button light-border" disabled={emailBusy} onClick={() => { setEmailStep("request"); setEmailMessage(""); }}>Use a different email</button><p className="form-message" role="status">{emailMessage}</p></form>}</section>}{role !== "student" && <EmailNotificationControl demo={demo} />}</>;
 }
 
 function EmailNotificationControl({ demo = false }) {
@@ -3616,6 +3637,9 @@ export default function App() {
       setLoading(false);
       return;
     }
+    // A saved biometric account must not silently restore a persisted app session.
+    const saved = isNative ? savedBiometric() : null;
+    if (saved) { localStorage.removeItem('lw_token'); setPage(`${saved.portal}-login`); setLoading(false); return; }
     const token = localStorage.getItem("lw_token");
     if (token)
       api("/auth/me")

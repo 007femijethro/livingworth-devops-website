@@ -1,5 +1,6 @@
 // @ts-nocheck
 import 'dotenv/config';
+import { registerBiometricLoginRoutes } from './biometric-login.js';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
@@ -159,6 +160,8 @@ app.post('/api/auth/register', async (req, res, next) => {
     });
   } catch (error) { next(error); }
 });
+
+registerBiometricLoginRoutes(app, pool, requireAuth, createToken);
 
 app.post('/api/auth/login', async (req, res, next) => {
   try {

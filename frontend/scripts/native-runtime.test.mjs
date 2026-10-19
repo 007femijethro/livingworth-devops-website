@@ -16,6 +16,7 @@ test('native fingerprint is stable before and after sync, while actual native ed
   write('android/app/src/main/java/MainActivity.java','changed native source');
   assert.notEqual(nativeRuntime(root).nativeFingerprint,before.nativeFingerprint);
   assert.equal(before.nativeVersionCode,2);
+  const beforePlugin=nativeRuntime(root);write('package-lock.json',JSON.stringify({packages:{'node_modules/@capacitor/core':{version:'8.0.0'},'node_modules/@capgo/capacitor-native-biometric':{version:'8.9.0'}}}));assert.notEqual(nativeRuntime(root).nativeFingerprint,beforePlugin.nativeFingerprint);
   const withoutFirebase=nativeRuntime(root);write('android/app/google-services.json',JSON.stringify({project_info:{project_id:'client-test'}}));assert.notEqual(nativeRuntime(root).nativeFingerprint,withoutFirebase.nativeFingerprint);
  }finally{fs.rmSync(root,{recursive:true,force:true})}
 });

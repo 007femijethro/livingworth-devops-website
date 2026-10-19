@@ -15,6 +15,7 @@ dependencies {
     implementation project(':capacitor-network')
     implementation project(':capacitor-share')
     implementation project(':capawesome-capacitor-live-update')
+    implementation project(':capgo-capacitor-native-biometric')
 
 }
 

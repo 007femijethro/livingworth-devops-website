@@ -21,7 +21,7 @@ export function nativeRuntime(root = fileURLToPath(new URL('..', import.meta.url
   for (const file of files.sort()) hash.update(file + '\0').update(fs.readFileSync(path.join(root, file))).update('\0');
   const lock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
   for (const [name, pkg] of Object.entries(lock.packages).sort(([a], [b]) => a.localeCompare(b))) {
-    if (/^node_modules\/@(capacitor|capawesome)\//.test(name)) hash.update(name + ':' + pkg.version + '\0');
+    if (/^node_modules\/@(capacitor|capawesome|capgo)\//.test(name)) hash.update(name + ':' + pkg.version + '\0');
   }
   const gradle = fs.readFileSync(path.join(root, 'android/app/build.gradle'), 'utf8');
   const nativeVersionCode = Number(gradle.match(/\bversionCode\s+(\d+)/)?.[1]);
