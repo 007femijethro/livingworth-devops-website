@@ -96,6 +96,8 @@ jobs:
               -H "Host: bridgess.co.uk" \
               https://localhost/ > /dev/null
 
+            sudo docker compose exec -T backend node scripts/audit-week8-9.mjs
+
             echo "Applying the one-time reviewed weekly summaries..."
             sudo docker compose exec -T backend node scripts/apply-weekly-summaries.mjs
 
