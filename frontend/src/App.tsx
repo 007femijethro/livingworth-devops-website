@@ -2919,7 +2919,8 @@ function QuizCenter({ mode, demo = false }) {
           {mode === "admin" ? (
             <div className="quiz-lobby-actions"><button className="button gold" onClick={start}>Start quiz for everyone</button><button className="button close-quiz-room" onClick={closeQuizRoom}>Close room &amp; go back</button></div>
           ) : (
-            <div className="student-lobby-actions"><p>{room.lifelineLimit || 0} lifelines per attempt. Waiting for your instructor to start…</p><button type="button" className="button leave-quiz-room" onClick={leaveWaitingRoom}>Leave quiz room</button></div>
+            <><div className="quiz-lifelines"><strong>🛟 Quiz lifelines</strong><p>50:50 · ✓ Free Pass · 👥 Audience</p><small>{Number(room.lifelineLimit) > 0 ? `${room.lifelineLimit} uses per attempt. The buttons unlock when a question starts. Use a lifeline before answering.` : "Your instructor has disabled lifelines for this quiz."}</small></div>
+            <div className="student-lobby-actions"><p>{room.lifelineLimit || 0} lifelines per attempt. Waiting for your instructor to start…</p><button type="button" className="button leave-quiz-room" onClick={leaveWaitingRoom}>Leave quiz room</button></div></>
           )}
         </div>
       )}
@@ -2934,13 +2935,13 @@ function QuizCenter({ mode, demo = false }) {
           </p>
           {mode === "admin" && <p className="live-answer-count"><b>{answerCount.answered}</b> of {answerCount.total} students answered · {answerCount.remaining} remaining</p>}
           <h3>{question.prompt}</h3>
-          {mode === "student" && Number(question.lifelineLimit || room.lifelineLimit) > 0 && <div className="quiz-lifelines" aria-label="Quiz lifelines">
-            <div><strong>🛟 Lifelines</strong><span>{lifelines?.remaining ?? question.lifelineLimit ?? room.lifelineLimit} remaining this attempt</span></div>
+          {mode === "student" && <div className="quiz-lifelines" aria-label="Quiz lifelines">
+            <div><strong>🛟 Lifelines</strong><span>{lifelines?.remaining ?? question.lifelineLimit ?? room.lifelineLimit ?? 0} remaining this attempt</span></div>
             <div className="quiz-lifeline-buttons">{[["fifty_fifty","50:50","Remove two wrong answers"],["free_pass","✓ Free Pass","Save the correct answer"],["audience","👥 Audience","Save the most popular answer so far"]].map(([type,label,help]) => {
               const unsupported = type === "fifty_fifty" ? ["typed","multiple_selection"].includes(question.questionType) || question.options.length !== 4 : type === "audience" && ["typed","multiple_selection"].includes(question.questionType);
               return <button type="button" key={type} title={unsupported ? "Unavailable for this question type" : help} disabled={unsupported || lifelineBusy || submitted || !!currentLifeline || lifelines?.questionId !== question.id || !lifelines?.remaining || paused || seconds <= 0 || reveal !== null} onClick={() => useLifeline(type)}>{label}</button>;
             })}</div>
-            <small>{currentLifeline ? `Used: ${currentLifeline.type === "fifty_fifty" ? "50:50" : currentLifeline.type === "free_pass" ? "Free Pass" : "Audience"}.` : "One lifeline per question, before answering. Audience may be wrong; ties or no votes cost no use."}</small>
+            <small>{Number(question.lifelineLimit ?? room.lifelineLimit ?? 0) === 0 ? "Your instructor has disabled lifelines for this quiz." : currentLifeline ? `Used: ${currentLifeline.type === "fifty_fifty" ? "50:50" : currentLifeline.type === "free_pass" ? "Free Pass" : "Audience"}.` : "One lifeline per question, before answering. Audience may be wrong; ties or no votes cost no use."}</small>
           </div>}
 
           {question.questionType === "typed" ? <div className="typed-answer"><input value={typedAnswer} disabled={mode !== "student" || freePassLocked || lifelineBusy || paused || seconds <= 0 || reveal !== null} onChange={(event) => { setTypedAnswer(event.target.value); setSubmitted(false); }} placeholder="Type your answer" /><button type="button" className="button primary" disabled={freePassLocked || lifelineBusy || !typedAnswer.trim() || paused || seconds <= 0 || reveal !== null} onClick={() => answer(null)}>{submitted ? "Update answer" : "Save answer"}</button>{reveal !== null && <strong>Accepted answer: {reveal.correctText}</strong>}</div> : <div className="answer-grid">

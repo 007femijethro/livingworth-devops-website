@@ -122,6 +122,7 @@ jobs:
             assert 'SHA256:LwsZFJHh71mApNwMgPSBOWw1F7oDoHCN33bc9fyHP8w' in fingerprint,'SSH host identity changed'
             remote='''set -eu
           sudo docker exec livingworth-backend node --input-type=module -e 'import {rawPool} from "./dist/db.js";try {await rawPool.query("SELECT lifeline_limit FROM lw_quizzes LIMIT 1");await rawPool.query("SELECT id FROM lw_quiz_lifeline_uses LIMIT 1");console.log(JSON.stringify({event:"quiz_lifelines_ready",ready:true}));} finally {await rawPool.end();}'
+          sudo docker exec livingworth-backend node scripts/enable-week8-9-lifelines.mjs
           sudo docker exec livingworth-backend mkdir -p /tmp/livingworth-mobile-web
           sudo docker exec livingworth-frontend tar -C /usr/share/nginx/html -cf - . | sudo docker exec -i livingworth-backend tar -C /tmp/livingworth-mobile-web -xf -
           sudo docker exec livingworth-backend node scripts/publish-mobile-update.mjs /tmp/livingworth-mobile-web
