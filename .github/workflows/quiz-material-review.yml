@@ -1,0 +1,25 @@
+name: Review Week 8 and 9 quiz materials
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/quiz-material-review.yml']
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read encrypted curriculum snapshot
+        env:
+          QUIZ_HOST: ${{ secrets.EC2_HOST }}
+          QUIZ_USER: ${{ secrets.EC2_USER }}
+          QUIZ_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os,subprocess,tempfile,pathlib
+          with tempfile.TemporaryDirectory() as d:
+            p=pathlib.Path(d); key=p/'key'; key.write_text(os.environ['QUIZ_SSH_KEY']+'\n'); key.chmod(0o600)
+            scan=subprocess.run(['ssh-keyscan','-T','15','-t','ed25519',os.environ['QUIZ_HOST']],capture_output=True,text=True,check=True)
+            known=p/'known_hosts'; known.write_text(scan.stdout)
+            fp=subprocess.check_output(['ssh-keygen','-lf',str(known),'-E','sha256'],text=True)
+            assert 'SHA256:LwsZFJHh71mApNwMgPSBOWw1F7oDoHCN33bc9fyHP8w' in fp,'SSH host identity changed'
+            subprocess.run(['ssh','-n','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile='+str(known),'-i',str(key),os.environ['QUIZ_USER']+'@'+os.environ['QUIZ_HOST'],'sudo docker exec livingworth-backend node scripts/audit-week8-9.mjs'],check=True,timeout=90)
+          PY
