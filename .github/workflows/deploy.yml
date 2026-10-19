@@ -96,6 +96,15 @@ jobs:
               -H "Host: bridgess.co.uk" \
               https://localhost/ > /dev/null
 
+      - name: Verify curriculum and finish deployment
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd /home/ubuntu/livingworth-devops-website
             sudo docker compose exec -T backend node scripts/audit-week8-9.mjs < /dev/null
 
             echo "Applying the one-time reviewed weekly summaries..."
