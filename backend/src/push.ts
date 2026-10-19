@@ -1,12 +1,13 @@
 // @ts-nocheck
 import fs from 'node:fs';
+import { validateFirebaseCredential } from './firebase-credential.js';
 import crypto from 'node:crypto';
 import { getAcademySettings } from './academy-settings.js';
 import { logger } from './logger.js';
 const credentialPath=()=>process.env.GOOGLE_APPLICATION_CREDENTIALS||'/app/mobile-private/firebase-service-account.json';
 let credentialCache=null,accessCache=null;
 export function pushConfigured(){if(!fs.existsSync(credentialPath()))return false;try{credentials();return true}catch{return false}}
-function credentials(){if(credentialCache)return credentialCache;const data=JSON.parse(fs.readFileSync(credentialPath(),'utf8'));if(!/^[a-z0-9-]+$/.test(data.project_id||'')||!data.client_email||!data.private_key)throw new Error('Push credentials are incomplete.');crypto.createPrivateKey(data.private_key);return credentialCache=data}
+function credentials(){if(credentialCache)return credentialCache;const data=JSON.parse(fs.readFileSync(credentialPath(),'utf8'));return credentialCache=validateFirebaseCredential(data)}
 const key=()=>crypto.createHash('sha256').update(`${process.env.JWT_SECRET}:livingworth-push`).digest();
 export function protectPushToken(token){const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',key(),iv),body=Buffer.concat([cipher.update(token,'utf8'),cipher.final()]);return [iv.toString('base64'),cipher.getAuthTag().toString('base64'),body.toString('base64')].join('.')}
 export function revealPushToken(value){const [iv,tag,body]=value.split('.').map(part=>Buffer.from(part,'base64')),cipher=crypto.createDecipheriv('aes-256-gcm',key(),iv);cipher.setAuthTag(tag);return Buffer.concat([cipher.update(body),cipher.final()]).toString('utf8')}

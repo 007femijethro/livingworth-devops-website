@@ -1,74 +1,44 @@
-# Android push notification activation
+# Android push notifications
 
-The learning calendar and in-app notifications work without Firebase. Actual
-phone push delivery remains off until both Firebase credentials and a new native
-Android release are ready. Existing version 1.1 apps cannot gain a native plugin
-through a web update.
+Android **1.4 / versionCode 5** includes Capacitor Push Notifications 8.1.3 and the Firebase Android client for **livingworth-academy**, package **com.livingworthacademy.app**. The Android client JSON contains public app identifiers and is tracked at `frontend/android/app/google-services.json` so CI, production web builds and OTA native fingerprints agree. Never substitute a private service-account file there.
 
-## 1. Firebase Android client
+The native app initializes Firebase messaging only after a learner chooses to enable phone notifications. Android 13+ asks for notification permission. Biometrics and the existing app features remain available. This native plugin requires the new APK; a web update alone cannot add it to older apps.
 
-Create or select your Firebase project. Add an Android app with package
-`com.livingworthacademy.app`, and download its `google-services.json` CLIENT file.
-This is different from the private service-account credential below.
+## Connect private server delivery
 
-Run from a clean project checkout, passing the client file's actual location:
+The Android file does not authorize the academy server to send messages. In the **livingworth-academy** Firebase project:
 
-```
-node frontend/scripts/prepare-push-android.mjs /path/to/google-services.json
-```
+1. Ensure Firebase Cloud Messaging HTTP v1 is enabled. The sending service account needs the Firebase Cloud Messaging API Admin role.
+2. Open Project settings → Service accounts → Generate new private key. Keep this JSON private; never attach it in chat or add it to source.
+3. Open the GitHub repository → Settings → Secrets and variables → Actions → New repository secret.
+4. Name it **FIREBASE_SERVICE_ACCOUNT_JSON** and paste the complete private JSON as the secret value.
+5. Open Actions → **Configure Firebase delivery** → Run workflow → main. Run after the latest deployment succeeds.
 
-The helper installs pinned Capacitor push support, prepares Android version
-the next native version (computed automatically from the current app version), creates the notification icon/channel configuration and
-builds with the new native fingerprint. It validates the package and rejects
-service-account files. It does NOT upload any client or server credentials.
+The workflow masks the transport value, validates the project and RSA private key, writes atomically to the persistent private backend volume with mode 600 and directory mode 700, and restarts the backend. It uses the existing EC2 deployment secrets. It never puts the credential in the APK, database, workflow artifact or public uploads. Existing signed mobile update keys remain in the same private volume.
 
-Before distribution, commit the resulting native source, dependency and config
-changes. Configure the existing Android CI to restore the CLIENT JSON from a
-repository secret before `android:sync`, or supply it locally when building.
-Build and test the APK on a physical Android device. Do not distribute an APK
-whose native inputs have not been committed: later signed web updates must
-match that native fingerprint. Existing version 1.1 updates stay on channel 2;
-the next push release uses its new versionCode channel.
-
-## 2. Private server credential
-
-Enable Firebase Cloud Messaging HTTP v1 in the same project. Give the server
-service account the Firebase Cloud Messaging API Admin role, and generate its
-private JSON credential through Google's console. Never commit this key, put it
-in the Android client, or paste it in chat.
-
-On the academy server, copy the private credential into the existing persistent
-`mobile_update_signing` volume at:
+Alternatively, on the server, pipe the private JSON into the backend:
 
 ```
-/app/mobile-private/firebase-service-account.json
+cd /home/ubuntu/livingworth-devops-website
+sudo docker compose exec -T backend node scripts/install-firebase-credential.mjs < /secure/path/firebase-service-account.json
+sudo docker compose restart backend
 ```
 
-Keep it readable only by the backend container's `node` user (mode 600). This
-private directory is not web-served. The backend's default credential path is
-that file; an alternative can be supplied using `GOOGLE_APPLICATION_CREDENTIALS`.
-The current Docker service uses the default path. No database password, Firebase
-server key or OAuth token belongs in the admin interface.
+The backend checks that the server credential belongs to the same Firebase project as the Android app. Deployment reports configuration readiness without logging key contents. Configuration readiness does not prove the key has permission to deliver messages.
 
-## 3. Enable and verify
+## Enable and test delivery
 
-In Admin Settings → Email & reminders, confirm Android push is allowed. Enable
-scheduled reminders if class/quiz/deadline reminders should run. Existing values
-are preserved by deployment; deploying does not switch reminders on.
+In Admin Settings → Email & reminders, confirm Android push is allowed. Enable scheduled reminders if class/quiz/deadline reminders should run. Deployment preserves these settings and does not switch scheduled reminders on automatically.
 
-Install the new APK. A learner opens Notifications and chooses **Enable phone
-notifications**, accepting Android's permission prompt. Confirm their device
-appears in the admin delivery status. Verify foreground receipt, tapping a
-background notification, and receipt while the app is closed. Test with a
-purpose-created account/notification rather than messaging the whole class.
+Install the new APK. A learner opens Notifications and chooses **Enable phone notifications**, then accepts Android permission. Confirm their device appears in the admin delivery status. Use a test learner to check foreground receipt, tapping a background notification, and receipt with the app closed. Do not send a class-wide test without instruction.
 
-Each phone can opt out. Logging out removes its registration and unregisters the
-native token. Device tokens are encrypted at rest. Delivery checks account status
-and current device ownership; expelled learners do not receive queued messages.
-Queued delivery retries up to five times, removes expired tokens, and retains
-jobs for at most 30 days. The lock-screen body is generic; private feedback remains
-inside the signed-in portal.
+The user can opt out; logout removes the device registration and unregisters the native token. Tokens are encrypted at rest. Delivery checks current account status and device ownership; expelled learners do not receive queued messages. Jobs retry up to five times and expire after 30 days. Notification bodies are generic; private feedback stays in the signed-in portal.
+
+## Validation
+
+Backend tests cover encrypted token storage, owner-scoped registration/revocation, retry and expired-token handling, and server credential validation/installation. Android CI builds the APK, runs unit tests and lint. Real delivery still requires the private server credential, device permission, a registered phone and physical device testing.
 
 Official references:
 - https://capacitorjs.com/docs/apis/push-notifications
+- https://firebase.google.com/docs/android/setup
 - https://firebase.google.com/docs/cloud-messaging/send/v1-api

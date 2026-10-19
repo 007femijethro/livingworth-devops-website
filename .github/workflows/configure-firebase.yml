@@ -1,0 +1,49 @@
+name: Configure Firebase delivery
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: livingworth-deploy
+  cancel-in-progress: false
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare private credential
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const value = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+          if (!value) throw new Error('Add the FIREBASE_SERVICE_ACCOUNT_JSON repository secret first.');
+          let data;
+          try { data = JSON.parse(value); } catch { throw new Error('The Firebase repository secret must contain valid JSON.'); }
+          if (data.type !== 'service_account' || data.project_id !== 'livingworth-academy' || !data.private_key) throw new Error('Use the Livingworth Academy server service-account JSON, not the Android client configuration.');
+          const encoded = Buffer.from(value).toString('base64');
+          console.log(`::add-mask::${encoded}`);
+          fs.appendFileSync(process.env.GITHUB_ENV, `FCM_CREDENTIAL_B64=${encoded}\n`);
+          NODE
+      - name: Install server credential
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: FCM_CREDENTIAL_B64
+          script: |
+            set -eu
+            cd /home/ubuntu/livingworth-devops-website
+            printf '%s' "$FCM_CREDENTIAL_B64" | sudo docker compose exec -T backend node scripts/install-firebase-credential.mjs --base64
+            sudo docker compose restart backend
+            ready=false
+            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if curl -kfsS --max-time 10 -H 'Host: bridgess.co.uk' https://localhost/api/health > /dev/null; then
+                ready=true
+                break
+              fi
+              sleep 5
+            done
+            test "$ready" = true
+            sudo docker compose exec -T backend node --input-type=module -e 'import {pushConfigured} from "./dist/push.js"; if(!pushConfigured())process.exit(1);console.log("Firebase server configuration is ready. Device delivery testing is still required.")'

@@ -5,7 +5,8 @@ dist/
 .DS_Store
 
 
-# Firebase client configuration is supplied per native build; private credentials
+# Android client identifiers are public build configuration. Private server keys
 # must always remain outside tracked source.
 **/google-services.json
+!frontend/android/app/google-services.json
 **/firebase-service-account.json
