@@ -2339,7 +2339,7 @@ function QuizCenter({ mode, demo = false }) {
     localStorage.setItem("lw_quiz_sounds", next ? "on" : "off"); if (next) playSound("locked");
   }
   function applyJoinedQuiz(result, restored = false) {
-    setLifelines(result.liveState?.lifelines || null);
+    setLifelines(result.liveState?.lifelines ? { ...result.liveState.lifelines, restored: true } : null);
     setRoom(result.quiz);
     roomRef.current = result.quiz;
     sessionStorage.setItem("lw_live_quiz_code", result.quiz.joinCode);
@@ -2515,7 +2515,7 @@ function QuizCenter({ mode, demo = false }) {
   const freePassLocked = currentLifeline?.type === "free_pass";
   const hiddenOptions = reveal === null ? currentLifeline?.effect?.hiddenIndexes || [] : [];
   useEffect(() => {
-    if (!currentLifeline || !question) return;
+    if (!currentLifeline || !question || lifelines?.restored) return;
     const effect = currentLifeline.effect;
     if (currentLifeline.type !== "fifty_fifty") {
       setSelectedAnswer(effect.answerIndex ?? null);
@@ -2531,7 +2531,9 @@ function QuizCenter({ mode, demo = false }) {
       setLifelineBusy(false);
       if (error) {setMessage("Connection interrupted. Rejoin the quiz to check whether the lifeline was used."); return;}
       if (!result.ok) {setMessage(result.message);return;}
-      setLifelines(result.lifelines);
+      if (result.replayed) {
+        socket.emit("quiz:join", {joinCode:room.joinCode}, joined => {if(joined.ok) applyJoinedQuiz(joined,true);});
+      } else setLifelines(result.lifelines);
       setMessage(type === "fifty_fifty" ? "50:50 removed two wrong answers. Choose from the two remaining options." : type === "free_pass" ? "Free Pass saved the correct answer. No speed bonus is added." : "Audience saved the most popular answer so far. It may be wrong; you can still change it.");
     });
   }
