@@ -3552,7 +3552,7 @@ function AdminDashboard({ user, logout }) {
         {active === "Live class" && <LiveClassCenter mode="staff" user={user} demo={user.demo} />}
         {active === "Live quiz" && <QuizCenter mode="admin" demo={user.demo} />}
         {active === "Settings" && <AdminSettings demo={user.demo} onNavigate={setActive} />}
-        {active === "Security" && <SecurityCenter role="admin" demo={user.demo} />}
+        {active === "Security" && <SecurityCenter role="admin" currentEmail={user.email} demo={user.demo} />}
         {profileStudentId && <LearnerProfilePanel studentId={profileStudentId} onClose={() => setProfileStudentId(null)} onDeleted={(notice) => { setProfileStudentId(null); setMessage(notice); loadApplications(); }} />}
     </PortalShell>
   );
@@ -3569,7 +3569,7 @@ function MentorDashboard({ user, logout }) {
         {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} onViewLearner={setProfileStudentId} />}
         {active === "Announcements" && <AnnouncementsCenter mode="staff" />}
         {active === "Stories" && <StaffStoriesCenter />}
-        {active === "Security" && <SecurityCenter role="mentor" />}
+        {active === "Security" && <SecurityCenter role="mentor" currentEmail={user.email} />}
         {active === "Students" && <StudentDirectory />}
         {active === "Certificates" && <StaffCertificates />}
         {active === "Leaderboard" && <OverallLeaderboard />}
