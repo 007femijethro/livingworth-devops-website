@@ -8,3 +8,12 @@ test('release signing refuses a changed SSH host and never accepts an unrelated 
 test('invalid private material never creates a keystore',()=>{
  assert.throws(()=>restoreSigningMaterial({},'/unused','expected'),/Invalid signing material/);
 });
+
+import {verifyReleaseCertificate} from './verify-release-certificate.mjs';
+test('certificate verification accepts signer report prefixes and rejects missing or different signers',()=>{
+ const digest='a'.repeat(64);
+ for(const prefix of ['Signer #1','Signer (minSdkVersion=24, maxSdkVersion=2147483647)'])assert.equal(verifyReleaseCertificate(`${prefix} certificate SHA-256 digest: ${digest}`,digest),digest);
+ assert.equal(verifyReleaseCertificate('Signer #1 certificate SHA-256 digest: '+digest.match(/../g).join(':'),digest),digest);
+ assert.throws(()=>verifyReleaseCertificate('No certificate','a'.repeat(64)));
+ assert.throws(()=>verifyReleaseCertificate('Signer #1 certificate SHA-256 digest: '+'b'.repeat(64),digest));
+});

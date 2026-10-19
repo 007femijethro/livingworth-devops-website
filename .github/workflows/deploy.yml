@@ -83,6 +83,9 @@ jobs:
             echo "Checking permanent Android release storage..."
             sudo docker compose exec -T --user root backend node scripts/android-release-signing.mjs status
 
+            echo "Verifying signing-key isolation from the application user..."
+            sudo docker compose exec -T backend node --input-type=module -e 'import fs from "node:fs";try{fs.accessSync("/app/android-signing-private/android-release-signing.json",fs.constants.R_OK);process.exit(1)}catch(error){if(error.code!=="EACCES")throw error;console.log("Permanent release signing key is isolated from the application user.")}'
+
             echo "Checking Firebase server readiness..."
             sudo docker compose exec -T backend node --input-type=module -e 'import {pushConfigured} from "./dist/push.js"; console.log(JSON.stringify({event:"firebase_server_status",configured:pushConfigured(),projectId:process.env.FIREBASE_PROJECT_ID}))'
 

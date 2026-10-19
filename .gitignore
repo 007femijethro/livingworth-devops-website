@@ -10,3 +10,6 @@ dist/
 **/google-services.json
 !frontend/android/app/google-services.json
 **/firebase-service-account.json
+
+# Keep locally created encrypted signing backups out of source control.
+*signing-backup*.enc
