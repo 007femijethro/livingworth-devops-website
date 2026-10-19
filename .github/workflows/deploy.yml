@@ -81,13 +81,13 @@ jobs:
             sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256 | awk '{print "release_signing_host_fingerprint " $2}'
 
             echo "Checking permanent Android release storage..."
-            sudo docker compose exec -T --user root backend node scripts/android-release-signing.mjs status < /dev/null
+            sudo docker compose exec -T --user root backend node scripts/android-release-signing.mjs status
 
             echo "Verifying signing-key isolation from the application user..."
-            sudo docker compose exec -T backend node --input-type=module -e 'import fs from "node:fs";try{fs.accessSync("/app/android-signing-private/android-release-signing.json",fs.constants.R_OK);process.exit(1)}catch(error){if(error.code!=="EACCES")throw error;console.log("Permanent release signing key is isolated from the application user.")}' < /dev/null
+            sudo docker compose exec -T backend node --input-type=module -e 'import fs from "node:fs";try{fs.accessSync("/app/android-signing-private/android-release-signing.json",fs.constants.R_OK);process.exit(1)}catch(error){if(error.code!=="EACCES")throw error;console.log("Permanent release signing key is isolated from the application user.")}'
 
             echo "Checking Firebase server readiness..."
-            sudo docker compose exec -T backend node --input-type=module -e 'import {pushConfigured} from "./dist/push.js"; console.log(JSON.stringify({event:"firebase_server_status",configured:pushConfigured(),projectId:process.env.FIREBASE_PROJECT_ID}))' < /dev/null
+            sudo docker compose exec -T backend node --input-type=module -e 'import {pushConfigured} from "./dist/push.js"; console.log(JSON.stringify({event:"firebase_server_status",configured:pushConfigured(),projectId:process.env.FIREBASE_PROJECT_ID}))'
 
             echo "Testing frontend..."
 
@@ -96,23 +96,12 @@ jobs:
               -H "Host: bridgess.co.uk" \
               https://localhost/ > /dev/null
 
-      - name: Verify curriculum and finish deployment
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            set -e
-            cd /home/ubuntu/livingworth-devops-website
-            sudo docker compose exec -T backend node scripts/audit-week8-9.mjs < /dev/null
-
             echo "Applying the one-time reviewed weekly summaries..."
-            sudo docker compose exec -T backend node scripts/apply-weekly-summaries.mjs < /dev/null
+            sudo docker compose exec -T backend node scripts/apply-weekly-summaries.mjs
 
             echo "Publishing signed mobile web update..."
-            sudo docker compose exec -T backend mkdir -p /tmp/livingworth-mobile-web < /dev/null
+            sudo docker compose exec -T backend mkdir -p /tmp/livingworth-mobile-web
             sudo docker compose exec -T frontend tar -C /usr/share/nginx/html -cf - . | sudo docker compose exec -T backend tar -C /tmp/livingworth-mobile-web -xf -
-            sudo docker compose exec -T backend node scripts/publish-mobile-update.mjs /tmp/livingworth-mobile-web < /dev/null
+            sudo docker compose exec -T backend node scripts/publish-mobile-update.mjs /tmp/livingworth-mobile-web
 
             echo "Deployment completed successfully"

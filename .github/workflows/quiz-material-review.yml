@@ -1,4 +1,4 @@
-name: Review Week 8 and 9 quiz materials
+name: Install reviewed Week 8 and 9 quiz drafts
 on:
   push:
     branches: [main]
@@ -7,7 +7,7 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - name: Read encrypted curriculum snapshot
+      - name: Import and verify reviewed quiz drafts
         env:
           QUIZ_HOST: ${{ secrets.EC2_HOST }}
           QUIZ_USER: ${{ secrets.EC2_USER }}
@@ -21,5 +21,11 @@ jobs:
             known=p/'known_hosts'; known.write_text(scan.stdout)
             fp=subprocess.check_output(['ssh-keygen','-lf',str(known),'-E','sha256'],text=True)
             assert 'SHA256:LwsZFJHh71mApNwMgPSBOWw1F7oDoHCN33bc9fyHP8w' in fp,'SSH host identity changed'
-            subprocess.run(['ssh','-n','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile='+str(known),'-i',str(key),os.environ['QUIZ_USER']+'@'+os.environ['QUIZ_HOST'],'sudo docker exec livingworth-backend node scripts/audit-week8-9.mjs'],check=True,timeout=90)
+            result=subprocess.run(['ssh','-n','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile='+str(known),'-i',str(key),os.environ['QUIZ_USER']+'@'+os.environ['QUIZ_HOST'],'for attempt in $(seq 1 36); do if sudo docker exec livingworth-backend test -f /app/scripts/import-week8-9-quizzes.mjs; then sudo docker exec livingworth-backend node scripts/import-week8-9-quizzes.mjs; exit $?; fi; sleep 5; done; exit 1'],capture_output=True,text=True,check=True,timeout=240)
+            import json
+            lines=[line for line in result.stdout.splitlines() if line.startswith('{')]
+            assert lines,'No import verification returned'
+            report=json.loads(lines[-1]);assert report.get('event')=='reviewed_week8_9_quiz_import','Unexpected import result'
+            assert len(report.get('quizzes',[]))==2 and all(q['questionCount']==40 for q in report['quizzes']),'Question count verification failed'
+            print(json.dumps(report))
           PY
