@@ -11,11 +11,12 @@
     "android:sync": "npm run test:mobile && npm run build && cap sync android",
     "android:open": "cap open android",
     "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug",
-    "test:mobile": "node --experimental-strip-types --test src/mobile-url.test.mjs src/mobile-update-engine.test.mjs scripts/native-runtime.test.mjs src/continue-learning.test.mjs src/biometric-engine.test.mjs"
+    "test:mobile": "node --experimental-strip-types --test src/mobile-url.test.mjs src/mobile-update-engine.test.mjs scripts/native-runtime.test.mjs src/continue-learning.test.mjs src/biometric-engine.test.mjs scripts/release-signing.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
     "@capacitor/app": "^8.1.2",
+    "@capacitor/app-launcher": "8.0.1",
     "@capacitor/browser": "^8.0.5",
     "@capacitor/core": "^8.5.3",
     "@capacitor/filesystem": "^8.1.5",

@@ -2,6 +2,7 @@ import { AdminPushStatus } from './PushSettings';
 import { useEffect, useState } from 'react';
 import './admin-settings.css';
 
+declare const __LW_NATIVE_RUNTIME__: {nativeVersionCode:number};
 type Values=Record<string,any>;
 type Field={key:string;label:string;type?:string;min?:number;max?:number;help?:string};
 const groups:{id:string;title:string;description:string;fields:Field[]}[]=[
@@ -34,7 +35,7 @@ export default function AdminSettings({demo=false,onNavigate}:{demo?:boolean;onN
   setChecking(true);setDiagnostic('Checking…');
   try{
    if(kind==='email'){const data=await request('/staff/email-health');setDiagnostic(data.connected?'Email connection is healthy.':data.enabled===false?'Email delivery is switched off.':'Email connection is not ready. Check the server SMTP configuration.')}
-   else if(kind==='mobile'){const data=await request('/mobile-updates/android/2/manifest.json');setDiagnostic(`Latest Android interface update published ${new Date(data.publishedAt).toLocaleString()}. Signed bundle: ${Math.round(data.size/1024)} KB.`)}
+   else if(kind==='mobile'){const data=await request(`/mobile-updates/android/${__LW_NATIVE_RUNTIME__.nativeVersionCode}/manifest.json`);setDiagnostic(`Latest Android interface update published ${new Date(data.publishedAt).toLocaleString()}. Signed bundle: ${Math.round(data.size/1024)} KB.`)}
    else {const data=await request('/health');setDiagnostic(`API: ${data.status}. Database: ${data.database}.`)}
   }catch(error){setDiagnostic((error as Error).message)}finally{setChecking(false)}
  }

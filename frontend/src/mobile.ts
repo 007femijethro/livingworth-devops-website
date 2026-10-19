@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
+import { AppLauncher } from '@capacitor/app-launcher';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { Network } from '@capacitor/network';
@@ -65,6 +66,10 @@ export function startMobile() {
       return true;
     }
     if (!['https:', 'http:', 'mailto:', 'tel:'].includes(url.protocol)) return false;
+    if (['mailto:', 'tel:'].includes(url.protocol)) {
+      void AppLauncher.openUrl({ url: url.href }).then(result => { if (!result.completed) message('No email or phone app could open this link. Use the contact details shown.'); }).catch(() => message('No email or phone app could open this link. Use the contact details shown.'));
+      return true;
+    }
     const academyFile = url.origin === academyOrigin && /^\/(uploads|api)\//.test(url.pathname);
     if (academyFile) {
       const token = localStorage.getItem('lw_token');

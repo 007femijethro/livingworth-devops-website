@@ -1,5 +1,6 @@
 // @ts-nocheck
 import LearningCalendar from './LearningCalendar';
+import AboutHelp from './AboutHelp';
 import BiometricSettings from './BiometricSettings';
 import { rememberedEmail, rememberEmail, savedBiometric, biometricAvailability, loginWithBiometric, forgetBiometric } from './biometric-login';
 import './biometric-login.css';
@@ -92,9 +93,9 @@ const Logo = () => (
 );
 
 const portalItems = {
-  admin: ["Overview", "Calendar", "Applications", "Profile requests", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Class Activity", "Assignments", "Attendance", "Live class", "Live quiz", "Settings", "Security"],
-  mentor: ["Overview", "Calendar", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Class Activity", "Assignments", "Attendance", "Live class", "Live quiz", "Security"],
-  student: ["Overview", "Calendar", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Class Activity", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security"],
+  admin: ["Overview", "Calendar", "Applications", "Profile requests", "Students", "Certificates", "Leaderboard", "Mentors", "Stories", "Announcements", "Learning", "Class Activity", "Assignments", "Attendance", "Live class", "Live quiz", "Settings", "Security", "About & Help"],
+  mentor: ["Overview", "Calendar", "Students", "Certificates", "Leaderboard", "Stories", "Announcements", "Learning", "Class Activity", "Assignments", "Attendance", "Live class", "Live quiz", "Security", "About & Help"],
+  student: ["Overview", "Calendar", "Notifications", "My stories", "Announcements", "Programme", "Learning", "Class Activity", "Assignments", "Certificates", "Leaderboard", "Attendance", "Live class", "Live quiz", "Security", "About & Help"],
 };
 
 const portalIcons = {
@@ -618,7 +619,7 @@ function Login({ portal, navigate, onLogin, notice = "" }) {
       onLogin(data.user);
     } catch (err) {
       setMessage(
-        `${err.message} ${portal === "staff" ? "You can still open the offline admin preview below." : ""}`,
+        `${err.message} ${import.meta.env.DEV && portal === "staff" ? "You can still open the offline admin preview below." : ""}`,
       );
     } finally { setBusy(false); }
   }
@@ -668,7 +669,7 @@ function Login({ portal, navigate, onLogin, notice = "" }) {
       </form>
       {biometric.available && saved?.portal===portal && saved.email.toLowerCase()===email.trim().toLowerCase() && <button type="button" className="button biometric-login-button" disabled={busy} onClick={biometricSignIn}>Sign in with {biometric.label}</button>}
       {isNative && <p className="biometric-signin-help">Enable biometric sign-in under Security after signing in with your password.</p>}
-      {portal === "staff" && (
+      {import.meta.env.DEV && portal === "staff" && (
         <div className="offline-box">
           <b>Backend unavailable?</b>
           <p>
@@ -2090,6 +2091,7 @@ function StudentDashboard({ user, logout }) {
   useEffect(() => { if (active === "Attendance") api("/auth/me").then(data => setIsClassRep(Boolean(data.isClassRep))).catch(() => {}); }, [active]);
   return (
     <PortalShell role="student" user={user} active={active} items={portalItems.student} onSelect={setActive} logout={logout} unreadAnnouncements={unreadAnnouncements} forceSecurity={user.mustChangePassword}>
+        {active === "About & Help" && <AboutHelp role="student"/>}
         {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} onUnreadChange={setUnreadAnnouncements} />}
         {active === "Calendar" && <LearningCalendar onNavigate={setActive} demo={user.demo}/> }
         {active === "Notifications" && <><PushSettings userId={user.id}/><NotificationsCenter onNavigate={setActive} userId={user.id}/></>}
@@ -3474,6 +3476,7 @@ function AdminDashboard({ user, logout }) {
   );
   return (
     <PortalShell role="admin" user={user} active={active} items={portalItems.admin} onSelect={setActive} logout={logout} forceSecurity={user.mustChangePassword}>
+        {active === "About & Help" && <AboutHelp role="admin"/>}
       {active === "Calendar" && <LearningCalendar onNavigate={setActive} demo={user.demo}/> }
         {user.demo && (
           <div className="demo-banner">
@@ -3564,6 +3567,7 @@ function MentorDashboard({ user, logout }) {
     [profileStudentId, setProfileStudentId] = useState(null);
   return (
     <PortalShell role="mentor" user={user} active={active} items={portalItems.mentor} onSelect={setActive} logout={logout} forceSecurity={user.mustChangePassword}>
+        {active === "About & Help" && <AboutHelp role="mentor"/>}
       {active === "Calendar" && <LearningCalendar onNavigate={setActive}/> }
         <p className="form-message">{message}</p>
         {active === "Overview" && <StaffAnalyticsOverview onNavigate={setActive} onViewLearner={setProfileStudentId} />}
@@ -3624,7 +3628,7 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (resetToken || verificationNumber) { setLoading(false); return; }
-    if (localStorage.getItem("lw_demo_admin")) {
+    if (import.meta.env.DEV && localStorage.getItem("lw_demo_admin")) {
       setUser({
         id: "demo-admin",
         fullName: "Livingworth Administrator",
@@ -3637,6 +3641,7 @@ export default function App() {
       setLoading(false);
       return;
     }
+    if (!import.meta.env.DEV) localStorage.removeItem("lw_demo_admin");
     // A saved biometric account must not silently restore a persisted app session.
     const saved = isNative ? savedBiometric() : null;
     if (saved) { localStorage.removeItem('lw_token'); setPage(`${saved.portal}-login`); setLoading(false); return; }

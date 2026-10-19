@@ -6,6 +6,9 @@ on:
   pull_request:
     paths: ['frontend/**', '.github/workflows/android.yml']
   workflow_dispatch:
+concurrency:
+  group: livingworth-android-build-${{ github.ref }}
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
@@ -32,7 +35,32 @@ jobs:
         working-directory: frontend/android
         run: bash gradlew assembleDebug testDebugUnitTest lintDebug
       - uses: actions/upload-artifact@v4
+        if: github.ref != 'refs/heads/main' || github.event_name == 'pull_request'
         with:
           name: Livingworth-Academy-Android-test
           path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
+      - name: Restore permanent release signing
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: node frontend/scripts/prepare-release-signing.mjs
+      - name: Build and check signed release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        working-directory: frontend/android
+        run: |
+          bash gradlew assembleRelease testReleaseUnitTest lintRelease
+          signer="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          "$signer" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk > "$RUNNER_TEMP/release-verification.txt"
+          node ../scripts/verify-release-certificate.mjs "$RUNNER_TEMP/release-verification.txt"
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          name: Livingworth-Academy-Android-release
+          path: frontend/android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 90
+      - name: Remove temporary signing material
+        if: always()
+        run: node -e 'const fs=require("node:fs"),path=require("node:path");fs.rmSync(path.join(process.env.RUNNER_TEMP,"livingworth-release-signing"),{recursive:true,force:true})'

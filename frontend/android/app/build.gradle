@@ -1,5 +1,13 @@
 apply plugin: 'com.android.application'
 
+def releaseStore = System.getenv('LW_ANDROID_KEYSTORE_FILE')
+def releasePassword = System.getenv('LW_ANDROID_KEYSTORE_PASSWORD')
+def releaseAlias = System.getenv('LW_ANDROID_KEY_ALIAS')
+def releaseSigningReady = releaseStore && releasePassword && releaseAlias
+if (gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') } && !releaseSigningReady) {
+    throw new GradleException('Permanent Android release signing must be configured before building a release.')
+}
+
 android {
     namespace = "com.livingworthacademy.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +15,8 @@ android {
         applicationId "com.livingworthacademy.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
-        versionName "1.4"
+        versionCode 6
+        versionName "1.5"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +24,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (releaseSigningReady) {
+            academyRelease {
+                storeFile file(releaseStore)
+                storeType 'PKCS12'
+                storePassword releasePassword
+                keyAlias releaseAlias
+                keyPassword releasePassword
+            }
+        }
+    }
     buildTypes {
         release {
+            if (releaseSigningReady) signingConfig signingConfigs.academyRelease
+            debuggable false
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

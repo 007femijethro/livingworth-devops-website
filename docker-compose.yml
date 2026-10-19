@@ -42,6 +42,7 @@ services:
     volumes:
       - learning_uploads:/app/uploads
       - mobile_update_signing:/app/mobile-private
+      - android_release_signing:/app/android-signing-private
     networks: [livingworth, monitoring]
     logging: *default-logging
 
@@ -74,6 +75,7 @@ services:
 volumes:
   learning_uploads:
   mobile_update_signing:
+  android_release_signing:
 
 networks:
   livingworth:

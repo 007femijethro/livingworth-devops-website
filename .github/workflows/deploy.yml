@@ -80,6 +80,9 @@ jobs:
             echo "Recording release signing SSH host identity..."
             sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256 | awk '{print "release_signing_host_fingerprint " $2}'
 
+            echo "Checking permanent Android release storage..."
+            sudo docker compose exec -T --user root backend node scripts/android-release-signing.mjs status
+
             echo "Checking Firebase server readiness..."
             sudo docker compose exec -T backend node --input-type=module -e 'import {pushConfigured} from "./dist/push.js"; console.log(JSON.stringify({event:"firebase_server_status",configured:pushConfigured(),projectId:process.env.FIREBASE_PROJECT_ID}))'
 

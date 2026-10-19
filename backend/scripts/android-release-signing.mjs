@@ -30,7 +30,7 @@ export async function installSigningMaterial(directory,candidate) {
  return {created,certificateSha256:saved.certificateSha256};
 }
 async function main() {
- const directory=process.env.ANDROID_SIGNING_PRIVATE_DIR||'/app/mobile-private',target=path.join(directory,'android-release-signing.json'),mode=process.argv[2];
+ const directory=process.env.ANDROID_SIGNING_PRIVATE_DIR||'/app/android-signing-private',target=path.join(directory,'android-release-signing.json'),mode=process.argv[2];
  if(mode==='install'){
   const chunks=[];let size=0;for await(const chunk of process.stdin){size+=chunk.length;if(size>90000)throw new Error();chunks.push(chunk)}
   const result=await installSigningMaterial(directory,JSON.parse(Buffer.concat(chunks).toString('utf8')));
@@ -38,8 +38,8 @@ async function main() {
  }else if(mode==='export'){
   const value=validateSigningMaterial(JSON.parse(await fs.readFile(target,'utf8')));process.stdout.write(JSON.stringify(value));
  }else if(mode==='status'){
-  try{const value=validateSigningMaterial(JSON.parse(await fs.readFile(target,'utf8')));console.log(JSON.stringify({configured:true,certificateSha256:value.certificateSha256}))}
-  catch(error){if(error.code!=='ENOENT')throw error;console.log(JSON.stringify({configured:false}))}
+  try{const value=validateSigningMaterial(JSON.parse(await fs.readFile(target,'utf8')));console.log(JSON.stringify({storageVersion:2,configured:true,certificateSha256:value.certificateSha256}))}
+  catch(error){if(error.code!=='ENOENT')throw error;console.log(JSON.stringify({storageVersion:2,configured:false}))}
  }else throw new Error();
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(()=>{console.error('Android release signing operation failed. No signing material was logged or replaced.');process.exitCode=1});
