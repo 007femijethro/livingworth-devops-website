@@ -77,6 +77,9 @@ jobs:
               exit 1
             fi
 
+            echo "Recording release signing SSH host identity..."
+            sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256 | awk '{print "release_signing_host_fingerprint " $2}'
+
             echo "Checking Firebase server readiness..."
             sudo docker compose exec -T backend node --input-type=module -e 'import {pushConfigured} from "./dist/push.js"; console.log(JSON.stringify({event:"firebase_server_status",configured:pushConfigured(),projectId:process.env.FIREBASE_PROJECT_ID}))'
 
