@@ -2316,6 +2316,9 @@ function QuizCenter({ mode, demo = false }) {
   const [questionTimeSeconds, setQuestionTimeSeconds] = useState(30);
   const [navigationMode, setNavigationMode] = useState("manual");
   const [speedScoring, setSpeedScoring] = useState(true);
+  const [lifelineLimit, setLifelineLimit] = useState(3);
+  const [lifelines, setLifelines] = useState(null);
+  const [lifelineBusy, setLifelineBusy] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
   const [rankingVisibility, setRankingVisibility] = useState("full");
   const [editingQuizId, setEditingQuizId] = useState(null);
@@ -2336,6 +2339,7 @@ function QuizCenter({ mode, demo = false }) {
     localStorage.setItem("lw_quiz_sounds", next ? "on" : "off"); if (next) playSound("locked");
   }
   function applyJoinedQuiz(result, restored = false) {
+    setLifelines(result.liveState?.lifelines || null);
     setRoom(result.quiz);
     roomRef.current = result.quiz;
     sessionStorage.setItem("lw_live_quiz_code", result.quiz.joinCode);
@@ -2390,7 +2394,7 @@ function QuizCenter({ mode, demo = false }) {
     setSocket(s);
     s.on("connect", () => {
       const savedCode = sessionStorage.getItem("lw_live_quiz_code");
-      if (!savedCode || roomRef.current) return;
+      if (!savedCode) return;
       s.emit("quiz:join", { joinCode: savedCode }, (result) => {
         if (result.ok) applyJoinedQuiz(result, true);
         else sessionStorage.removeItem("lw_live_quiz_code");
@@ -2400,6 +2404,7 @@ function QuizCenter({ mode, demo = false }) {
     s.on("quiz:presence", (d) => setPresence(d.count));
     s.on("quiz:roster", (d) => setWaitingRoomRoster(d.students || []));
     s.on("quiz:answer-count", setAnswerCount);
+    s.on("quiz:lifelines", setLifelines);
     s.on("quiz:started", () => setMessage("Quiz started."));
     s.on("quiz:question", (q) => {
       setQuestion(q);
@@ -2506,8 +2511,32 @@ function QuizCenter({ mode, demo = false }) {
       else leaveQuizRoom(result.message);
     });
   }
+  const currentLifeline = lifelines?.questionId === question?.id ? lifelines?.current : null;
+  const freePassLocked = currentLifeline?.type === "free_pass";
+  const hiddenOptions = reveal === null ? currentLifeline?.effect?.hiddenIndexes || [] : [];
+  useEffect(() => {
+    if (!currentLifeline || !question) return;
+    const effect = currentLifeline.effect;
+    if (currentLifeline.type !== "fifty_fifty") {
+      setSelectedAnswer(effect.answerIndex ?? null);
+      setMultiAnswer(effect.answerIndexes || []);
+      setTypedAnswer(effect.answerText || "");
+      setSubmitted(true);
+    }
+  }, [lifelines, question?.id]);
+  function useLifeline(type) {
+    if (lifelineBusy || !question || !room) return;
+    setLifelineBusy(true);
+    socket.timeout(10000).emit("quiz:lifeline", {quizId:room.id,questionId:question.id,type}, (error,result) => {
+      setLifelineBusy(false);
+      if (error) {setMessage("Connection interrupted. Rejoin the quiz to check whether the lifeline was used."); return;}
+      if (!result.ok) {setMessage(result.message);return;}
+      setLifelines(result.lifelines);
+      setMessage(type === "fifty_fifty" ? "50:50 removed two wrong answers. Choose from the two remaining options." : type === "free_pass" ? "Free Pass saved the correct answer. No speed bonus is added." : "Audience saved the most popular answer so far. It may be wrong; you can still change it.");
+    });
+  }
   function answer(answerIndex = null, answerIndexes = multiAnswer, answerText = typedAnswer) {
-    if (seconds <= 0 || paused || reveal !== null) return;
+    if (seconds <= 0 || paused || reveal !== null || freePassLocked || lifelineBusy) return;
     socket.emit(
       "quiz:answer",
       { quizId: room.id, questionId: question.id, answerIndex, answerIndexes, answerText },
@@ -2540,7 +2569,7 @@ function QuizCenter({ mode, demo = false }) {
     try {
       const quiz = await api(editingQuizId ? `/admin/quizzes/${editingQuizId}` : "/admin/quizzes", {
         method: editingQuizId ? "PUT" : "POST",
-        body: JSON.stringify({ title, materialId, questions, questionTimeSeconds, navigationMode, speedScoring, scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null, rankingVisibility }),
+        body: JSON.stringify({ title, materialId, questions, questionTimeSeconds, navigationMode, speedScoring, lifelineLimit, scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null, rankingVisibility }),
       });
       setMessage(editingQuizId ? quiz.message : `Quiz created. Join code: ${quiz.joinCode}`);
       cancelQuizEdit();
@@ -2555,6 +2584,7 @@ function QuizCenter({ mode, demo = false }) {
     setMaterialId("");
     setQuestionTimeSeconds(30);
     setNavigationMode("manual");
+    setLifelineLimit(3);
     setSpeedScoring(true); setScheduledAt(""); setRankingVisibility("full");
     setQuestions([{ prompt: "", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "" }]);
   }
@@ -2566,6 +2596,7 @@ function QuizCenter({ mode, demo = false }) {
       setMaterialId(String(detail.materialId || ""));
       setQuestionTimeSeconds(Number(detail.questionTimeSeconds));
       setNavigationMode(detail.navigationMode || "manual");
+      setLifelineLimit(Number(detail.lifelineLimit || 0));
       setSpeedScoring(detail.speedScoring !== false); setScheduledAt(detail.scheduledAt ? new Date(detail.scheduledAt).toISOString().slice(0, 16) : ""); setRankingVisibility(detail.rankingVisibility || "full");
       setQuestions(detail.questions.map(question => ({ prompt: question.prompt, questionType: question.questionType || "single_choice", options: question.options, correctIndex: Number(question.correctIndex), correctAnswers: question.correctAnswers || [], correctText: question.correctText || "" })));
       setMessage(`Editing ${detail.title}.`);
@@ -2590,7 +2621,7 @@ function QuizCenter({ mode, demo = false }) {
     try {
       const text = await file.text();
       const quiz = await api(
-        `/admin/quizzes/import?title=${encodeURIComponent(title)}&materialId=${encodeURIComponent(materialId)}&questionTimeSeconds=${questionTimeSeconds}&navigationMode=${navigationMode}`,
+        `/admin/quizzes/import?title=${encodeURIComponent(title)}&materialId=${encodeURIComponent(materialId)}&questionTimeSeconds=${questionTimeSeconds}&navigationMode=${navigationMode}&lifelineLimit=${lifelineLimit}`,
         { method: "POST", headers: { "Content-Type": "text/csv" }, body: text },
       );
       setMessage(`CSV imported. Join code: ${quiz.joinCode}`);
@@ -2604,6 +2635,13 @@ function QuizCenter({ mode, demo = false }) {
       const data = await api(`/admin/quizzes/${quiz.id}/settings`, { method: "PATCH", body: JSON.stringify({ allowRetakes: !quiz.allowRetakes }) });
       setMessage(data.message); load();
     } catch (error) { setMessage(error.message); }
+  }
+  async function updateQuizLifelines(quiz,value) {
+    const limit=Number(value);
+    if(value === "" || !Number.isInteger(limit) || limit<0 || limit>10) {setMessage("Choose a lifeline limit from 0 to 10.");return;}
+    if(limit === Number(quiz.lifelineLimit || 0)) return;
+    try {const result=await api(`/admin/quizzes/${quiz.id}/settings`,{method:"PATCH",body:JSON.stringify({lifelineLimit:limit})});setMessage(result.message);load();}
+    catch(error){setMessage(error.message);load();}
   }
   async function updateQuizTime(quiz, value) {
     const seconds = Number(value);
@@ -2732,6 +2770,7 @@ function QuizCenter({ mode, demo = false }) {
               </select>
               <small>Automatic mode gives the class 4 seconds to review the correct answer.</small>
             </label>
+            <label>Lifelines per learner<input type="number" min="0" max="10" step="1" required value={lifelineLimit} onChange={event => setLifelineLimit(event.target.value === "" ? "" : Number(event.target.value))} /><small>0 disables lifelines. Up to 10 uses per attempt, one per question, before answering. Types may be reused on later questions. Free Pass earns no speed bonus.</small></label>
             <label className="quiz-check-setting"><input type="checkbox" checked={speedScoring} onChange={(event) => setSpeedScoring(event.target.checked)} /> Add a speed bonus to correct answers</label>
             <label>
               Schedule opening (optional)
@@ -2820,7 +2859,7 @@ function QuizCenter({ mode, demo = false }) {
               <div>
                 <b>{q.title}</b>
                 <span>
-                  {q.questionCount} questions · {q.questionTimeSeconds} sec each · {q.navigationMode === "automatic" ? "Automatic" : "Manual"} · Code {q.joinCode}
+                  {q.questionCount} questions · {q.lifelineLimit || 0} lifelines · {q.questionTimeSeconds} sec each · {q.navigationMode === "automatic" ? "Automatic" : "Manual"} · Code {q.joinCode}
                 </span>
                 <small>Material: {q.materialTitle || "Unlinked material"} · {q.speedScoring ? "Speed scoring" : "Equal scoring"} · {q.rankingVisibility === "private" ? "Private ranking" : q.rankingVisibility === "initials" ? "Initials only" : "Full-name ranking"}{q.scheduledAt ? ` · Opens ${new Date(q.scheduledAt).toLocaleString()}` : ""}</small>
               </div>
@@ -2837,6 +2876,7 @@ function QuizCenter({ mode, demo = false }) {
                   onBlur={(e) => updateQuizTime(q, e.target.value)}
                 />
               </label>
+              <label className="quiz-time-setting">Lifelines<input key={`${q.id}-${q.lifelineLimit}`} type="number" min="0" max="10" step="1" defaultValue={q.lifelineLimit || 0} disabled={q.status === "live"} aria-label={`Lifelines per learner for ${q.title}`} onBlur={event => updateQuizLifelines(q,event.target.value)} /></label>
               <label className="quiz-navigation-setting">
                 Navigation
                 <select defaultValue={q.navigationMode || "manual"} disabled={q.status === "live"} onChange={(event) => updateNavigationMode(q, event.target.value)}>
@@ -2877,7 +2917,7 @@ function QuizCenter({ mode, demo = false }) {
           {mode === "admin" ? (
             <div className="quiz-lobby-actions"><button className="button gold" onClick={start}>Start quiz for everyone</button><button className="button close-quiz-room" onClick={closeQuizRoom}>Close room &amp; go back</button></div>
           ) : (
-            <div className="student-lobby-actions"><p>Waiting for your instructor to start…</p><button type="button" className="button leave-quiz-room" onClick={leaveWaitingRoom}>Leave quiz room</button></div>
+            <div className="student-lobby-actions"><p>{room.lifelineLimit || 0} lifelines per attempt. Waiting for your instructor to start…</p><button type="button" className="button leave-quiz-room" onClick={leaveWaitingRoom}>Leave quiz room</button></div>
           )}
         </div>
       )}
@@ -2892,12 +2932,22 @@ function QuizCenter({ mode, demo = false }) {
           </p>
           {mode === "admin" && <p className="live-answer-count"><b>{answerCount.answered}</b> of {answerCount.total} students answered · {answerCount.remaining} remaining</p>}
           <h3>{question.prompt}</h3>
-          {question.questionType === "typed" ? <div className="typed-answer"><input value={typedAnswer} disabled={mode !== "student" || paused || seconds <= 0 || reveal !== null} onChange={(event) => { setTypedAnswer(event.target.value); setSubmitted(false); }} placeholder="Type your answer" /><button type="button" className="button primary" disabled={!typedAnswer.trim() || paused || seconds <= 0 || reveal !== null} onClick={() => answer(null)}>{submitted ? "Update answer" : "Save answer"}</button>{reveal !== null && <strong>Accepted answer: {reveal.correctText}</strong>}</div> : <div className="answer-grid">
+          {mode === "student" && Number(question.lifelineLimit || room.lifelineLimit) > 0 && <div className="quiz-lifelines" aria-label="Quiz lifelines">
+            <div><strong>🛟 Lifelines</strong><span>{lifelines?.remaining ?? question.lifelineLimit ?? room.lifelineLimit} remaining this attempt</span></div>
+            <div className="quiz-lifeline-buttons">{[["fifty_fifty","50:50","Remove two wrong answers"],["free_pass","✓ Free Pass","Save the correct answer"],["audience","👥 Audience","Save the most popular answer so far"]].map(([type,label,help]) => {
+              const unsupported = type === "fifty_fifty" ? ["typed","multiple_selection"].includes(question.questionType) || question.options.length !== 4 : type === "audience" && ["typed","multiple_selection"].includes(question.questionType);
+              return <button type="button" key={type} title={unsupported ? "Unavailable for this question type" : help} disabled={unsupported || lifelineBusy || submitted || !!currentLifeline || lifelines?.questionId !== question.id || !lifelines?.remaining || paused || seconds <= 0 || reveal !== null} onClick={() => useLifeline(type)}>{label}</button>;
+            })}</div>
+            <small>{currentLifeline ? `Used: ${currentLifeline.type === "fifty_fifty" ? "50:50" : currentLifeline.type === "free_pass" ? "Free Pass" : "Audience"}.` : "One lifeline per question, before answering. Audience may be wrong; ties or no votes cost no use."}</small>
+          </div>}
+
+          {question.questionType === "typed" ? <div className="typed-answer"><input value={typedAnswer} disabled={mode !== "student" || freePassLocked || lifelineBusy || paused || seconds <= 0 || reveal !== null} onChange={(event) => { setTypedAnswer(event.target.value); setSubmitted(false); }} placeholder="Type your answer" /><button type="button" className="button primary" disabled={freePassLocked || lifelineBusy || !typedAnswer.trim() || paused || seconds <= 0 || reveal !== null} onClick={() => answer(null)}>{submitted ? "Update answer" : "Save answer"}</button>{reveal !== null && <strong>Accepted answer: {reveal.correctText}</strong>}</div> : <div className="answer-grid">
             {question.options.map((o, i) => (
               <button
                 key={i}
+                hidden={hiddenOptions.includes(i)}
                 type="button"
-                disabled={mode !== "student" || paused || seconds <= 0 || reveal !== null}
+                disabled={mode !== "student" || freePassLocked || lifelineBusy || paused || seconds <= 0 || reveal !== null}
                 aria-pressed={question.questionType === "multiple_selection" ? multiAnswer.includes(i) : selectedAnswer === i}
                 className={`${(question.questionType === "multiple_selection" ? multiAnswer.includes(i) : selectedAnswer === i) && reveal === null ? "selected" : ""} ${(Array.isArray(reveal) ? reveal.includes(i) : reveal === i) ? "correct" : ""} ${reveal !== null && (question.questionType === "multiple_selection" ? multiAnswer.includes(i) && !reveal.includes(i) : selectedAnswer === i && reveal !== i) ? "incorrect" : ""}`}
                 onClick={() => question.questionType === "multiple_selection" ? (setMultiAnswer(current => current.includes(i) ? current.filter(value => value !== i) : [...current, i]), setSubmitted(false)) : answer(i)}
@@ -2906,7 +2956,7 @@ function QuizCenter({ mode, demo = false }) {
                 {o}
               </button>
             ))}
-          {question.questionType === "multiple_selection" && <button type="button" className="button primary multi-lock" disabled={!multiAnswer.length || paused || seconds <= 0 || reveal !== null} onClick={() => answer(null)}>{submitted ? "Update selections" : "Save selections"}</button>}</div>}
+          {question.questionType === "multiple_selection" && <button type="button" className="button primary multi-lock" disabled={freePassLocked || lifelineBusy || !multiAnswer.length || paused || seconds <= 0 || reveal !== null} onClick={() => answer(null)}>{submitted ? "Update selections" : "Save selections"}</button>}</div>}
           {mode === "admin" && <div className="mentor-quiz-controls"><span className="navigation-mode-label">{room.navigationMode === "automatic" ? "Automatic navigation" : "Manual navigation"}</span><button type="button" onClick={togglePause} disabled={reveal !== null}>{paused ? "▶ Resume timer" : "Ⅱ Pause timer"}</button><button type="button" onClick={revealNow} disabled={reveal !== null}>Reveal answer</button><button type="button" className="next-question" onClick={nextQuestion} disabled={reveal === null}>{question.index + 1 === question.total ? "Finish quiz" : "Next question →"}</button><button type="button" className="restart-quiz" onClick={restartQuiz}>Restart quiz</button><button type="button" className="stop-quiz" onClick={closeQuizRoom}>Stop quiz &amp; go back</button></div>}
           <p>
             {mode !== "student"
