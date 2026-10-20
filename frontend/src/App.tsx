@@ -1,4 +1,5 @@
 // @ts-nocheck
+import QuizLifelineLimits, {LifelineLimitsFields,quizLifelineLimits} from './QuizLifelineLimits';
 import LearningCalendar from './LearningCalendar';
 import AboutHelp from './AboutHelp';
 import BiometricSettings from './BiometricSettings';
@@ -2317,6 +2318,8 @@ function QuizCenter({ mode, demo = false }) {
   const [navigationMode, setNavigationMode] = useState("manual");
   const [speedScoring, setSpeedScoring] = useState(true);
   const [lifelineLimit, setLifelineLimit] = useState(3);
+  const [lifelineLimits, setLifelineLimits] = useState({fifty_fifty:1,free_pass:1,audience:1});
+  const [retakeSaving,setRetakeSaving] = useState(null);
   const [lifelines, setLifelines] = useState(null);
   const [lifelineBusy, setLifelineBusy] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
@@ -2571,7 +2574,7 @@ function QuizCenter({ mode, demo = false }) {
     try {
       const quiz = await api(editingQuizId ? `/admin/quizzes/${editingQuizId}` : "/admin/quizzes", {
         method: editingQuizId ? "PUT" : "POST",
-        body: JSON.stringify({ title, materialId, questions, questionTimeSeconds, navigationMode, speedScoring, lifelineLimit, scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null, rankingVisibility }),
+        body: JSON.stringify({ title, materialId, questions, questionTimeSeconds, navigationMode, speedScoring, lifelineLimit, lifelineLimits, scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null, rankingVisibility }),
       });
       setMessage(editingQuizId ? quiz.message : `Quiz created. Join code: ${quiz.joinCode}`);
       cancelQuizEdit();
@@ -2587,6 +2590,7 @@ function QuizCenter({ mode, demo = false }) {
     setQuestionTimeSeconds(30);
     setNavigationMode("manual");
     setLifelineLimit(3);
+    setLifelineLimits({fifty_fifty:1,free_pass:1,audience:1});
     setSpeedScoring(true); setScheduledAt(""); setRankingVisibility("full");
     setQuestions([{ prompt: "", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "" }]);
   }
@@ -2599,6 +2603,7 @@ function QuizCenter({ mode, demo = false }) {
       setQuestionTimeSeconds(Number(detail.questionTimeSeconds));
       setNavigationMode(detail.navigationMode || "manual");
       setLifelineLimit(Number(detail.lifelineLimit || 0));
+      setLifelineLimits(quizLifelineLimits(detail.lifelineLimits,detail.lifelineLimit));
       setSpeedScoring(detail.speedScoring !== false); setScheduledAt(detail.scheduledAt ? new Date(detail.scheduledAt).toISOString().slice(0, 16) : ""); setRankingVisibility(detail.rankingVisibility || "full");
       setQuestions(detail.questions.map(question => ({ prompt: question.prompt, questionType: question.questionType || "single_choice", options: question.options, correctIndex: Number(question.correctIndex), correctAnswers: question.correctAnswers || [], correctText: question.correctText || "" })));
       setMessage(`Editing ${detail.title}.`);
@@ -2623,7 +2628,7 @@ function QuizCenter({ mode, demo = false }) {
     try {
       const text = await file.text();
       const quiz = await api(
-        `/admin/quizzes/import?title=${encodeURIComponent(title)}&materialId=${encodeURIComponent(materialId)}&questionTimeSeconds=${questionTimeSeconds}&navigationMode=${navigationMode}&lifelineLimit=${lifelineLimit}`,
+        `/admin/quizzes/import?title=${encodeURIComponent(title)}&materialId=${encodeURIComponent(materialId)}&questionTimeSeconds=${questionTimeSeconds}&navigationMode=${navigationMode}&lifelineLimit=${lifelineLimit}&lifelineLimits=${encodeURIComponent(JSON.stringify(lifelineLimits))}`,
         { method: "POST", headers: { "Content-Type": "text/csv" }, body: text },
       );
       setMessage(`CSV imported. Join code: ${quiz.joinCode}`);
@@ -2633,10 +2638,19 @@ function QuizCenter({ mode, demo = false }) {
     }
   }
   async function toggleRetakes(quiz) {
+    if(retakeSaving !== null) return;
+    setRetakeSaving(quiz.id);
     try {
       const data = await api(`/admin/quizzes/${quiz.id}/settings`, { method: "PATCH", body: JSON.stringify({ allowRetakes: !quiz.allowRetakes }) });
-      setMessage(data.message); load();
+      setQuizzes(current=>current.map(item=>item.id===quiz.id?{...item,allowRetakes:data.allowRetakes}:item));
+      setMessage(data.message);
     } catch (error) { setMessage(error.message); }
+    finally{setRetakeSaving(null);}
+  }
+  async function updateQuizLifelineMaxima(quiz,limits) {
+    const result=await api(`/admin/quizzes/${quiz.id}/settings`,{method:"PATCH",body:JSON.stringify({lifelineLimits:limits})});
+    setQuizzes(current=>current.map(item=>item.id===quiz.id?{...item,lifelineLimits:limits}:item));
+    setMessage(result.message);
   }
   async function updateQuizLifelines(quiz,value) {
     const limit=Number(value);
@@ -2772,7 +2786,8 @@ function QuizCenter({ mode, demo = false }) {
               </select>
               <small>Automatic mode gives the class 4 seconds to review the correct answer.</small>
             </label>
-            <label>Lifelines per learner<input type="number" min="0" max="10" step="1" required value={lifelineLimit} onChange={event => setLifelineLimit(event.target.value === "" ? "" : Number(event.target.value))} /><small>0 disables lifelines. Up to 10 uses per attempt, one per question, before answering. Types may be reused on later questions. Free Pass earns no speed bonus.</small></label>
+            <label>Total lifelines per learner<input type="number" min="0" max="10" step="1" required value={lifelineLimit} onChange={event => setLifelineLimit(event.target.value === "" ? "" : Number(event.target.value))} /><small>0 disables lifelines. Up to 10 uses per attempt, one per question, before answering. Types may be reused on later questions. Free Pass earns no speed bonus.</small></label>
+            <fieldset className="quiz-lifeline-limit-editor"><legend>Maximum uses of each lifeline</legend><LifelineLimitsFields value={lifelineLimits} onChange={setLifelineLimits}/><small>The total limit and these individual maxima both apply. Set a type to 0 to disable it.</small></fieldset>
             <label className="quiz-check-setting"><input type="checkbox" checked={speedScoring} onChange={(event) => setSpeedScoring(event.target.checked)} /> Add a speed bonus to correct answers</label>
             <label>
               Schedule opening (optional)
@@ -2878,7 +2893,7 @@ function QuizCenter({ mode, demo = false }) {
                   onBlur={(e) => updateQuizTime(q, e.target.value)}
                 />
               </label>
-              <label className="quiz-time-setting">Lifelines<input key={`${q.id}-${q.lifelineLimit}`} type="number" min="0" max="10" step="1" defaultValue={q.lifelineLimit || 0} disabled={q.status === "live"} aria-label={`Lifelines per learner for ${q.title}`} onBlur={event => updateQuizLifelines(q,event.target.value)} /></label>
+              <label className="quiz-time-setting">Total lifelines<input key={`${q.id}-${q.lifelineLimit}`} type="number" min="0" max="10" step="1" defaultValue={q.lifelineLimit || 0} disabled={q.status === "live"} aria-label={`Lifelines per learner for ${q.title}`} onBlur={event => updateQuizLifelines(q,event.target.value)} /></label>
               <label className="quiz-navigation-setting">
                 Navigation
                 <select defaultValue={q.navigationMode || "manual"} disabled={q.status === "live"} onChange={(event) => updateNavigationMode(q, event.target.value)}>
@@ -2892,10 +2907,11 @@ function QuizCenter({ mode, demo = false }) {
               >
                 {q.status === "completed" ? "Reopen quiz" : "Open lobby"}
               </button>
+              <QuizLifelineLimits quiz={q} onSave={updateQuizLifelineMaxima}/>
               <div className="quiz-manage-actions"><button type="button" onClick={() => editQuiz(q)} disabled={q.status === "live" || deletingQuizId === q.id}>Edit</button><button type="button" className="delete-quiz" onClick={() => deleteQuiz(q)} disabled={q.status === "live" || deletingQuizId === q.id} aria-label={`Delete ${q.title}${q.status === "completed" ? " and all completed results" : ""}`}>{deletingQuizId === q.id ? "Deleting…" : q.status === "completed" ? "Delete quiz & results" : "Delete"}</button></div>
               <label className="retake-toggle">
-                <input type="checkbox" checked={Boolean(q.allowRetakes)} onChange={() => toggleRetakes(q)} />
-                Allow retakes
+                <input type="checkbox" checked={Boolean(q.allowRetakes)} disabled={retakeSaving !== null} onChange={() => toggleRetakes(q)} />
+                {retakeSaving === q.id ? "Saving retakes…" : "Allow retakes"}
               </label>
             </article>
           ))}
@@ -2935,15 +2951,6 @@ function QuizCenter({ mode, demo = false }) {
           </p>
           {mode === "admin" && <p className="live-answer-count"><b>{answerCount.answered}</b> of {answerCount.total} students answered · {answerCount.remaining} remaining</p>}
           <h3>{question.prompt}</h3>
-          {mode === "student" && <div className="quiz-lifelines" aria-label="Quiz lifelines">
-            <div><strong>🛟 Lifelines</strong><span>{lifelines?.remaining ?? question.lifelineLimit ?? room.lifelineLimit ?? 0} remaining this attempt</span></div>
-            <div className="quiz-lifeline-buttons">{[["fifty_fifty","50:50","Remove two wrong answers"],["free_pass","✓ Free Pass","Save the correct answer"],["audience","👥 Audience","Save the most popular answer so far"]].map(([type,label,help]) => {
-              const unsupported = type === "fifty_fifty" ? ["typed","multiple_selection"].includes(question.questionType) || question.options.length !== 4 : type === "audience" && ["typed","multiple_selection"].includes(question.questionType);
-              return <button type="button" key={type} title={unsupported ? "Unavailable for this question type" : help} disabled={unsupported || lifelineBusy || submitted || !!currentLifeline || lifelines?.questionId !== question.id || !lifelines?.remaining || paused || seconds <= 0 || reveal !== null} onClick={() => useLifeline(type)}>{label}</button>;
-            })}</div>
-            <small>{Number(question.lifelineLimit ?? room.lifelineLimit ?? 0) === 0 ? "Your instructor has disabled lifelines for this quiz." : currentLifeline ? `Used: ${currentLifeline.type === "fifty_fifty" ? "50:50" : currentLifeline.type === "free_pass" ? "Free Pass" : "Audience"}.` : "One lifeline per question, before answering. Audience may be wrong; ties or no votes cost no use."}</small>
-          </div>}
-
           {question.questionType === "typed" ? <div className="typed-answer"><input value={typedAnswer} disabled={mode !== "student" || freePassLocked || lifelineBusy || paused || seconds <= 0 || reveal !== null} onChange={(event) => { setTypedAnswer(event.target.value); setSubmitted(false); }} placeholder="Type your answer" /><button type="button" className="button primary" disabled={freePassLocked || lifelineBusy || !typedAnswer.trim() || paused || seconds <= 0 || reveal !== null} onClick={() => answer(null)}>{submitted ? "Update answer" : "Save answer"}</button>{reveal !== null && <strong>Accepted answer: {reveal.correctText}</strong>}</div> : <div className="answer-grid">
             {question.options.map((o, i) => (
               <button
@@ -2960,6 +2967,15 @@ function QuizCenter({ mode, demo = false }) {
               </button>
             ))}
           {question.questionType === "multiple_selection" && <button type="button" className="button primary multi-lock" disabled={freePassLocked || lifelineBusy || !multiAnswer.length || paused || seconds <= 0 || reveal !== null} onClick={() => answer(null)}>{submitted ? "Update selections" : "Save selections"}</button>}</div>}
+          {mode === "student" && <div className="quiz-lifelines" aria-label="Quiz lifelines">
+            <div><strong>🛟 Lifelines</strong><span>{lifelines?.remaining ?? question.lifelineLimit ?? room.lifelineLimit ?? 0} remaining this attempt</span></div>
+            <div className="quiz-lifeline-buttons">{[["fifty_fifty","50:50","Remove two wrong answers"],["free_pass","✓ Free Pass","Save the correct answer"],["audience","👥 Audience","Save the most popular answer so far"]].map(([type,label,help]) => {
+              const unsupported = type === "fifty_fifty" ? ["typed","multiple_selection"].includes(question.questionType) || question.options.length !== 4 : type === "audience" && ["typed","multiple_selection"].includes(question.questionType);
+              return <button type="button" key={type} title={unsupported ? "Unavailable for this question type" : help} disabled={unsupported || lifelineBusy || submitted || !!currentLifeline || lifelines?.questionId !== question.id || !lifelines?.remaining || (lifelines?.byType?.[type]?.remaining ?? 0) <= 0 || paused || seconds <= 0 || reveal !== null} onClick={() => useLifeline(type)}>{label}<small>{lifelines?.byType?.[type]?.remaining ?? 0} left</small></button>;
+            })}</div>
+            <small>{Number(question.lifelineLimit ?? room.lifelineLimit ?? 0) === 0 ? "Your instructor has disabled lifelines for this quiz." : currentLifeline ? `Used: ${currentLifeline.type === "fifty_fifty" ? "50:50" : currentLifeline.type === "free_pass" ? "Free Pass" : "Audience"}.` : "One lifeline per question, before answering. Audience may be wrong; ties or no votes cost no use."}</small>
+          </div>}
+
           {mode === "admin" && <div className="mentor-quiz-controls"><span className="navigation-mode-label">{room.navigationMode === "automatic" ? "Automatic navigation" : "Manual navigation"}</span><button type="button" onClick={togglePause} disabled={reveal !== null}>{paused ? "▶ Resume timer" : "Ⅱ Pause timer"}</button><button type="button" onClick={revealNow} disabled={reveal !== null}>Reveal answer</button><button type="button" className="next-question" onClick={nextQuestion} disabled={reveal === null}>{question.index + 1 === question.total ? "Finish quiz" : "Next question →"}</button><button type="button" className="restart-quiz" onClick={restartQuiz}>Restart quiz</button><button type="button" className="stop-quiz" onClick={closeQuizRoom}>Stop quiz &amp; go back</button></div>}
           <p>
             {mode !== "student"

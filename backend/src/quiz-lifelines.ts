@@ -4,6 +4,15 @@ export function validLifelineLimit(value: unknown = 0): number {
   if (!Number.isInteger(limit) || limit < 0 || limit > 10) throw new Error('Lifeline limit must be a whole number from 0 to 10.');
   return limit;
 }
+export const lifelineTypes = ['fifty_fifty','free_pass','audience'] as const;
+export function validLifelineLimits(value: any, total: number) {
+  if (value === undefined || value === null) return Object.fromEntries(lifelineTypes.map(type=>[type,total]));
+  let limits=value;
+  if (typeof limits==='string') {try{limits=JSON.parse(limits);}catch{throw new Error('Lifeline maxima must be a valid settings object.');}}
+  if(!limits || Array.isArray(limits) || typeof limits!=='object' || Object.keys(limits).length!==3 || Object.keys(limits).some(key=>!lifelineTypes.includes(key as any))) throw new Error('Lifeline settings must include a maximum for each of the three types.');
+  for(const type of lifelineTypes) if(typeof limits[type]!=='number' || !Number.isInteger(limits[type]) || limits[type]<0 || limits[type]>10) throw new Error('Lifeline maxima must be whole numbers from 0 to 10.');
+  return Object.fromEntries(lifelineTypes.map(type=>[type,limits[type]]));
+}
 export function lifelineEffect(type: string, question: any, answers: Map<string, any>, studentId: number) {
   const choice = !['typed','multiple_selection'].includes(question.questionType);
   if (type === 'fifty_fifty') {
@@ -27,8 +36,10 @@ export function lifelineEffect(type: string, question: any, answers: Map<string,
   }
   throw new Error('Choose a valid lifeline.');
 }
-export async function lifelineStatus(db: any, attemptId: number, questionId: number, limit: number) {
+export async function lifelineStatus(db: any, attemptId: number, questionId: number, limit: number, limits?: any) {
   const [rows] = await db.execute('SELECT question_id AS questionId, lifeline_type AS type, effect_json AS effect FROM quiz_lifeline_uses WHERE attempt_id=?', [attemptId]);
   const current = rows.find((row: any)=>Number(row.questionId)===Number(questionId));
-  return {limit,used:rows.length,remaining:Math.max(0,limit-rows.length),questionId,current:current?{type:current.type,effect:typeof current.effect==='string'?JSON.parse(current.effect):current.effect}:null};
+  const caps=validLifelineLimits(limits,limit), remaining=Math.max(0,limit-rows.length);
+  const byType=Object.fromEntries(lifelineTypes.map(type=>{const used=rows.filter((row:any)=>row.type===type).length;return [type,{limit:caps[type],used,remaining:Math.min(remaining,Math.max(0,caps[type]-used))}];}));
+  return {limit,used:rows.length,remaining,byType,questionId,current:current?{type:current.type,effect:typeof current.effect==='string'?JSON.parse(current.effect):current.effect}:null};
 }
