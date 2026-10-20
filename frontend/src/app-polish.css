@@ -17,5 +17,7 @@
 }
 @media(max-width:360px){.learning-logo img{width:155px}.learning-rail nav{grid-template-columns:1fr}.workspace-content .metrics,.workspace-content .dash-grid{grid-template-columns:1fr}.mobile-welcome{padding-inline:20px}}
 /* Sign-in and recovery share the same controls and readable mobile layout. */
-.auth-box{border-radius:22px;box-shadow:0 12px 40px #142f500b}.auth-box h2{font-size:2rem;line-height:1.2}.auth-box .form :is(input,select,textarea){border-radius:10px;min-height:48px}.auth-box .button{border-radius:12px;min-height:50px}.auth-box .form-message{border-radius:8px}.auth-box .switch button{min-height:44px}.auth-panel{background:#f4f7fb}
+.auth-box{border-radius:22px;box-shadow:0 12px 40px #142f500b}.auth-box h2{font-size:2rem;line-height:1.2}.auth-box .form :is(input:not([type=checkbox]):not([type=radio]),select,textarea){border-radius:10px;min-height:48px}.auth-box .button{border-radius:12px;min-height:50px}.auth-box .form-message{border-radius:8px}.auth-box .switch button{min-height:44px}.auth-panel{background:#f4f7fb}
 @media(max-width:600px){.auth-brand{min-height:135px;padding:22px}.auth-panel{padding:18px 14px 32px}.auth-box{padding:24px 20px}.auth-box h2{font-size:1.8rem}.auth-box .form{gap:16px}.auth-box :is(input,select,textarea){font-size:16px}.workspace-content .metrics strong{font-size:2.2rem}.workspace-content .student-info{min-width:0;overflow-wrap:anywhere}}
+
+.auth-box .form :is(input[type=checkbox],input[type=radio]){min-height:20px;min-width:20px;accent-color:#087f88}.auth-box .remember-email{min-height:44px;cursor:pointer}
