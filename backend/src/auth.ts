@@ -1,5 +1,7 @@
 // @ts-nocheck
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'node:crypto';
+import { nextSignInActivity, activitySessionStatus, activityGateExempt } from './activity-session.js';
 import { getAcademySettings } from './academy-settings.js';
 import { pool } from './db.js';
 
@@ -9,9 +11,11 @@ const secret = () => {
   return value;
 };
 
-export function createToken(user) {
+export async function createToken(user, existingSession = null) {
   const payload = {
     id: user.id,
+    jti: existingSession?.jti || randomUUID(),
+    activityRequiredId: user.role === 'student' ? (existingSession ? existingSession.activityRequiredId ?? null : await nextSignInActivity(pool, user.id)) : null,
     role: user.role,
     status: user.status,
     sessionVersion: Number(user.session_version ?? user.sessionVersion ?? 0),
@@ -52,6 +56,12 @@ export async function requireAuth(req, res, next) {
     req.user.isClassRep = account.isClassRep === true;
     if (req.user.mustChangePassword && !['/api/auth/me', '/api/auth/change-password'].includes(req.path)) {
       return res.status(403).json({ message: 'Change your temporary password before using the portal.' });
+    }
+    if (req.user.role === 'student' && !activityGateExempt(req.path)) {
+      let gate;
+      try { gate = await activitySessionStatus(pool, req.user); }
+      catch (error) { return next(error); }
+      if (gate.required) return res.status(403).json({ code: 'CLASS_ACTIVITY_REQUIRED', message: `Complete Week ${gate.activity.weekNumber} class activity to continue this sign-in.`, ...gate });
     }
     next();
   } catch (error) {

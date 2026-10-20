@@ -23,3 +23,16 @@ test('a new learner starts at the first unlocked material and does not count man
  const n=continueLearning([week({assignments:[{id:30,title:'DM',assignmentType:'manual'}]})],8);
  assert.equal(n.label,'Start next material');assert.equal(n.completed,0);assert.equal(n.total,1);assert.equal(n.totalWeeks,9);assert.equal(n.percentage,0);
 });
+
+test('an earlier unfinished activity does not block later learning materials',()=>{
+ const first=week({materials:[{id:10,title:'Shell',progressStatus:'done'}],activity:{title:'Week one activity'}});
+ const later=week({id:13,weekNumber:9,materials:[{id:99,title:'Terraform lab',progressStatus:'in_progress'}]});
+ const n=continueLearning([first,later]);assert.equal(n.kind,'material');assert.equal(n.week.weekNumber,9);assert.equal(n.title,'Terraform lab');
+});
+test('resumes the most recently touched week and advances after its materials are done',()=>{
+ const earlier=week({materials:[{id:10,title:'Old lesson',progressStatus:'in_progress',progressUpdatedAt:'2026-10-18T10:00:00Z'}]});
+ const latest=week({id:9,weekNumber:8,materials:[{id:88,title:'Ansible',progressStatus:'in_progress',progressUpdatedAt:'2026-10-20T10:00:00Z'}]});
+ const next=week({id:10,weekNumber:9,materials:[{id:99,title:'Terraform',progressStatus:'not_started'}]});
+ assert.equal(continueLearning([earlier,latest,next]).week.weekNumber,8);
+ latest.materials[0].progressStatus='done';assert.equal(continueLearning([earlier,latest,next]).week.weekNumber,9);
+});

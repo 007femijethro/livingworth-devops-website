@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { activitySessionStatus } from './activity-session.js';
 import { logger } from './logger.js';
 
 const QUESTION_TYPES = new Set(['single_choice', 'multiple_selection', 'true_false', 'short_answer']);
@@ -124,27 +125,14 @@ async function questionsFor(pool, activityId, includeAnswers = false) {
   });
 }
 
-async function priorWeeksComplete(pool, studentId, currentModule) {
-  const [modules] = await pool.execute(`SELECT id FROM learning_modules WHERE published = TRUE
-    AND (display_order < ? OR (display_order = ? AND week_number < ?)) ORDER BY display_order, week_number`,
-    [currentModule.displayOrder, currentModule.displayOrder, currentModule.weekNumber]);
-  for (const module of modules) {
-    const materials = await materialsFor(pool, module.id, studentId);
-    if (!materials.every(item => item.progressStatus === 'done')) return false;
-    const [assignments] = await pool.execute(`SELECT a.assignment_type AS assignmentType, a.closed_at AS closedAt,
-      s.id AS submissionId FROM assignments a LEFT JOIN assignment_submissions s
-      ON s.assignment_id = a.id AND s.student_id = ? WHERE a.module_id = ?`, [studentId, module.id]);
-    if (!assignments.filter(item => item.assignmentType !== 'manual').every(item => Boolean(item.closedAt || item.submissionId))) return false;
-    const [activities] = await pool.execute(`SELECT a.id FROM learning_activities a WHERE a.module_id = ?`, [module.id]);
-    if (activities.length) {
-      const [attempts] = await pool.execute(`SELECT id FROM activity_attempts WHERE activity_id = ? AND student_id = ? LIMIT 1`, [activities[0].id, studentId]);
-      if (!attempts.length) return false;
-    }
-  }
-  return true;
-}
-
 export function registerClassActivityRoutes(app, pool, requireAuth, requireStaff) {
+  app.get('/api/student/activity-session', requireAuth, async (req, res, next) => {
+    try {
+      if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
+      res.set('Cache-Control', 'private, no-store');
+      res.json(await activitySessionStatus(pool, req.user));
+    } catch (error) { next(error); }
+  });
   app.get('/api/staff/class-activities', requireAuth, requireStaff, async (_req, res, next) => {
     try {
       const [modules] = await pool.query(`SELECT id, week_number AS weekNumber, title, summary, published
@@ -257,15 +245,10 @@ export function registerClassActivityRoutes(app, pool, requireAuth, requireStaff
       const [modules] = await pool.query(`SELECT id, week_number AS weekNumber, title, summary
         FROM learning_modules WHERE published = TRUE ORDER BY display_order, week_number`);
       const result = [];
-      let previousComplete = true;
+      const gate = await activitySessionStatus(pool, req.user);
       for (const module of modules) {
         const materials = await materialsFor(pool, module.id, req.user.id);
         const materialsDone = materials.every(item => item.progressStatus === 'done');
-        const [assignments] = await pool.execute(`SELECT a.assignment_type AS assignmentType, a.closed_at AS closedAt,
-          s.id AS submissionId FROM assignments a LEFT JOIN assignment_submissions s
-          ON s.assignment_id = a.id AND s.student_id = ? WHERE a.module_id = ?`, [req.user.id, module.id]);
-        const assignmentWorkDone = assignments.filter(item => item.assignmentType !== 'manual')
-          .every(item => Boolean(item.closedAt || item.submissionId));
         const [activityRows] = await pool.execute(`SELECT a.id, a.title, a.instructions, a.allow_retakes AS allowRetakes,
           (SELECT COUNT(*) FROM activity_attempts aa WHERE aa.activity_id = a.id AND aa.student_id = ?) AS attemptCount,
           (SELECT aa.id FROM activity_attempts aa WHERE aa.activity_id = a.id AND aa.student_id = ? ORDER BY aa.attempt_no DESC LIMIT 1) AS lastAttemptId
@@ -277,17 +260,15 @@ export function registerClassActivityRoutes(app, pool, requireAuth, requireStaff
             total_questions AS totalQuestions, completed_at AS completedAt FROM activity_attempts WHERE id = ?`, [activity.lastAttemptId]);
           lastAttempt = attempts[0] || null;
         }
-        const weekComplete = materialsDone && assignmentWorkDone && (!activity || Boolean(lastAttempt));
         if (activity) {
-          activity.canStart = previousComplete && materialsDone && (!lastAttempt || Boolean(activity.allowRetakes));
+          activity.canStart = (!gate.required || Number(gate.activity.id) === Number(activity.id)) && (!lastAttempt || Boolean(activity.allowRetakes));
           activity.attemptCount = Number(activity.attemptCount || 0);
           activity.lastAttempt = lastAttempt;
           activity.questions = activity.canStart ? await questionsFor(pool, activity.id, false) : [];
           activity.review = lastAttempt ? await reviewFor(pool, lastAttempt.id) : [];
           result.push({ ...module, materialsDone, activity });
         }
-        previousComplete = previousComplete && weekComplete;
-        if (!previousComplete) break;
+
       }
       res.json(result);
     } catch (error) { next(error); }
@@ -302,11 +283,8 @@ export function registerClassActivityRoutes(app, pool, requireAuth, requireStaff
         WHERE a.id = ? AND m.published = TRUE`, [req.params.activityId]);
       if (!activities.length) return res.status(404).json({ message: 'Class activity is not available.' });
       const activity = activities[0];
-      if (!await priorWeeksComplete(connection, req.user.id, activity)) return res.status(409).json({ message: 'Finish the earlier published weeks before taking this class activity.' });
-      const [materials] = await connection.execute(`SELECT lm.id, COALESCE(mp.status, 'not_started') AS progressStatus
-        FROM learning_materials lm LEFT JOIN material_progress mp ON mp.material_id = lm.id AND mp.student_id = ?
-        WHERE lm.module_id = ? AND lm.visible = TRUE`, [req.user.id, activity.moduleId]);
-      if (!materials.every(item => item.progressStatus === 'done')) return res.status(409).json({ message: 'Complete all visible materials for this week before starting the class activity.' });
+      const gate = await activitySessionStatus(connection, req.user);
+      if (gate.required && Number(gate.activity.id) !== Number(activity.id)) return res.status(403).json({ message: `Complete Week ${gate.activity.weekNumber} for this sign-in first.` });
       const [questions] = await connection.execute(`SELECT id, prompt, question_type AS questionType,
         options_json AS options, correct_index AS correctIndex, correct_answers_json AS correctAnswers,
         correct_text AS correctText, explanation, sequence_no AS sequenceNo
@@ -315,6 +293,14 @@ export function registerClassActivityRoutes(app, pool, requireAuth, requireStaff
       const [priorAttempts] = await connection.execute('SELECT COUNT(*) AS count, COALESCE(MAX(attempt_no), 0) AS latest FROM activity_attempts WHERE activity_id = ? AND student_id = ?', [activity.id, req.user.id]);
       if (Number(priorAttempts[0].count) && !activity.allowRetakes) return res.status(409).json({ message: 'You have already completed this class activity.' });
       const submittedAnswers = req.body.answers && typeof req.body.answers === 'object' ? req.body.answers : {};
+      for (const question of questions) {
+        const raw = submittedAnswers[String(question.id)];
+        const options = parseJson(question.options);
+        const valid = question.questionType === 'short_answer' ? typeof raw === 'string' && raw.trim().length > 0 && raw.length <= 1000
+          : question.questionType === 'multiple_selection' ? Array.isArray(raw) && raw.length > 0 && raw.every(value => Number.isInteger(value) && value >= 0 && value < options.length)
+          : Number.isInteger(raw) && raw >= 0 && raw < options.length;
+        if (!valid) return res.status(400).json({ message: 'Answer every question before submitting your class activity.' });
+      }
       const grades = questions.map(question => {
         const raw = submittedAnswers[String(question.id)];
         const answer = question.questionType === 'multiple_selection'

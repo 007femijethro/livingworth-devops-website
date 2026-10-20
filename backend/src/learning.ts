@@ -45,7 +45,7 @@ const upload = multer({
   }
 });
 
-async function modulesFor(pool, studentId = null, staff = false, assignmentsOnly = false) {
+export async function modulesFor(pool, studentId = null, staff = false, assignmentsOnly = false) {
   const [modules] = await pool.query(`SELECT id, week_number AS weekNumber, title, summary, published FROM learning_modules ${staff ? '' : 'WHERE published = TRUE'} ORDER BY display_order, week_number`);
   const visibleModules = [];
   for (const module of modules) {
@@ -53,7 +53,7 @@ async function modulesFor(pool, studentId = null, staff = false, assignmentsOnly
       ? [[]]
       : studentId
       ? await pool.execute(`SELECT lm.id, lm.title, lm.material_type AS materialType, lm.resource_url AS resourceUrl,
-          lm.lesson_content AS lessonContent, lm.original_name AS originalName, COALESCE(mp.status, 'not_started') AS progressStatus
+          lm.lesson_content AS lessonContent, lm.original_name AS originalName, COALESCE(mp.status, 'not_started') AS progressStatus, mp.updated_at AS progressUpdatedAt
           FROM learning_materials lm LEFT JOIN material_progress mp ON mp.material_id = lm.id AND mp.student_id = ?
           WHERE lm.module_id = ? AND lm.visible = TRUE ORDER BY lm.display_order, lm.created_at, lm.id`, [studentId, module.id])
       : await pool.execute('SELECT id, title, material_type AS materialType, resource_url AS resourceUrl, lesson_content AS lessonContent, original_name AS originalName, visible FROM learning_materials WHERE module_id = ? ORDER BY display_order, created_at, id', [module.id]);
@@ -87,7 +87,7 @@ async function modulesFor(pool, studentId = null, staff = false, assignmentsOnly
         && assignments.filter(assignment => assignment.assignmentType !== 'manual').every(assignment => Boolean(assignment.closedAt || assignment.submissionId))
         && (!module.activity || Boolean(module.activity.submittedAt));
       visibleModules.push(module);
-      if (!assignmentsOnly && !module.isComplete) break;
+      // Completion is tracked, but it no longer hides later published weeks.
     }
   }
   return studentId ? visibleModules : modules;

@@ -28,7 +28,7 @@ export default function ContinueLearning() {
     <div className="continue-learning-progress">
       {next.week && <><strong>{next.percentage}%</strong><span>of this week’s required work</span><div role="progressbar" aria-label={`Week ${next.week.weekNumber} progress`} aria-valuenow={next.percentage} aria-valuemin={0} aria-valuemax={100}><span style={{width:`${next.percentage}%`}} /></div><small>{next.completed} of {next.total} steps complete</small></>}
       <p>{next.completedWeeks} of {next.totalWeeks} published weeks complete</p>
-      {data.lockedWeeks ? <small>Finish this week’s required work to unlock the next week.</small> : null}
+      {data.lockedWeeks ? <small>Your mentor will publish more weeks as they become available.</small> : null}
     </div>
   </section>;
 }

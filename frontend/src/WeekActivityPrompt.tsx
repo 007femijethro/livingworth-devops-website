@@ -13,10 +13,10 @@ export default function WeekActivityPrompt({ module }: WeekActivityPromptProps) 
     <aside className="week-activity-next" aria-label={`Week ${module.weekNumber} next step`}>
       <div>
         <span className="eyebrow">Your next step · Week {module.weekNumber}</span>
-        <h4>Complete the class activity to continue</h4>
+        <h4>Practise with this week’s class activity</h4>
         <p>{materialsDone
-          ? 'Your learning materials are complete. Finish this week’s class activity and any outstanding assignments to unlock the next week.'
-          : 'Finish this week’s learning materials, then complete the class activity. Later weeks unlock after this week’s required work is complete.'}</p>
+          ? 'Your learning materials are complete. You can practise this activity now. All published learning weeks remain available.'
+          : 'Review the materials and practise this week’s activity when ready. It does not block access to later published learning weeks.'}</p>
       </div>
       <a className="button primary" href={`/portal/student/class-activity?week=${module.weekNumber}`}>
         Go to Week {module.weekNumber} class activity →

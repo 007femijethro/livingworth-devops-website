@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { activitySessionStatus } from './activity-session.js';
 import { validLifelineLimit, validLifelineLimits, lifelineEffect, lifelineStatus } from './quiz-lifelines.js';
 import { logger } from './logger.js';
 
@@ -434,6 +435,7 @@ export function configureQuizSockets(io, pool, verifyToken) {
       if (!account) throw new Error('Authentication required');
       if (socket.user.role === 'student' && account.status !== 'approved') throw new Error('Approved student access required');
       if (Number(socket.user.sessionVersion || 0) !== Number(account.sessionVersion || 0)) throw new Error('Authentication required');
+      if ((await activitySessionStatus(pool, { ...socket.user, role: account.role })).required) return next(new Error('Complete your sign-in class activity before joining a quiz.'));
       socket.user.fullName = account.fullName;
       socket.user.role = account.role;
       socket.user.status = account.status;

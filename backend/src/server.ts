@@ -189,7 +189,7 @@ app.post('/api/auth/login', async (req, res, next) => {
     }
     await pool.execute('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?', [user.id]);
     logger.info('login_succeeded', { requestId: req.requestId, userId: user.id, role: user.role, portal });
-    res.json({ token: createToken(user), user: { id: user.id, fullName: user.full_name, email: user.email, role: user.role, status: user.status, isClassRep: Boolean(user.is_class_rep), profilePicture: user.profile_picture || null, mustChangePassword: Boolean(user.must_change_password) } });
+    res.json({ token: await createToken(user), user: { id: user.id, fullName: user.full_name, email: user.email, role: user.role, status: user.status, isClassRep: Boolean(user.is_class_rep), profilePicture: user.profile_picture || null, mustChangePassword: Boolean(user.must_change_password) } });
   } catch (error) { next(error); }
 });
 
@@ -238,7 +238,7 @@ app.patch('/api/auth/change-password', requireAuth, async (req, res, next) => {
     const [users] = await pool.execute('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
     if (!users.length || !(await bcrypt.compare(currentPassword, users[0].password_hash))) return res.status(400).json({ message: 'Your current password is incorrect.' });
     await pool.execute('UPDATE users SET password_hash = ?, must_change_password = FALSE WHERE id = ?', [await bcrypt.hash(newPassword, 12), req.user.id]);
-    res.json({ message: 'Password changed successfully.', token: createToken({ ...req.user, mustChangePassword: false }) });
+    res.json({ message: 'Password changed successfully.', token: await createToken({ ...req.user, mustChangePassword: false }, req.user) });
   } catch (error) { next(error); }
 });
 
@@ -287,7 +287,7 @@ app.post('/api/auth/change-email/confirm', requireAuth, async (req, res, next) =
     await connection.execute('UPDATE email_change_tokens SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL', [req.user.id]);
     await connection.commit();
     const updatedUser = { ...req.user, email: token.newEmail };
-    res.json({ message: 'Email address changed successfully.', email: token.newEmail, token: createToken(updatedUser) });
+    res.json({ message: 'Email address changed successfully.', email: token.newEmail, token: await createToken(updatedUser, req.user) });
   } catch (error) { await connection.rollback(); next(error); }
   finally { connection.release(); }
 });

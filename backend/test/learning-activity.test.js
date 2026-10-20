@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { registerClassActivityRoutes } from '../dist/class-activities.js';
 
-test('private class activity cannot be submitted before visible weekly materials are done', async () => {
+test('class activity no longer waits for materials, but every question needs an answer', async () => {
   let materialStatus = 'in_progress';
   let attemptSaved = false;
   const execute = async (sql, params = []) => {
@@ -22,11 +22,9 @@ test('private class activity cannot be submitted before visible weekly materials
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    let response = await fetch(`${base}/api/student/class-activities/9/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers: { 5: 0 } }) });
-    assert.equal(response.status, 409);
+    let response = await fetch(`${base}/api/student/class-activities/9/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers: {} }) });
+    assert.equal(response.status, 400);
     assert.equal(attemptSaved, false);
-
-    materialStatus = 'done';
     response = await fetch(`${base}/api/student/class-activities/9/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers: { 5: 0 } }) });
     const result = await response.json();
     assert.equal(response.status, 200);

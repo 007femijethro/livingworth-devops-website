@@ -39,7 +39,7 @@ export function registerBiometricLoginRoutes(app,pool,requireAuth,createToken) {
    const [rows]=await pool.execute(`SELECT u.*, u.locked_until>NOW() AS is_locked, d.id AS deviceId, d.password_version AS passwordVersion, d.enrolled_role AS enrolledRole, d.session_version AS enrolledSessionVersion, d.expires_at AS expiresAt FROM biometric_devices d JOIN users u ON u.id=d.user_id WHERE d.token_hash=?`,[biometricTokenHash(token)]);const user=rows[0];
    const correctPortal=user&&(portal==='student'?user.role==='student':['admin','mentor'].includes(user.role));
    if(!biometricAccountValid(user)||!correctPortal)return res.status(401).json({message:'Saved sign-in has expired or changed. Sign in with your password and enable it again.'});
-   await pool.execute('UPDATE biometric_devices SET last_used_at=NOW() WHERE id=?',[user.deviceId]);res.set('Cache-Control','no-store');res.json({token:createToken(user),user:publicUser(user)});
+   await pool.execute('UPDATE biometric_devices SET last_used_at=NOW() WHERE id=?',[user.deviceId]);res.set('Cache-Control','no-store');res.json({token:await createToken(user),user:publicUser(user)});
   }catch(error){next(error)}
  });
  app.delete('/api/auth/biometric-devices/:id',requireAuth,async(req,res,next)=>{
