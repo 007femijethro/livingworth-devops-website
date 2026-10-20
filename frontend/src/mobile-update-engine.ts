@@ -35,3 +35,11 @@ export async function stageMobileUpdate(port: UpdatePort, loadManifest: (version
   await port.setNextBundle({ bundleId: manifest.bundleId });
   return true;
 }
+
+/** Explicit user action only. Preserve active quiz rooms and require a staged bundle. */
+export async function applyStagedMobileUpdate(port: Pick<UpdatePort,'getCurrentBundle'|'getNextBundle'> & {reload():Promise<void>}, quizOpen: boolean): Promise<void> {
+  if(quizOpen)throw new Error('Leave the quiz room before applying an update.');
+  const [current,next]=await Promise.all([port.getCurrentBundle(),port.getNextBundle()]);
+  if(!next.bundleId||next.bundleId===current.bundleId)throw new Error('No downloaded update is ready. Check for updates first.');
+  await port.reload();
+}

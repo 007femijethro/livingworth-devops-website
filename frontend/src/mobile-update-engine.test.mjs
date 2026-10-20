@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compatibleUpdate, stageMobileUpdate } from './mobile-update-engine.ts';
+import { compatibleUpdate, stageMobileUpdate, applyStagedMobileUpdate } from './mobile-update-engine.ts';
 const runtime={nativeVersionCode:2,nativeFingerprint:'a'.repeat(64)}, origin='https://bridgess.co.uk';
 const checksum='b'.repeat(64),bundleId=`android-2-${checksum}`;
 const manifest={...runtime,schemaVersion:1,platform:'android',bundleId,checksum,signature:'A'.repeat(512),size:2048,url:`${origin}/api/mobile-updates/bundles/${bundleId}.zip`};
@@ -34,4 +34,12 @@ test('failed downloads never become the next bundle',async()=>{
  const {port,calls}=fixture({downloadBundle:async()=>{throw new Error('signature invalid')}});
  await assert.rejects(stageMobileUpdate(port,async()=>manifest,runtime,origin),/signature invalid/);
  assert.deepEqual(calls,['ready']);
+});
+
+test('explicit apply reloads a staged update but refuses active quizzes and missing updates',async()=>{
+ let reloaded=0;const port={getCurrentBundle:async()=>({bundleId:'old'}),getNextBundle:async()=>({bundleId:'new'}),reload:async()=>{reloaded++}};
+ await assert.rejects(applyStagedMobileUpdate(port,true),/Leave the quiz/);assert.equal(reloaded,0);
+ await assert.rejects(applyStagedMobileUpdate({...port,getNextBundle:async()=>({bundleId:null})},false),/No downloaded/);assert.equal(reloaded,0);
+ await assert.rejects(applyStagedMobileUpdate({...port,getNextBundle:async()=>({bundleId:'old'})},false),/No downloaded/);assert.equal(reloaded,0);
+ await applyStagedMobileUpdate(port,false);assert.equal(reloaded,1);
 });
