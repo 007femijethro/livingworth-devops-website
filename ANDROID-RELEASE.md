@@ -1,3 +1,5 @@
+Android 1.6 / versionCode 7 includes the latest quiz controls and manual update checks under About & Help. Install it over production-signed 1.5; do not uninstall or clear app data. The version increment resets stale OTA paths using Capacitor’s normal version-change handling.
+
 # Permanent Android releases
 
 Android 1.5 / versionCode 6 is the first production-signed release. The previous test APKs used temporary debug certificates, so testers must uninstall an old test app once before moving to this release. Future native releases use the permanent academy certificate and can install over this release, preserving the app's local settings. Ordinary compatible web updates continue through the signed OTA updater; native/plugin changes still require a new APK.
