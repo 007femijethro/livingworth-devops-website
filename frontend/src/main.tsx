@@ -30,6 +30,7 @@ import './structural-platform.css';
 import './profile-changes.css';
 import './account-settings.css';
 import './brand-display.css';
+import './app-polish.css';
 import { startClientLogging } from './client-logging';
 
 startMobile();
