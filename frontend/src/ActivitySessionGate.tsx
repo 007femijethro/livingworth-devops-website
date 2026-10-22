@@ -11,7 +11,14 @@ export default function ActivitySessionGate({children,logout,renderActivity,onUn
   try{const response=await fetch('/api/student/activity-session',{cache:'no-store',headers:{Authorization:`Bearer ${localStorage.getItem('lw_token')}`}});const data=await response.json();if(response.status===401)window.dispatchEvent(new CustomEvent('lw-session-expired',{detail:data.message}));if(!response.ok)throw new Error(data.message||'Could not check your class activity.');setGate(data);return !data.required;}
   catch(reason){setError(reason instanceof Error?reason.message:'Could not check your class activity.');return false;}
  },[]);
- useEffect(()=>{if(!bypass)void load();},[load,bypass]);
+ useEffect(()=>{
+  if(bypass)return;
+  void load();
+  const refresh=()=>{if(document.visibilityState==='visible')void load();};
+  const timer=window.setInterval(refresh,30000);
+  window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
+  return()=>{window.clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
+ },[load,bypass]);
  if(bypass||(gate&&!gate.required))return <>{children}</>;
  return <main className="activity-session-page">
   <header className="activity-session-top"><img src="/livingworth-wordmark.png" alt={academy.academyName}/><div><button type="button" className="button light-border" onClick={()=>setHelp(!help)}>{help?'Back to activity':'Help & updates'}</button><button type="button" className="button light-border" onClick={logout}>Log out</button></div></header>

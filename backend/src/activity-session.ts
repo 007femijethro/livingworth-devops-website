@@ -1,6 +1,8 @@
 // @ts-nocheck
+import {getAcademySettings} from './academy-settings.js';
 /** Select once at sign-in. The signed token pins this activity for the session. */
 export async function nextSignInActivity(db, studentId) {
+  if (!getAcademySettings().signInActivityRequired) return null;
   const [rows] = await db.execute(`SELECT a.id FROM learning_activities a
     JOIN learning_modules m ON m.id = a.module_id
     WHERE m.published = TRUE
@@ -12,7 +14,7 @@ export async function nextSignInActivity(db, studentId) {
 
 export async function activitySessionStatus(db, user) {
   // Existing sessions are grandfathered until the next actual sign-in.
-  if (user.role !== 'student' || !user.activityRequiredId) return { required: false, activity: null };
+  if (!getAcademySettings().signInActivityRequired || user.role !== 'student' || !user.activityRequiredId) return { required: false, activity: null };
   const [rows] = await db.execute(`SELECT a.id, a.title, m.week_number AS weekNumber
     FROM learning_activities a JOIN learning_modules m ON m.id = a.module_id
     WHERE a.id = ? AND m.published = TRUE

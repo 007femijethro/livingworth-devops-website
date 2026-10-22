@@ -96,3 +96,19 @@ test('a student cannot satisfy a sign-in requirement by submitting a different w
  try{const response=await fetch(`http://127.0.0.1:${server.address().port}/api/student/class-activities/2/submit`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answers:{1:0}})});assert.equal(response.status,403);assert.equal(acquired,false);assert.match((await response.json()).message,/Week 1/);}
  finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 });
+
+test('admin off bypasses pending requirements and new sign-ins; on restores the activity policy',async()=>{
+ const {loadAcademySettings}=await import('../dist/academy-settings.js');
+ const never={execute(){throw new Error('Disabled activity requirement must not query activities');}};
+ const set=enabled=>loadAcademySettings({execute:async()=>[[{settingKey:'academy_signInActivityRequired',enabled:true,valueText:JSON.stringify(enabled),updatedAt:'now'}]]});
+ const student={id:7,role:'student',activityRequiredId:1};
+ try{
+  await set(false);
+  assert.equal((await activitySessionStatus(never,student)).required,false);
+  assert.equal(await nextSignInActivity(never,7),null);
+  await set(true);
+  const db=activityDb();assert.equal((await activitySessionStatus(db,student)).required,true);
+  assert.equal(await nextSignInActivity(db,7),1);
+  db.completed.add(1);assert.equal((await activitySessionStatus(db,student)).required,false);
+ }finally{await loadAcademySettings({execute:async()=>[[]]});}
+});

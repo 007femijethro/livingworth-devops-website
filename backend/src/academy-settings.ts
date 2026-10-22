@@ -12,7 +12,7 @@ export function settingsDefaults() {
     remindersEnabled: String(process.env.EMAIL_REMINDERS_ENABLED).toLowerCase() === 'true',
     classReminderMinutes: Math.max(5, Number(process.env.CLASS_REMINDER_MINUTES || 60)),
     quizReminderMinutes: Math.max(5, Number(process.env.QUIZ_REMINDER_MINUTES || 30)),
-    certificateRequiredScore: 75, attendanceAlertScore: 75, studentSessionHours: 8, classRepLimit: 2, mobileUpdatesEnabled: true, pushEnabled: true, assignmentReminderMinutes: 1440,
+    certificateRequiredScore: 75, attendanceAlertScore: 75, studentSessionHours: 8, classRepLimit: 2, mobileUpdatesEnabled: true, pushEnabled: true, signInActivityRequired: true, assignmentReminderMinutes: 1440,
   };
 }
 let current = settingsDefaults();
@@ -29,7 +29,7 @@ export function validateSettings(input) {
     if (ranges[key]) {
       if (typeof value !== 'number' || !Number.isInteger(value) || value < ranges[key][0] || value > ranges[key][1]) throw new Error(`${key} must be a whole number between ${ranges[key][0]} and ${ranges[key][1]}.`);
       result[key] = value;
-    } else if (['registrationOpen','emailEnabled','remindersEnabled','mobileUpdatesEnabled','pushEnabled'].includes(key)) {
+    } else if (['registrationOpen','emailEnabled','remindersEnabled','mobileUpdatesEnabled','pushEnabled','signInActivityRequired'].includes(key)) {
       if (typeof value !== 'boolean') throw new Error(`${key} must be on or off.`);
       result[key] = value;
     } else if (key === 'classDays') {
