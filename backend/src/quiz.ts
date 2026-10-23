@@ -566,8 +566,11 @@ export function configureQuizSockets(io, pool, verifyToken) {
         logger.info('quiz_started', { quizId: Number(quizId), scheduled, questionCount: questions.length });
     return true;
   }
-  const scheduler = scheduledQuizWorker(pool, startQuiz, (error,quizId) => logger.error('quiz_schedule_failed', {quizId, error:error.message}));
-  io.httpServer?.once('close', () => scheduler.stop());
+  let scheduler;
+  const startScheduler = () => { scheduler = scheduledQuizWorker(pool, startQuiz, (error,quizId) => logger.error('quiz_schedule_failed', {quizId, error:error.message})); };
+  if (io.httpServer && !io.httpServer.listening) io.httpServer.once('listening', startScheduler);
+  else startScheduler();
+  io.httpServer?.once('close', () => scheduler?.stop());
 
   io.on('connection', socket => {
     logger.info('quiz_socket_connected', { socketId: socket.id, userId: socket.user.id, role: socket.user.role });
@@ -808,5 +811,5 @@ export function configureQuizSockets(io, pool, verifyToken) {
       if (socket.data.quizId) emitParticipation(socket.data.quizId).catch(() => {});
     });
   });
-  return scheduler;
+  return {tick: () => scheduler?.tick(), stop: () => scheduler?.stop()};
 }

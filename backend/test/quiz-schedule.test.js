@@ -53,3 +53,9 @@ test('students cannot enter before opening even if a staff preview has set the r
  const io={use(){},on(_event,fn){handler=fn}};const worker=configureQuizSockets(io,pool,()=>{});
  try{const handlers={};handler({id:'early',user:{id:12,role:'student'},data:{},on:(event,fn)=>handlers[event]=fn});const reply=await new Promise(resolve=>handlers['quiz:join']({joinCode:'EARLY'},resolve));assert.equal(reply.ok,false);assert.match(reply.message,/opens/)}finally{worker.stop()}
 });
+test('scheduling waits until the HTTP server is listening before processing due work',async()=>{
+ const {EventEmitter}=await import('node:events');const httpServer=new EventEmitter();httpServer.listening=false;let queries=0;
+ const io={httpServer,use(){},on(){}};const pool={query:async sql=>{queries++;return sql.startsWith('UPDATE')?[{}]:[[]]}};
+ const worker=configureQuizSockets(io,pool,()=>{});
+ try{await new Promise(setImmediate);assert.equal(queries,0);httpServer.listening=true;httpServer.emit('listening');await new Promise(setImmediate);assert.equal(queries,2)}finally{httpServer.emit('close');worker.stop()}
+});
