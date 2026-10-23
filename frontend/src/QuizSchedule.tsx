@@ -8,14 +8,14 @@ export function QuizScheduleFields({opening,starting,onOpening,onStarting}:{open
  function duration(value:string){const amount=Number(value);if(opening&&Number.isInteger(amount)&&amount>0){try{onStarting(scheduleInput(new Date(+new Date(scheduleInstant(opening,zone)!)+amount*60000),zone))}catch{}}}
  return <fieldset className="quiz-schedule-fields"><legend>Waiting room &amp; automatic start</legend><p>Times are in <strong>{zone}</strong>. Leave both times empty to host manually.</p><label>Waiting room opens<input type="datetime-local" value={opening} onChange={e=>{const value=e.target.value;onOpening(value);if(value&&!starting){try{onStarting(scheduleInput(new Date(+new Date(scheduleInstant(value,zone)!)+15*60000),zone))}catch{}}if(!value)onStarting('')}}/></label><label>Quiz starts automatically<input type="datetime-local" value={starting} min={opening||undefined} onChange={e=>onStarting(e.target.value)}/></label><label>Waiting period (minutes)<input type="number" min="1" step="1" disabled={!opening} value={minutes>0?minutes:''} onChange={e=>duration(e.target.value)}/></label><small>{starting?'The server starts the quiz at this time, even when this page is closed. Choose Automatic navigation to run all questions without a mentor.':'An opening time on its own opens the waiting room; a mentor starts the quiz manually.'}</small></fieldset>;
 }
-export function QuizScheduleStatus({quiz}:{quiz:any}) {
+export function QuizScheduleStatus({quiz,hideCountdown=false}:{quiz:any;hideCountdown?:boolean}) {
  const zone=useAcademySettings().classTimezone;
  const [now,setNow]=useState(Date.now());
  useEffect(()=>{if(!quiz.startsAt)return;const id=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(id)},[quiz.startsAt]);
  const format=(value:string)=>new Date(value).toLocaleString('en-GB',{timeZone:zone,day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
  if(!quiz.scheduledAt)return null;
  const remaining=quiz.startsAt?Math.max(0,Math.ceil((+new Date(quiz.startsAt)-now)/1000)):null;
- return <div className="quiz-schedule-status"><span>Room opens: {format(quiz.scheduledAt)} · {zone}</span>{quiz.startsAt&&<><span>Quiz starts: {format(quiz.startsAt)} · {Math.round((+new Date(quiz.startsAt)-+new Date(quiz.scheduledAt))/60000)} minute waiting period</span>{!quiz.scheduleStartedAt&&!['live','completed'].includes(quiz.status)&&<strong>{remaining!>0?`Starts in ${Math.floor(remaining!/3600)?`${Math.floor(remaining!/3600)}h `:''}${Math.floor((remaining!%3600)/60)}m ${remaining!%60}s`:'Starting…'}</strong>}</>}</div>;
+ return <div className="quiz-schedule-status"><span>Room opens: {format(quiz.scheduledAt)} · {zone}</span>{quiz.startsAt&&<><span>Quiz starts: {format(quiz.startsAt)} · {Math.round((+new Date(quiz.startsAt)-+new Date(quiz.scheduledAt))/60000)} minute waiting period</span>{!hideCountdown&&!quiz.scheduleStartedAt&&!['live','completed'].includes(quiz.status)&&<strong>{remaining!>0?`Starts in ${Math.floor(remaining!/3600)?`${Math.floor(remaining!/3600)}h `:''}${Math.floor((remaining!%3600)/60)}m ${remaining!%60}s`:'Starting…'}</strong>}</>}</div>;
 }
 export default function QuizScheduleEditor({quiz,onSaved}:{quiz:any;onSaved:(message:string)=>void}) {
  const zone=useAcademySettings().classTimezone;

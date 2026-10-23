@@ -1,4 +1,5 @@
 // @ts-nocheck
+import QuizCompletion,{QuizCountdownControl} from './QuizCompletion';
 import {StudentAccountBadge,StudentDirectorySummary,StudentAccountDetails,StudentScoreDetails,StudentClassActivityDetails} from './StudentRecordDetails';
 import QuizScheduleEditor, {QuizScheduleFields, QuizScheduleStatus} from './QuizSchedule';
 import {scheduleInstant,scheduleInput} from './quiz-schedule-time';
@@ -2236,7 +2237,8 @@ function newActivityQuestion() {
   return { prompt: "", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "", explanation: "" };
 }
 
-function QuizResults({ mode, onLive }) {
+function QuizResults({ mode, onLive, initialAttemptId=null }) {
+  const [completion,setCompletion]=useState(null);
   const staff = mode === "admin";
   const [results, setResults] = useState(staff ? { attempts: [], summary: {}, topics: [], hardestQuestions: [], leaderboard: [] } : []);
   const [quizzes, setQuizzes] = useState([]);
@@ -2264,6 +2266,9 @@ function QuizResults({ mode, onLive }) {
     try { setSelected(await api(`/student/quiz-results/${id}`)); }
     catch (error) { setMessage(error.message); }
   }
+  useEffect(()=>{if(initialAttemptId&&!staff)void openResult(initialAttemptId)},[initialAttemptId]);
+  async function showCompletion(attempt){try{setCompletion(await api(`/student/quiz-completion/${attempt.quizId}?attemptId=${attempt.id}`));setMessage("")}catch(error){setMessage(error.message)}}
+
   async function exportResults() {
     const params = new URLSearchParams();
     if (quizId) params.set("quizId", quizId);
@@ -2283,6 +2288,7 @@ function QuizResults({ mode, onLive }) {
     } catch (error) { setMessage(error.message); }
     finally { setDeletingAttemptId(null); }
   }
+  if(completion)return <QuizCompletion result={completion} backLabel="Back to quiz history" onBack={()=>setCompletion(null)} onReview={()=>{const id=completion.self?.attemptId;setCompletion(null);void openResult(id)}}/>;
   if (selected) return <section className="quiz-results"><div className="quiz-mode-tabs"><button onClick={() => setSelected(null)}>← Quiz history</button></div><div className="result-detail-head"><div><p className="eyebrow">Answer review</p><h2>{selected.title}</h2><p>Attempt {selected.attemptNo} · {selected.correctCount}/{selected.totalQuestions} correct · Average response {(selected.averageResponseMs / 1000).toFixed(1)}s</p></div><strong>{Math.round(selected.correctCount * 100 / selected.totalQuestions)}/100</strong></div><div className="answer-review">{selected.answers.map((answer) => <article key={answer.sequenceNo} className={answer.isCorrect ? "right" : "wrong"}><div><span>Question {answer.sequenceNo} · {answer.materialTitle}</span><h3>{answer.prompt}</h3></div><p>Your answer: <b>{answer.options[answer.answerIndex]}</b></p><p>Correct answer: <b>{answer.options[answer.correctIndex]}</b></p><small>{(answer.responseMs / 1000).toFixed(1)} seconds</small></article>)}</div></section>;
   return <section className="quiz-results">
     <div className="quiz-mode-tabs"><button onClick={onLive}>Live quiz</button><button className="active">Results & history</button></div>
@@ -2295,11 +2301,15 @@ function QuizResults({ mode, onLive }) {
       {results.topics.length > 0 && <div className="topic-performance"><h3>Performance by topic</h3>{results.topics.map((topic) => <div key={topic.topic}><span>{topic.topic}</span><div><i style={{ width: `${topic.percentage}%` }} /></div><strong>{topic.percentage}%</strong></div>)}</div>}
       {results.hardestQuestions?.length > 0 && <div className="hardest-questions"><h3>Hardest questions</h3><p>Unanswered responses count as incorrect.</p>{results.hardestQuestions.map((question, index) => <article key={question.id}><b>#{index + 1}</b><div><strong>{question.prompt}</strong><span>{question.topic} · {question.correct}/{question.attempts} correct · {question.unanswered} unanswered</span></div><i>{question.percentage}%</i></article>)}</div>}
       <div className="result-table">{results.attempts.length === 0 ? <div className="empty">No completed quiz results yet.</div> : results.attempts.map((attempt) => <article key={attempt.id} className={!attempt.passed ? "support-needed" : ""}><div><h3>{attempt.studentName}</h3><p>{attempt.title} · Attempt {attempt.attemptNo}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct{attempt.unansweredCount ? ` · ${attempt.unansweredCount} unanswered` : ""}</span><strong>{attempt.percentage}/100</strong>{!attempt.passed && <b>Needs support</b>}<button type="button" className="delete-participation" disabled={deletingAttemptId === attempt.id} onClick={() => deleteParticipation(attempt)}>{deletingAttemptId === attempt.id ? "Deleting…" : "Delete participation"}</button></article>)}</div>
-    </> : <div className="student-result-list">{results.length === 0 ? <div className="empty">Your completed quizzes will appear here.</div> : results.map((attempt) => <article key={attempt.id}><div><h3>{attempt.title}</h3><p>Attempt {attempt.attemptNo} · {new Date(attempt.completedAt).toLocaleString()}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct</span><strong>{attempt.percentage}/100</strong><button className="profile-button" onClick={() => openResult(attempt.id)}>Review answers</button></article>)}</div>}
+    </> : <div className="student-result-list">{results.length === 0 ? <div className="empty">Your completed quizzes will appear here.</div> : results.map((attempt) => <article key={attempt.id}><div><h3>{attempt.title}</h3><p>Attempt {attempt.attemptNo} · {new Date(attempt.completedAt).toLocaleString()}</p></div><span>{attempt.correctCount}/{attempt.totalQuestions} correct</span><strong>{attempt.percentage}/100</strong><div className="student-result-actions"><button className="profile-button" onClick={()=>void showCompletion(attempt)}>Score &amp; position</button><button className="profile-button" onClick={() => openResult(attempt.id)}>Review answers</button></div></article>)}</div>}
   </section>;
 }
 
 function QuizCenter({ mode, demo = false }) {
+  const [completion,setCompletion]=useState(null),[reviewAttempt,setReviewAttempt]=useState(null);
+  const [showCountdown,setShowCountdown]=useState(localStorage.getItem("lw_quiz_countdown")!=="off");
+  function changeCountdown(visible){setShowCountdown(visible);localStorage.setItem("lw_quiz_countdown",visible?"on":"off")}
+
   const roomRef = useRef(null);
   const soundEnabledRef = useRef(localStorage.getItem("lw_quiz_sounds") === "on");
   const [socket, setSocket] = useState(null),
@@ -2356,10 +2366,12 @@ function QuizCenter({ mode, demo = false }) {
     localStorage.setItem("lw_quiz_sounds", next ? "on" : "off"); if (next) playSound("locked");
   }
   function applyJoinedQuiz(result, restored = false) {
+    setCompletion(null);setReviewAttempt(null);sessionStorage.removeItem("lw_quiz_result");
     setLifelines(result.liveState?.lifelines ? { ...result.liveState.lifelines, restored: true } : null);
     setRoom(result.quiz);
     roomRef.current = result.quiz;
     sessionStorage.setItem("lw_live_quiz_code", result.quiz.joinCode);
+    sessionStorage.setItem("lw_live_quiz_id",String(result.quiz.id));
     if (result.liveState?.question) {
       setQuestion(result.liveState.question);
       setSelectedAnswer(result.liveState.selectedAnswer);
@@ -2389,7 +2401,7 @@ function QuizCenter({ mode, demo = false }) {
     setTypedAnswer("");
     setReveal(null);
     setLeaderboard([]);
-    sessionStorage.removeItem("lw_live_quiz_code");
+    sessionStorage.removeItem("lw_live_quiz_code");sessionStorage.removeItem("lw_live_quiz_id");
     setMessage(notice);
     load();
   }
@@ -2403,6 +2415,7 @@ function QuizCenter({ mode, demo = false }) {
       return;
     }
     load();
+    if(mode==='student') {try{const saved=JSON.parse(sessionStorage.getItem("lw_quiz_result")||'null');if(saved&&!sessionStorage.getItem("lw_live_quiz_code"))api(`/student/quiz-completion/${saved.quizId}?attemptId=${saved.attemptId}`).then(data=>{if(!roomRef.current)setCompletion(data)}).catch(()=>sessionStorage.removeItem("lw_quiz_result"))}catch{sessionStorage.removeItem("lw_quiz_result")}}
     if (mode === "admin") api("/staff/learning").then(data => setMaterials(data.modules.flatMap(module => module.materials.map(material => ({ ...material, weekNumber: module.weekNumber }))))).catch(() => {});
     const s = io(socketOrigin, {
       auth: { token: localStorage.getItem("lw_token") },
@@ -2414,7 +2427,10 @@ function QuizCenter({ mode, demo = false }) {
       if (!savedCode) return;
       s.emit("quiz:join", { joinCode: savedCode }, (result) => {
         if (result.ok) applyJoinedQuiz(result, true);
-        else sessionStorage.removeItem("lw_live_quiz_code");
+        else {
+          const savedId=sessionStorage.getItem("lw_live_quiz_id");leaveQuizRoom(result.message||"This quiz room is closed.");
+          if(mode==='student'&&savedId)api(`/student/quiz-completion/${savedId}`).then(data=>{if(!roomRef.current){setCompletion(data);setMessage("");if(data.self?.attemptId)sessionStorage.setItem("lw_quiz_result",JSON.stringify({quizId:data.quizId,attemptId:data.self.attemptId}))}}).catch(()=>{});
+        }
       });
     });
     s.on("connect_error", () => setMessage("Live quiz server is unavailable."));
@@ -2456,14 +2472,11 @@ function QuizCenter({ mode, demo = false }) {
       setLeaderboard([]);
       setMessage("Quiz restarted from question one.");
     });
-    s.on("quiz:completed", (d) => {
-      setQuestion(null);
-      roomRef.current = null;
-      sessionStorage.removeItem("lw_live_quiz_code");
-      setLeaderboard(d.leaderboard);
-      setMessage("Quiz completed. Final leaderboard is ready.");
+    s.on("quiz:completed", (data) => {
+      leaveQuizRoom("");setCompletion(data);setReviewAttempt(null);setView("live");
+      if(data.self?.attemptId)sessionStorage.setItem("lw_quiz_result",JSON.stringify({quizId:data.quizId,attemptId:data.self.attemptId}));
     });
-    s.on("quiz:closed", (data) => leaveQuizRoom(data.message || "The quiz room was closed."));
+    s.on("quiz:closed", (data) => {if(!data.hasResults)leaveQuizRoom(data.message||"The quiz room was closed.")});
     return () => s.disconnect();
   }, [mode, demo]);
   useEffect(() => {
@@ -2526,7 +2539,7 @@ function QuizCenter({ mode, demo = false }) {
     if (!window.confirm(warning)) return;
     socket?.emit("quiz:close", { quizId: room.id }, (result) => {
       if (!result.ok) setMessage(result.message);
-      else leaveQuizRoom(result.message);
+      else if(!result.hasResults)leaveQuizRoom(result.message);
     });
   }
   const currentLifeline = lifelines?.questionId === question?.id ? lifelines?.current : null;
@@ -2709,6 +2722,7 @@ function QuizCenter({ mode, demo = false }) {
       load();
     } catch (error) { setMessage(error.message); }
   }
+  if(completion&&view!=="results")return <QuizCompletion result={completion} onBack={()=>{setCompletion(null);sessionStorage.removeItem("lw_quiz_result");load()}} onHistory={()=>{setCompletion(null);setReviewAttempt(null);setView("results")}} onReview={mode==='student'?()=>{setReviewAttempt(completion.self.attemptId);setCompletion(null);setView("results")}:undefined}/>;
   if (demo)
     return (
       <section className="quiz-center">
@@ -2720,7 +2734,7 @@ function QuizCenter({ mode, demo = false }) {
         </div>
       </section>
     );
-  if (view === "results") return <QuizResults mode={mode} onLive={() => setView("live")} />;
+  if (view === "results") return <QuizResults mode={mode} initialAttemptId={reviewAttempt} onLive={() => {setView("live");setReviewAttempt(null)}} />;
   return (
     <section className="quiz-center">
       <div className="quiz-mode-tabs"><button className="active">Live quiz</button><button onClick={() => setView("results")}>Results & history</button></div>
@@ -2932,7 +2946,7 @@ function QuizCenter({ mode, demo = false }) {
       {room && !question && (
         <div className="quiz-lobby">
           <span className="live-dot">● LIVE ROOM</span>
-          <h3>{room.title}</h3><QuizScheduleStatus quiz={room}/>
+          <h3>{room.title}</h3><QuizScheduleStatus quiz={room} hideCountdown={mode==="student"&&!showCountdown}/>{mode==="student"&&<QuizCountdownControl visible={showCountdown} onChange={changeCountdown}/>}
           <strong>{room.joinCode}</strong>
           <p>
             {presence} connected participant{presence === 1 ? "" : "s"}
@@ -2954,10 +2968,11 @@ function QuizCenter({ mode, demo = false }) {
       )}
       {room && question && (
         <div className={`question-stage ${mode === "student" ? "student-copy-protected" : ""}`} onCopy={mode === "student" ? (event) => event.preventDefault() : undefined} onCut={mode === "student" ? (event) => event.preventDefault() : undefined} onContextMenu={mode === "student" ? (event) => event.preventDefault() : undefined} onDragStart={mode === "student" ? (event) => event.preventDefault() : undefined} onKeyDown={mode === "student" ? (event) => { if ((event.ctrlKey || event.metaKey) && ["a", "c", "x"].includes(event.key.toLowerCase())) event.preventDefault(); } : undefined}>
-          <div className="quiz-time-progress" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, (seconds / (room.questionTimeSeconds || questionTimeSeconds)) * 100))}%` }} /></div>
+          {mode==="student"&&<QuizCountdownControl visible={showCountdown} onChange={changeCountdown}/>}
+          {(mode!=="student"||showCountdown)&&<><div className="quiz-time-progress" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, (seconds / (room.questionTimeSeconds || questionTimeSeconds)) * 100))}%` }} /></div>
           <div className={`countdown ${seconds <= 5 ? "danger" : ""}`}>
             {seconds}
-          </div>
+          </div></>}
           <p>
             Question {question.index + 1} of {question.total}
           </p>
