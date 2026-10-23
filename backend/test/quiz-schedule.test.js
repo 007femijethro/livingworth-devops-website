@@ -16,15 +16,15 @@ test('worker skips overlapping polls and continues to later due quizzes after a 
  const worker=scheduledQuizWorker({query:async sql=>{queries++;if(sql.startsWith('UPDATE')){await gate;return [{}]}return [[{id:1},{id:2}]]}},async id=>{started.push(id);if(id===1)throw Error('bad quiz')},e=>errors.push(e.message),1e8);
  try{await worker.tick();assert.equal(queries,1);release();await new Promise(setImmediate);assert.deepEqual(started,[1,2]);assert.deepEqual(errors,['bad quiz']);}finally{worker.stop()}
 });
-test('schedule endpoint persists both times, supports cancellation and rejects a started quiz without changing results',async()=>{
+test('schedule endpoint re-arms idle sessions, supports cancellation and rejects a running quiz without changing results',async()=>{
  let changes=[],allowed=true;const events=[];const app=express();app.use(express.json());
- const pool={query:async()=>[{}],execute:async(sql,p)=>{assert.match(sql,/scheduled_started_at IS NULL/);assert.doesNotMatch(sql,/quiz_attempts|quiz_questions/);changes.push(p);return [{affectedRows:allowed?1:0}]}};
+ const pool={query:async()=>[{}],execute:async(sql,p)=>{assert.match(sql,/scheduled_started_at=NULL/);assert.match(sql,/status IN \('draft','lobby','completed'\)/);assert.doesNotMatch(sql,/quiz_attempts|quiz_questions|allow_retakes/);changes.push(p);return [{affectedRows:allowed?1:0}]}};
  registerQuizRoutes(app,pool,(req,_res,next)=>{req.user={id:1,role:'admin'};next()},(_req,_res,next)=>next(),{to:room=>({emit:(name,data)=>events.push({room,name,data})})});
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const url=`http://127.0.0.1:${server.address().port}/api/admin/quizzes/4/schedule`;
  const save=body=>fetch(url,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
  try{
-  assert.equal((await save({scheduledAt:'2035-01-01T19:00Z',startsAt:'2035-01-01T19:20Z'})).status,200);assert.deepEqual(changes[0],['2035-01-01T19:00:00.000Z','2035-01-01T19:20:00.000Z','4']);
-  assert.equal((await save({scheduledAt:null,startsAt:null})).status,200);assert.deepEqual(changes[1],[null,null,'4']);assert.deepEqual(events[1],{room:'quiz:4',name:'quiz:schedule',data:{quizId:4,scheduledAt:null,startsAt:null,scheduleStartedAt:null}});
+  assert.equal((await save({scheduledAt:'2035-01-01T19:00Z',startsAt:'2035-01-01T19:20Z'})).status,200);assert.deepEqual(changes[0],['2035-01-01T19:00:00.000Z','2035-01-01T19:20:00.000Z',true,4]);
+  assert.equal((await save({scheduledAt:null,startsAt:null})).status,200);assert.deepEqual(changes[1],[null,null,false,4]);assert.deepEqual(events.filter(event=>event.name==='quiz:schedule')[1],{room:'quiz:4',name:'quiz:schedule',data:{quizId:4,scheduledAt:null,startsAt:null,scheduleStartedAt:null}});
   assert.equal((await save({scheduledAt:'bad'})).status,400);assert.equal(changes.length,2);
   allowed=false;assert.equal((await save({scheduledAt:null,startsAt:null})).status,409);
  }finally{server.closeAllConnections();await new Promise(r=>server.close(r))}
@@ -58,4 +58,43 @@ test('scheduling waits until the HTTP server is listening before processing due 
  const io={httpServer,use(){},on(){}};const pool={query:async sql=>{queries++;return sql.startsWith('UPDATE')?[{}]:[[]]}};
  const worker=configureQuizSockets(io,pool,()=>{});
  try{await new Promise(setImmediate);assert.equal(queries,0);httpServer.listening=true;httpServer.emit('listening');await new Promise(setImmediate);assert.equal(queries,2)}finally{httpServer.emit('close');worker.stop()}
+});
+
+test('a completed quiz with old results can be rescheduled, re-armed and automatically started exactly once',async()=>{
+ const quizId=8803,events=[],handlers={};let status='completed',consumed=true,due=false,connectionHandler;
+ const savedResults=[{id:17,studentId:3,score:80,status:'completed'}],before=structuredClone(savedResults);
+ const viewer={data:{quizId},leave(room){events.push({name:'left',room})}};
+ const pool={query:async sql=>{
+   if(sql.startsWith('UPDATE quizzes')){if(status==='draft'&&due)status='lobby';return [{}]}
+   if(sql.startsWith('SELECT id FROM quizzes'))return [[...(['draft','lobby'].includes(status)&&!consumed&&due?[{id:quizId}]:[])]];
+   throw Error(sql);
+ },execute:async(sql,p)=>{
+   assert.doesNotMatch(sql,/DELETE|UPDATE quiz_attempts|INSERT INTO quiz_attempts/,'Old results must not be reset');
+   if(sql.startsWith('UPDATE quizzes SET scheduled_at=')){
+     if(!['draft','lobby','completed'].includes(status))return [{affectedRows:0}];
+     assert.equal(p[3],quizId);assert.equal(p[2],true);status='draft';consumed=false;return [{affectedRows:1}];
+   }
+   if(sql.startsWith('SELECT lifeline_limits'))return [[{lifelineLimit:0,questionTimeSeconds:300,navigationMode:'manual'}]];
+   if(sql.startsWith('SELECT id,prompt'))return [[{id:99,prompt:'Example',options:['A','B'],correctIndex:0,questionType:'single_choice'}]];
+   if(sql.startsWith("UPDATE quizzes SET status='live'")){if(consumed||!due||!['draft','lobby'].includes(status))return [{affectedRows:0}];status='live';consumed=true;return [{affectedRows:1}]}
+   if(sql.startsWith('SELECT id, full_name'))return [[]];
+   if(sql.startsWith('SELECT id, title, status'))return [[{id:quizId,title:'Past session',status}]];
+   if(sql.startsWith('UPDATE quizzes')){status='completed';return [{affectedRows:1}]}
+   throw Error(sql);
+ }};
+ const io={sockets:{sockets:new Map([['old-viewer',viewer]])},use(){},on(_event,fn){connectionHandler=fn},in:()=>({fetchSockets:async()=>[],socketsLeave(){}}),to:()=>({emit:(name,data)=>events.push({name,data})})};
+ const worker=configureQuizSockets(io,pool,()=>{}),app=express();app.use(express.json());
+ registerQuizRoutes(app,pool,(_req,_res,next)=>next(),(_req,_res,next)=>next(),io);
+ const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
+ try{
+   await new Promise(setImmediate);assert.equal(events.filter(event=>event.name==='quiz:started').length,0);
+   const response=await fetch(`http://127.0.0.1:${server.address().port}/api/admin/quizzes/${quizId}/schedule`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({scheduledAt:'2035-01-01T19:00Z',startsAt:'2035-01-01T19:20Z'})});
+   assert.equal(response.status,200);assert.equal(status,'draft');assert.equal(consumed,false);assert.equal(viewer.data.quizId,null);assert.ok(events.some(event=>event.name==='quiz:closed'));assert.ok(events.some(event=>event.name==='left'));assert.deepEqual(savedResults,before);
+   due=true;await worker.tick();assert.equal(status,'live');assert.equal(consumed,true);assert.equal(events.filter(event=>event.name==='quiz:started').length,1);
+   await worker.tick();assert.equal(events.filter(event=>event.name==='quiz:started').length,1);assert.deepEqual(savedResults,before);
+   const blocked=await fetch(`http://127.0.0.1:${server.address().port}/api/admin/quizzes/${quizId}/schedule`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({scheduledAt:'2035-01-02T19:00Z',startsAt:'2035-01-02T19:20Z'})});assert.equal(blocked.status,409);
+ }finally{
+   worker.stop();connectionHandler({id:'staff',user:{id:1,role:'admin'},data:{},on:(name,fn)=>handlers[name]=fn});await new Promise(resolve=>handlers['quiz:close']({quizId},resolve));
+   server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
+ }
 });

@@ -5,6 +5,7 @@ import { validLifelineLimit, validLifelineLimits, lifelineEffect, lifelineStatus
 import { logger } from './logger.js';
 
 const rooms = new Map();
+const joinedStudentsByQuiz = new Map();
 const MIN_QUESTION_SECONDS = 5;
 const MAX_QUESTION_SECONDS = 300;
 const AUTO_REVIEW_MS = 4_000;
@@ -163,11 +164,26 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff, io = nu
   });
   app.patch('/api/admin/quizzes/:id/schedule', requireAuth, requireStaff, async (req, res, next) => {
     try {
+      const quizId = Number(req.params.id);
+      if (!Number.isSafeInteger(quizId) || quizId <= 0) return res.status(400).json({message:'Choose a valid quiz.'});
       const {scheduledAt, startsAt} = quizSchedule(req.body.scheduledAt, req.body.startsAt);
-      const [result] = await pool.execute("UPDATE quizzes SET scheduled_at=?, scheduled_start_at=?, scheduled_started_at=NULL WHERE id=? AND status IN ('draft','lobby') AND scheduled_started_at IS NULL", [scheduledAt, startsAt, req.params.id]);
-      if (!result.affectedRows) return res.status(409).json({message:'Only a quiz that has not started can be scheduled. Refresh the quiz list.'});
-      io?.to(`quiz:${Number(req.params.id)}`).emit('quiz:schedule', {quizId:Number(req.params.id),scheduledAt,startsAt,scheduleStartedAt:null});
-      res.json({message: startsAt ? 'Waiting room and automatic quiz start scheduled.' : scheduledAt ? 'Waiting room opening scheduled. Start the quiz manually.' : 'Automatic quiz schedule cancelled. You can still start the quiz manually.', scheduledAt, startsAt});
+      if (rooms.has(quizId)) return res.status(409).json({message:'End the running quiz before scheduling another session.'});
+      // Re-arm only an idle quiz. Existing attempts, answers and question IDs stay intact.
+      // The status guard also protects against a concurrent manual or automatic start.
+      const [result] = await pool.execute("UPDATE quizzes SET scheduled_at=?, scheduled_start_at=?, scheduled_started_at=NULL, status=CASE WHEN ? THEN 'draft' ELSE status END WHERE id=? AND status IN ('draft','lobby','completed')", [scheduledAt, startsAt, Boolean(scheduledAt), quizId]);
+      if (!result.affectedRows) return res.status(409).json({message:'End the running quiz before scheduling another session, then refresh the quiz list.'});
+      io?.to(`quiz:${quizId}`).emit('quiz:schedule', {quizId,scheduledAt,startsAt,scheduleStartedAt:null});
+      if (scheduledAt) {
+        // A previous audience must rejoin through the opening-time and retake checks.
+        io?.to(`quiz:${quizId}`).emit('quiz:closed', {message:'Quiz rescheduled. Existing results are saved. Rejoin when the waiting room opens.'});
+        for (const socket of io?.sockets?.sockets?.values() || []) if(Number(socket.data?.quizId)===quizId) {
+          socket.data.quizId=null;
+          socket.leave(`quiz:${quizId}`);
+        }
+        io?.in?.(`quiz:${quizId}`).socketsLeave(`quiz:${quizId}`);
+        joinedStudentsByQuiz.delete(quizId);
+      }
+      res.json({message: startsAt ? 'New quiz session scheduled. Existing attempts and results are preserved.' : scheduledAt ? 'Waiting room opening scheduled. Existing results are preserved. Start the quiz manually.' : 'Automatic quiz schedule cancelled. You can still start the quiz manually.', scheduledAt, startsAt});
     } catch (error) {
       if (/schedule|Quiz start|waiting room/.test(error.message)) return res.status(400).json({message:error.message});
       next(error);
@@ -458,7 +474,6 @@ export function configureQuizSockets(io, pool, verifyToken) {
     return { id: question.id, index: state.index, total: state.questions.length, prompt: question.prompt, options: question.options, questionType: question.questionType, lifelineLimit: state.lifelineLimit, endsAt };
   };
 
-  const joinedStudentsByQuiz = new Map();
   const studentSockets = async quizId => (await io.in(`quiz:${quizId}`).fetchSockets()).filter(client => client.user?.role === 'student');
   const emitParticipation = async quizId => {
     const id = Number(quizId);
