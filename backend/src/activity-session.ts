@@ -26,6 +26,6 @@ export async function activitySessionStatus(db, user) {
 
 export function activityGateExempt(path) {
   return /^\/api\/(auth(?:\/|$)|profile-picture(?:\/|$)|profile-change-requests(?:\/|$)|push(?:\/|$))/.test(path)
-    || path === '/api/student/activity-session'
+    || path === '/api/student/activity-session' || path === '/api/student/probation'
     || /^\/api\/student\/class-activities(?:\/|$)/.test(path);
 }

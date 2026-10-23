@@ -6,7 +6,7 @@ import { validateSettings, loadAcademySettings, getAcademySettings, registerAcad
 
 test('settings validate exact types, limits, days, zones and meeting links', () => {
   assert.deepEqual(validateSettings({classDays:[5,1,5],supportEmail:' help@example.com ',certificateRequiredScore:80}),{classDays:[1,5],supportEmail:'help@example.com',certificateRequiredScore:80});
-  for (const settings of [{unknown:1},{classRepLimit:0},{studentSessionHours:'8'},{registrationOpen:'false'},{signInActivityRequired:'false'},{classDays:[]},{classDays:[7]},{classTime:'24:00'},{classTimezone:'Invalid/Zone'},{meetingUrl:'https://evil.example'},{meetingUrl:'http://meet.google.com/abc'},{supportEmail:'invalid'},{certificateRequiredScore:101}]) assert.throws(()=>validateSettings(settings));
+  for (const settings of [{unknown:1},{classRepLimit:0},{studentSessionHours:'8'},{registrationOpen:'false'},{signInActivityRequired:'false'},{probationEnabled:'false'},{probationThreshold:0},{probationWeeks:0},{classDays:[]},{classDays:[7]},{classTime:'24:00'},{classTimezone:'Invalid/Zone'},{meetingUrl:'https://evil.example'},{meetingUrl:'http://meet.google.com/abc'},{supportEmail:'invalid'},{certificateRequiredScore:101}]) assert.throws(()=>validateSettings(settings));
 });
 
 test('admin settings enforce roles, revision conflicts and transactional saves while public settings omit private controls', async () => {
@@ -18,6 +18,7 @@ test('admin settings enforce roles, revision conflicts and transactional saves w
     if(sql.startsWith('SELECT pg_advisory'))return [[]];
     if(sql.startsWith('INSERT INTO system_settings')){const [settingKey,enabled,valueText]=params;rows=rows.filter(row=>row.settingKey!==settingKey);rows.push({settingKey,enabled,valueText,updatedAt:'changed'});return [{}]}
     if(sql.startsWith('UPDATE live_classes')){assert.deepEqual(params,[96]);return [{}]}
+    if(sql.startsWith('UPDATE users SET probation_started_at'))return [{}];
     throw new Error(sql);
   },getConnection:async()=>({...pool,beginTransaction:async()=>{snapshot=structuredClone(rows)},commit:async()=>calls.push('COMMIT'),rollback:async()=>{rows=snapshot;calls.push('ROLLBACK')},release:()=>calls.push('RELEASE')})};
   await loadAcademySettings(pool);
@@ -34,10 +35,11 @@ test('admin settings enforce roles, revision conflicts and transactional saves w
     const loaded=await (await fetch(`${base}/admin/settings`,{headers:{'x-role':'admin'}})).json();
     assert.equal((await patch({settings:{registrationOpen:false},revision:'stale'})).status,409);
     assert.equal(getAcademySettings().registrationOpen,true);
-    const result=await patch({settings:{signInActivityRequired:false,registrationOpen:false,classRepLimit:3,certificateRequiredScore:80,expiryHours:96},revision:loaded.revision});assert.equal(result.status,200);
+    const result=await patch({settings:{probationEnabled:false,probationThreshold:55,signInActivityRequired:false,registrationOpen:false,classRepLimit:3,certificateRequiredScore:80,expiryHours:96},revision:loaded.revision});assert.equal(result.status,200);
+    assert.ok(calls.some(sql=>sql.startsWith('UPDATE users SET probation_started_at')), 'Policy changes clear active timers inside the settings transaction');
     const saved=await result.json();assert.notEqual(saved.revision,loaded.revision);
     assert.equal(saved.settings.signInActivityRequired,false);assert.equal(getAcademySettings().signInActivityRequired,false);assert.equal(saved.settings.registrationOpen,false);assert.equal(getAcademySettings().certificateRequiredScore,80);assert.ok(calls.includes('COMMIT'));assert.ok(calls.some(sql=>sql.startsWith('UPDATE live_classes')));
-    const publicResponse=await fetch(`${base}/academy-settings`);const publicSettings=await publicResponse.json();assert.equal(publicResponse.headers.get('cache-control'),'no-store');assert.equal(publicSettings.classRepLimit,3);assert.equal(publicSettings.registrationOpen,false);assert.equal(publicSettings.certificateRequiredScore,80);assert.equal('studentSessionHours' in publicSettings,false);assert.equal('emailEnabled' in publicSettings,false);assert.equal('signInActivityRequired' in publicSettings,false);
+    const publicResponse=await fetch(`${base}/academy-settings`);const publicSettings=await publicResponse.json();assert.equal(publicResponse.headers.get('cache-control'),'no-store');assert.equal(publicSettings.classRepLimit,3);assert.equal(publicSettings.registrationOpen,false);assert.equal(publicSettings.certificateRequiredScore,80);assert.equal('probationEnabled' in publicSettings,false);assert.equal('probationThreshold' in publicSettings,false);assert.equal('probationWeeks' in publicSettings,false);assert.equal('studentSessionHours' in publicSettings,false);assert.equal('emailEnabled' in publicSettings,false);assert.equal('signInActivityRequired' in publicSettings,false);
     const enabled=await patch({settings:{signInActivityRequired:true},revision:saved.revision});assert.equal(enabled.status,200);assert.equal(getAcademySettings().signInActivityRequired,true);
     await loadAcademySettings(pool);assert.equal(getAcademySettings().signInActivityRequired,true);
     assert.equal((await patch({settings:{registrationOpen:true},revision:loaded.revision})).status,409);

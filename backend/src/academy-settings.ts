@@ -12,7 +12,7 @@ export function settingsDefaults() {
     remindersEnabled: String(process.env.EMAIL_REMINDERS_ENABLED).toLowerCase() === 'true',
     classReminderMinutes: Math.max(5, Number(process.env.CLASS_REMINDER_MINUTES || 60)),
     quizReminderMinutes: Math.max(5, Number(process.env.QUIZ_REMINDER_MINUTES || 30)),
-    certificateRequiredScore: 75, attendanceAlertScore: 75, studentSessionHours: 8, classRepLimit: 2, mobileUpdatesEnabled: true, pushEnabled: true, signInActivityRequired: true, assignmentReminderMinutes: 1440,
+    probationEnabled: true, probationThreshold: 50, probationWeeks: 2, certificateRequiredScore: 75, attendanceAlertScore: 75, studentSessionHours: 8, classRepLimit: 2, mobileUpdatesEnabled: true, pushEnabled: true, signInActivityRequired: true, assignmentReminderMinutes: 1440,
   };
 }
 let current = settingsDefaults();
@@ -23,13 +23,13 @@ const keys = Object.keys(settingsDefaults());
 export function validateSettings(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) || !Object.keys(input).length) throw new Error('Choose settings to save.');
   const result = {};
-  const ranges = { assignmentReminderMinutes:[5,10080], expiryHours:[1,720], classDurationMinutes:[15,240], classReminderMinutes:[5,1440], quizReminderMinutes:[5,1440], certificateRequiredScore:[1,100], attendanceAlertScore:[1,100], studentSessionHours:[1,24], classRepLimit:[1,5] };
+  const ranges = { probationThreshold:[1,100], probationWeeks:[1,52], assignmentReminderMinutes:[5,10080], expiryHours:[1,720], classDurationMinutes:[15,240], classReminderMinutes:[5,1440], quizReminderMinutes:[5,1440], certificateRequiredScore:[1,100], attendanceAlertScore:[1,100], studentSessionHours:[1,24], classRepLimit:[1,5] };
   for (const [key, value] of Object.entries(input)) {
     if (!keys.includes(key)) throw new Error(`Unknown setting: ${key}`);
     if (ranges[key]) {
       if (typeof value !== 'number' || !Number.isInteger(value) || value < ranges[key][0] || value > ranges[key][1]) throw new Error(`${key} must be a whole number between ${ranges[key][0]} and ${ranges[key][1]}.`);
       result[key] = value;
-    } else if (['registrationOpen','emailEnabled','remindersEnabled','mobileUpdatesEnabled','pushEnabled','signInActivityRequired'].includes(key)) {
+    } else if (['registrationOpen','emailEnabled','remindersEnabled','mobileUpdatesEnabled','pushEnabled','signInActivityRequired','probationEnabled'].includes(key)) {
       if (typeof value !== 'boolean') throw new Error(`${key} must be on or off.`);
       result[key] = value;
     } else if (key === 'classDays') {
@@ -88,6 +88,7 @@ export function registerAcademySettingsRoutes(app,pool,requireAuth,requireAdmin)
       for (const [key,value] of Object.entries(changes)) await connection.execute(`INSERT INTO system_settings (setting_key,enabled,value_text,updated_by,updated_at)
         VALUES (?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT (setting_key) DO UPDATE SET enabled=EXCLUDED.enabled,value_text=EXCLUDED.value_text,updated_by=EXCLUDED.updated_by,updated_at=CURRENT_TIMESTAMP`,
         [settingKey(key),key==='emailEnabled'?value:true,key==='expiryHours'?String(value):JSON.stringify(value),req.user.id]);
+      if (['probationEnabled','probationThreshold','probationWeeks'].some(key => key in changes && changes[key] !== before.settings[key])) await connection.execute("UPDATE users SET probation_started_at=NULL,probation_due_at=NULL,probation_policy=NULL WHERE role='student' AND status='approved' AND probation_started_at IS NOT NULL");
       if ('expiryHours' in changes) await connection.execute(`UPDATE live_classes SET attendance_expires_at=scheduled_at + (? * INTERVAL '1 hour') WHERE attendance_code IS NOT NULL AND attendance_finalized_at IS NULL`,[changes.expiryHours]);
       await connection.commit();
       const result=await loadAcademySettings(pool);

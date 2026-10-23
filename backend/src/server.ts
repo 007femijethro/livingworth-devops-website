@@ -1,5 +1,6 @@
 // @ts-nocheck
 import 'dotenv/config';
+import {registerProbationRoutes,startProbationScheduler} from './probation.js';
 import { registerBiometricLoginRoutes } from './biometric-login.js';
 import cors from 'cors';
 import express from 'express';
@@ -433,7 +434,7 @@ app.patch('/api/admin/students/:id/reinstate', requireAuth, requireAdmin, async 
     const studentId = Number.parseInt(req.params.id, 10);
     if (!studentId) return res.status(400).json({ message: 'Choose a valid student.' });
     const [result] = await pool.execute(`UPDATE users SET status = 'approved', expelled_reason = NULL,
-      expelled_at = NULL, failed_login_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
+      expelled_at = NULL, probation_started_at=NULL,probation_due_at=NULL,probation_policy=NULL,probation_score=NULL,probation_checked_at=NULL, failed_login_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND role = 'student' AND status = 'expelled'`, [studentId]);
     if (!result.affectedRows) return res.status(404).json({ message: 'Expelled student not found.' });
     const [students] = await pool.execute('SELECT full_name AS fullName FROM users WHERE id = ?', [studentId]);
@@ -699,6 +700,7 @@ app.get('/api/staff/attendance/export', requireAuth, requireStaff, async (req, r
 });
 
 registerQuizRoutes(app, pool, requireAuth, requireStaff, io);
+registerProbationRoutes(app,pool,requireAuth,requireAdmin);
 registerLearningRoutes(app, pool, requireAuth, requireStaff);
 registerClassActivityRoutes(app, pool, requireAuth, requireStaff);
 registerMobileUpdateRoutes(app);
@@ -781,7 +783,7 @@ async function start() {
   startReminderScheduler(pool);
   startPushWorker(pool);
   startLiveClassAttendanceScheduler(pool);
-  httpServer.listen(port, '0.0.0.0', () => logger.info('server_started', { port }));
+  httpServer.listen(port, '0.0.0.0', () => {logger.info('server_started', { port });startProbationScheduler(pool,io);});
 }
 
 start().catch((error) => { logger.error('server_start_failed', { error }); process.exit(1); });
