@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Practical technology training for tomorrow's builders." />
+    <meta name="theme-color" content="#ffffff" />
+    <script>
+      (() => {
+        let preference = 'system';
+        try { preference = localStorage.getItem('lw_appearance') || 'system'; } catch {}
+        const dark = preference === 'dark' || (preference !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        document.querySelector('meta[name="theme-color"]').content = dark ? '#101b2b' : '#ffffff';
+      })();
+    </script>
+    <style>html[data-theme="dark"],html[data-theme="dark"] body{background:#101b2b;color:#e6edf5}</style>
     <title>Livingworth Academy</title>
   </head>
   <body>

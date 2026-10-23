@@ -1,3 +1,4 @@
+import { ThemeProvider, ThemeToggle } from './Theme';
 import { AcademySettingsProvider } from './AcademySettingsContext';
 import { startMobile } from './mobile';
 import './mobile.css';
@@ -31,6 +32,7 @@ import './profile-changes.css';
 import './account-settings.css';
 import './brand-display.css';
 import './app-polish.css';
+import './theme.css';
 import { startClientLogging } from './client-logging';
 
 startMobile();
@@ -45,5 +47,5 @@ function MobileLifecycle() {
 }
 
 createRoot(root).render(
-  <React.StrictMode><AcademySettingsProvider><MobileLifecycle /><App /></AcademySettingsProvider></React.StrictMode>
+  <React.StrictMode><ThemeProvider><AcademySettingsProvider><MobileLifecycle /><App /><ThemeToggle standalone /></AcademySettingsProvider></ThemeProvider></React.StrictMode>
 );
