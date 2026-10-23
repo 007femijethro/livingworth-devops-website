@@ -24,6 +24,10 @@ test('completion snapshots cover disconnected and unanswered attempts in this ru
  const state={title:'Specific quiz',questions:[{id:1},{id:2}],rankingVisibility:'full',attempts:new Map([[1,101],[2,205]]),answers:new Map([['1:1',{studentId:1,correct:true,points:1000}]])};
  const {summary,results}=await saveQuizCompletion(pool,state,77,true);assert.equal(summary.participantCount,2);assert.equal(results.get(2).self.percentage,0);assert.equal(results.get(2).self.position,2);assert.equal(results.get(2).self.unansweredCount,2);assert.equal(results.get(1).self.unansweredCount,1);assert.equal(results.get(1).stopped,true);
  assert.deepEqual(writes.map(args=>args.slice(1)),[[101,1],[205,2]]);assert.equal(JSON.parse(writes[0][0]).title,'Specific quiz');
+ // Results must use the exact totals written during finalization, even if a late in-flight answer changes memory.
+ state.finalizedResults=new Map([[1,{score:1000,correctCount:1,totalQuestions:2,answeredCount:1,unansweredCount:1}]]);
+ state.answers.set('2:1',{studentId:1,correct:true,points:1000});
+ const final=await saveQuizCompletion(pool,state,77);assert.equal(final.results.get(1).self.correctCount,1);assert.equal(final.results.get(1).self.score,1000);
 });
 
 async function apiFixture(run,{legacy=false}={}){

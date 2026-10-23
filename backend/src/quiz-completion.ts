@@ -31,7 +31,7 @@ export async function saveQuizCompletion(pool,state,quizId,stopped=false) {
     const answers=[...state.answers.values()].filter(answer=>Number(answer.studentId)===studentId);
     return {studentId,attemptId:state.attempts.get(studentId),fullName:users.find(user=>Number(user.id)===studentId)?.fullName||'Student',
       score:answers.reduce((sum,answer)=>sum+Number(answer.points||0),0),correctCount:answers.filter(answer=>answer.correct).length,
-      totalQuestions:state.questions.length,answeredCount:answers.length,unansweredCount:Math.max(0,state.questions.length-answers.length)};
+      totalQuestions:state.questions.length,answeredCount:answers.length,unansweredCount:Math.max(0,state.questions.length-answers.length),...state.finalizedResults?.get(studentId)};
   }));
   const summary={quizId,title:state.title||'Quiz',completedAt:new Date().toISOString(),stopped,rankingScope:'session',participantCount:participants.length,participants};
   const results=new Map();

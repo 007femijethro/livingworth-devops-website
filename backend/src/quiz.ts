@@ -442,12 +442,14 @@ async function createAttempt(pool, state, quizId, studentId) {
 }
 
 async function finalizeAttempts(pool, state) {
+  state.finalizedResults = new Map();
   for (const [studentId, attemptId] of state.attempts.entries()) {
     const answers = [...state.answers.values()].filter(answer => answer.studentId === studentId);
     const correct = answers.filter(answer => answer.correct).length;
     const score = answers.reduce((total, answer) => total + (answer.points || 0), 0);
     const averageResponseMs = answers.length ? Math.round(answers.reduce((total, answer) => total + answer.responseMs, 0) / answers.length) : 0;
     await pool.execute("UPDATE quiz_attempts SET status = 'completed', score = ?, correct_count = ?, total_questions = ?, average_response_ms = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?", [score, correct, state.questions.length, averageResponseMs, attemptId]);
+    state.finalizedResults.set(Number(studentId),{score,correctCount:correct,totalQuestions:state.questions.length,answeredCount:answers.length,unansweredCount:Math.max(0,state.questions.length-answers.length)});
   }
 }
 
