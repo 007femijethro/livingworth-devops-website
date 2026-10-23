@@ -108,7 +108,7 @@ async function createQuiz(pool, adminId, title, questions, requestedQuestionTime
   finally { connection.release(); }
 }
 
-export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
+export function registerQuizRoutes(app, pool, requireAuth, requireStaff, io = null) {
   const openScheduled = () => pool.query("UPDATE quizzes SET status='lobby' WHERE status='draft' AND scheduled_at IS NOT NULL AND scheduled_at <= CURRENT_TIMESTAMP");
   setInterval(() => openScheduled().catch(() => {}), 30_000).unref();
   app.get('/api/admin/quizzes', requireAuth, requireStaff, async (_req, res, next) => {
@@ -153,6 +153,7 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
         await connection.execute('INSERT INTO quiz_questions (quiz_id, prompt, options_json, correct_index, question_type, correct_answers_json, correct_text, sequence_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [req.params.id, question.prompt, JSON.stringify(question.options), question.correctIndex, question.type, JSON.stringify(question.correctAnswers), question.correctText || null, index + 1]);
       }
       await connection.commit();
+      io?.to(`quiz:${Number(req.params.id)}`).emit('quiz:schedule', {quizId:Number(req.params.id),scheduledAt,startsAt,scheduleStartedAt:null});
       res.json({ message: 'Quiz and questions updated.' });
     } catch (error) {
       await connection.rollback();
@@ -165,7 +166,8 @@ export function registerQuizRoutes(app, pool, requireAuth, requireStaff) {
       const {scheduledAt, startsAt} = quizSchedule(req.body.scheduledAt, req.body.startsAt);
       const [result] = await pool.execute("UPDATE quizzes SET scheduled_at=?, scheduled_start_at=?, scheduled_started_at=NULL WHERE id=? AND status IN ('draft','lobby') AND scheduled_started_at IS NULL", [scheduledAt, startsAt, req.params.id]);
       if (!result.affectedRows) return res.status(409).json({message:'Only a quiz that has not started can be scheduled. Refresh the quiz list.'});
-      res.json({message: startsAt ? 'Waiting room and automatic quiz start scheduled.' : 'Automatic quiz schedule cancelled. You can still start the quiz manually.', scheduledAt, startsAt});
+      io?.to(`quiz:${Number(req.params.id)}`).emit('quiz:schedule', {quizId:Number(req.params.id),scheduledAt,startsAt,scheduleStartedAt:null});
+      res.json({message: startsAt ? 'Waiting room and automatic quiz start scheduled.' : scheduledAt ? 'Waiting room opening scheduled. Start the quiz manually.' : 'Automatic quiz schedule cancelled. You can still start the quiz manually.', scheduledAt, startsAt});
     } catch (error) {
       if (/schedule|Quiz start|waiting room/.test(error.message)) return res.status(400).json({message:error.message});
       next(error);

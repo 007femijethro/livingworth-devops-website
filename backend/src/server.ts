@@ -698,7 +698,7 @@ app.get('/api/staff/attendance/export', requireAuth, requireStaff, async (req, r
   }
 });
 
-registerQuizRoutes(app, pool, requireAuth, requireStaff);
+registerQuizRoutes(app, pool, requireAuth, requireStaff, io);
 registerLearningRoutes(app, pool, requireAuth, requireStaff);
 registerClassActivityRoutes(app, pool, requireAuth, requireStaff);
 registerMobileUpdateRoutes(app);

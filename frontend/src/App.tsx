@@ -2421,6 +2421,7 @@ function QuizCenter({ mode, demo = false }) {
     s.on("quiz:roster", (d) => setWaitingRoomRoster(d.students || []));
     s.on("quiz:answer-count", setAnswerCount);
     s.on("quiz:lifelines", setLifelines);
+    s.on("quiz:schedule", data=>setRoom(current=>current&&Number(current.id)===Number(data.quizId)?{...current,...data}:current));
     s.on("quiz:started", () => setMessage("Quiz started."));
     s.on("quiz:question", (q) => {
       setQuestion(q);

@@ -17,14 +17,14 @@ test('worker skips overlapping polls and continues to later due quizzes after a 
  try{await worker.tick();assert.equal(queries,1);release();await new Promise(setImmediate);assert.deepEqual(started,[1,2]);assert.deepEqual(errors,['bad quiz']);}finally{worker.stop()}
 });
 test('schedule endpoint persists both times, supports cancellation and rejects a started quiz without changing results',async()=>{
- let changes=[],allowed=true;const app=express();app.use(express.json());
+ let changes=[],allowed=true;const events=[];const app=express();app.use(express.json());
  const pool={query:async()=>[{}],execute:async(sql,p)=>{assert.match(sql,/scheduled_started_at IS NULL/);assert.doesNotMatch(sql,/quiz_attempts|quiz_questions/);changes.push(p);return [{affectedRows:allowed?1:0}]}};
- registerQuizRoutes(app,pool,(req,_res,next)=>{req.user={id:1,role:'admin'};next()},(_req,_res,next)=>next());
+ registerQuizRoutes(app,pool,(req,_res,next)=>{req.user={id:1,role:'admin'};next()},(_req,_res,next)=>next(),{to:room=>({emit:(name,data)=>events.push({room,name,data})})});
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const url=`http://127.0.0.1:${server.address().port}/api/admin/quizzes/4/schedule`;
  const save=body=>fetch(url,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
  try{
   assert.equal((await save({scheduledAt:'2035-01-01T19:00Z',startsAt:'2035-01-01T19:20Z'})).status,200);assert.deepEqual(changes[0],['2035-01-01T19:00:00.000Z','2035-01-01T19:20:00.000Z','4']);
-  assert.equal((await save({scheduledAt:null,startsAt:null})).status,200);assert.deepEqual(changes[1],[null,null,'4']);
+  assert.equal((await save({scheduledAt:null,startsAt:null})).status,200);assert.deepEqual(changes[1],[null,null,'4']);assert.deepEqual(events[1],{room:'quiz:4',name:'quiz:schedule',data:{quizId:4,scheduledAt:null,startsAt:null,scheduleStartedAt:null}});
   assert.equal((await save({scheduledAt:'bad'})).status,400);assert.equal(changes.length,2);
   allowed=false;assert.equal((await save({scheduledAt:null,startsAt:null})).status,409);
  }finally{server.closeAllConnections();await new Promise(r=>server.close(r))}
