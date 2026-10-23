@@ -50,3 +50,11 @@ html[data-theme=dark] :is(.calendar-day.selected,.calendar-day.today>b,.settings
 html[data-theme=dark] :is(.home-mentor-copy p,.home-mentor-identity p,.modern-benefits-intro p,.modern-facts span,.modern-facts-cohorts b,.portal-context span,.setting-field small,.settings-card header p,.settings-heading p,.settings-card footer small,.calendar-intro p,.calendar-note,.calendar-agenda article p,.calendar-agenda article small,.profile-picture-editor p,.profile-picture-controls small,.profile-picture-later,.picture-adjustments output){color:var(--theme-muted)!important}
 html[data-theme=dark] :is(.profile-picture-welcome h1,.calendar-summary strong,.portal-context strong){color:var(--theme-text)!important}
 @media(max-width:380px){.learning-topbar{padding-left:12px!important;padding-right:12px!important;gap:8px!important}}
+/* Reading content and small-screen navigation use the same accessible palette. */
+html[data-theme=dark] :is(h1,h2,h3,h4,h5,h6,label,legend,summary){color:var(--theme-text)!important}
+html[data-theme=dark] :is(p,small){color:var(--theme-muted)!important}
+html[data-theme=dark] :is(.forgot-link,.submission-detail>summary){color:var(--theme-accent)!important}
+html[data-theme=dark] :is(.portal-bottom-nav button,.portal-switcher button){color:var(--theme-muted)!important}
+html[data-theme=dark] :is(.portal-bottom-nav button[aria-current=page],.portal-bottom-nav button[aria-expanded=true],.portal-switcher button.active){background:#164c55!important;color:#e6edf5!important}
+html[data-theme=dark] :is(.portal-switcher,.programme-week,.programme-progress-state,.continue-learning-progress,.assignment-meta span,.assignment-meta b,.student-materials a,.student-lesson-content th,.assignment-markdown blockquote,.student-lesson-content :not(pre)>code,.assignment-markdown :not(pre)>code){background:var(--theme-raised)!important;color:var(--theme-text)!important;border-color:var(--theme-border)!important}
+html[data-theme=dark] :is(.student-lesson-content,.assignment-markdown,.student-lesson-content blockquote,.programme-week-work,.programme-week-status,.continue-learning-progress>strong,.continue-learning-progress>span){color:var(--theme-text)!important}
