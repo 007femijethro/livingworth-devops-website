@@ -1,4 +1,6 @@
 // @ts-nocheck
+import { buildOverallLeaderboard } from './analytics.js';
+import { studentRecord } from './student-records.js';
 import { getAcademySettings } from './academy-settings.js';
 function number(value) {
   return Number(value || 0);
@@ -19,20 +21,25 @@ function learnerStanding({ attendance, materials, quizzes, assignments }) {
   return { label: 'On track', tone: 'on_track', reasons: ['No urgent support flags'] };
 }
 
-export function registerLearnerProfileRoutes(app, pool, requireAuth, requireStaff) {
+export function registerLearnerProfileRoutes(app, pool, requireAuth, requireStaff, scoreboard = buildOverallLeaderboard) {
   app.get('/api/staff/students/:id/profile', requireAuth, requireStaff, async (req, res, next) => {
     try {
-      const studentId = Number.parseInt(req.params.id, 10);
-      if (!studentId) return res.status(400).json({ message: 'Choose a valid learner.' });
+      const studentId = Number(req.params.id);
+      if (!Number.isSafeInteger(studentId) || studentId <= 0) return res.status(400).json({ message: 'Choose a valid learner.' });
 
       const [students] = await pool.execute(`SELECT id, full_name AS fullName, profile_picture AS profilePicture, first_name AS firstName,
         last_name AS lastName, email, phone, gender, country, state_city AS stateCity,
         employment_status AS employmentStatus, educational_level AS educationalLevel,
         course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience,
-        created_at AS createdAt FROM users WHERE id = ? AND role = 'student' AND status = 'approved'`, [studentId]);
-      if (!students.length) return res.status(404).json({ message: 'Approved learner not found.' });
+        experience_level AS experienceLevel,learning_goal AS learningGoal,terms_accepted AS termsAccepted,role,status,
+        is_class_rep AS isClassRep,must_change_password AS mustChangePassword,rejection_reason AS rejectionReason,
+        expelled_reason AS expelledReason,expelled_at AS expelledAt,updated_at AS updatedAt,
+        last_signed_in_at AS lastSignedInAt,probation_started_at AS probationStartedAt,probation_due_at AS probationDueAt,
+        probation_policy AS probationPolicy,probation_score AS overallScore,probation_checked_at AS checkedAt,
+        created_at AS createdAt FROM users WHERE id = ? AND role = 'student'${req.user.role === 'admin' ? '' : " AND status = 'approved'"}`, [studentId]);
+      if (!students.length) return res.status(404).json({ message: 'Learner not found.' });
 
-      const [[attendanceRows], [materialRows], [quizRows], [topicRows], [assignmentRows], [activityRows]] = await Promise.all([
+      const [[attendanceRows], [materialRows], [quizRows], [topicRows], [assignmentRows], [activityRows], [classActivityRows], scoreData] = await Promise.all([
         pool.execute(`SELECT held.session_date AS "sessionDate", COALESCE(a.status,'not_recorded') AS status,
           COALESCE(a.note,CASE WHEN a.id IS NULL THEN 'Attendance not recorded' ELSE '' END) AS note,
           a.marked_at AS "markedAt", (a.id IS NOT NULL) AS "attendanceRecorded"
@@ -65,7 +72,13 @@ export function registerLearnerProfileRoutes(app, pool, requireAuth, requireStaf
           WHERE m.published = TRUE ORDER BY m.display_order, a.display_order, a.due_at`, [studentId]),
         pool.execute(`SELECT id, title, message, category, action_target AS actionTarget,
           read_at AS readAt, created_at AS createdAt FROM notifications
-          WHERE user_id = ? ORDER BY created_at DESC LIMIT 10`, [studentId])
+          WHERE user_id = ? ORDER BY created_at DESC LIMIT 10`, [studentId]),
+        pool.execute(`SELECT aa.id,a.title,m.week_number AS weekNumber,aa.attempt_no AS attemptNo,
+          aa.correct_count AS correctCount,aa.total_questions AS totalQuestions,aa.completed_at AS completedAt
+          FROM activity_attempts aa JOIN learning_activities a ON a.id=aa.activity_id
+          JOIN learning_modules m ON m.id=a.module_id WHERE aa.student_id=? AND aa.completed_at IS NOT NULL
+          AND aa.total_questions > 0 AND m.published=TRUE ORDER BY aa.completed_at DESC`,[studentId]),
+        scoreboard(pool,{includeInactive:req.user.role==='admin',studentId})
       ]);
 
       const attendance = {
@@ -103,9 +116,14 @@ export function registerLearnerProfileRoutes(app, pool, requireAuth, requireStaf
         overdue: assignmentRows.filter(row => Boolean(row.overdue)).length
       };
 
-      res.json({
-        student: students[0],
-        standing: learnerStanding({ attendance, materials, quizzes, assignments }),
+      const student = studentRecord(students[0],scoreData.leaderboard.find(row=>Number(row.id)===studentId));
+      res.set('Cache-Control','private, no-store').json({
+        student,
+        scores: student.scores,
+        probation: student.probation,
+        scoring: scoreData.scoring,
+        classActivities: {attempts: classActivityRows.map(row=>({...row,percentage:Math.round(Number(row.correctCount)*100/Number(row.totalQuestions))}))},
+        standing: student.accountStatus==='probation' ? {label:'Probation',tone:'attention',reasons:[`Overall score is ${student.scores.overallScore}/100; required score is ${student.probation.threshold}/100`, `Deadline: ${student.probation.dueAt}`]} : student.status==='expelled' ? {label:'Expelled',tone:'attention',reasons:[student.expelledReason||'Admin reinstatement required']} : learnerStanding({ attendance, materials, quizzes, assignments }),
         attendance: { summary: attendance, records: attendanceRows },
         materials: { summary: materials, items: materialRows },
         quizzes: { summary: quizzes, attempts: quizRows, weakestTopics: topicRows },

@@ -23,6 +23,7 @@ import { registerClassActivityRoutes, regradeShortAnswers } from './class-activi
 import { registerMaterialExportRoutes } from './material-export.js';
 import { registerAnnouncementRoutes } from './announcements.js';
 import { registerAnalyticsRoutes } from './analytics.js';
+import { registerStudentDirectoryRoutes } from './student-records.js';
 import { registerLearnerProfileRoutes } from './learner-profile.js';
 import { registerProfileChangeRoutes } from './profile-changes.js';
 import { notifyUser, registerNotificationRoutes } from './notifications.js';
@@ -458,16 +459,7 @@ app.delete('/api/admin/students/:id', requireAuth, requireAdmin, async (req, res
   } catch (error) { next(error); }
 });
 
-app.get('/api/staff/students', requireAuth, requireStaff, async (_req, res, next) => {
-  try {
-    const [rows] = await pool.query(`SELECT id, full_name AS fullName, email, phone, gender, country,
-      state_city AS stateCity, employment_status AS employmentStatus, educational_level AS educationalLevel,
-      course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience,
-      experience_level AS experienceLevel, learning_goal AS learningGoal, status, is_class_rep AS isClassRep, profile_picture AS profilePicture, created_at AS createdAt
-      FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name`);
-    res.json(rows);
-  } catch (error) { next(error); }
-});
+registerStudentDirectoryRoutes(app, pool, requireAuth, requireStaff);
 
 app.get('/api/admin/mentors', requireAuth, requireAdmin, async (_req, res, next) => {
   try {

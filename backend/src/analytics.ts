@@ -2,9 +2,9 @@
 import { getAcademySettings } from './academy-settings.js';
 export const CERTIFICATE_ELIGIBILITY_SCORE = 75;
 
-export async function buildOverallLeaderboard(pool) {
+export async function buildOverallLeaderboard(pool, {includeInactive = false, studentId = null} = {}) {
   const [[students], [quizAttempts], [assignmentResults], [attendanceRows], [activityAttempts]] = await Promise.all([
-        pool.query("SELECT id, full_name AS fullName, email FROM users WHERE role = 'student' AND status = 'approved' ORDER BY full_name, id"),
+        pool.query(`SELECT id, full_name AS fullName, email FROM users WHERE role = 'student'${includeInactive ? '' : " AND status = 'approved'"}${studentId == null ? '' : ' AND id = ?'} ORDER BY full_name, id`, studentId == null ? [] : [studentId]),
         pool.query(`SELECT student_id AS studentId, quiz_id AS quizId, correct_count AS correctCount, total_questions AS totalQuestions
           FROM quiz_attempts WHERE status = 'completed' AND total_questions > 0`),
         pool.query(`SELECT s.student_id AS studentId, s.score, a.max_score AS maxScore

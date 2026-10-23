@@ -10,6 +10,7 @@ function activityDb() {
  const completed=new Set();
  const activities=[{id:1,title:'Week one',weekNumber:1},{id:2,title:'Week two',weekNumber:2},{id:3,title:'Week three',weekNumber:3}];
  return {completed,activities,async execute(sql,params){
+  if(sql.startsWith('UPDATE users SET last_signed_in_at'))return [{}];
   if(sql.includes('FROM users WHERE id'))return [[{role:'student',status:'approved',sessionVersion:0}]];
   if(sql.includes('SELECT a.id FROM learning_activities'))return [[...activities].filter(a=>!completed.has(a.id)).slice(0,1)];
   if(sql.includes('SELECT a.id, a.title, m.week_number'))return [activities.filter(a=>a.id===params[0]&&!completed.has(a.id))];

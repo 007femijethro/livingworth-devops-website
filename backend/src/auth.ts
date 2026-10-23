@@ -21,9 +21,12 @@ export async function createToken(user, existingSession = null) {
     sessionVersion: Number(user.session_version ?? user.sessionVersion ?? 0),
     mustChangePassword: Boolean(user.must_change_password ?? user.mustChangePassword)
   };
-  return user.role === 'student'
+  const token = user.role === 'student'
     ? jwt.sign(payload, secret(), { expiresIn: getAcademySettings().studentSessionHours * 3600 })
     : jwt.sign(payload, secret());
+  // New password and biometric sign-ins share this path. Token refreshes preserve the original sign-in time.
+  if (!existingSession) await pool.execute('UPDATE users SET last_signed_in_at=CURRENT_TIMESTAMP WHERE id=?', [user.id]);
+  return token;
 }
 
 export function verifyToken(token) {

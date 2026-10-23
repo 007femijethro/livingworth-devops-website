@@ -1,4 +1,5 @@
 // @ts-nocheck
+import {StudentAccountBadge,StudentDirectorySummary,StudentAccountDetails,StudentScoreDetails,StudentClassActivityDetails} from './StudentRecordDetails';
 import QuizScheduleEditor, {QuizScheduleFields, QuizScheduleStatus} from './QuizSchedule';
 import {scheduleInstant,scheduleInput} from './quiz-schedule-time';
 import { BrandLogo } from './Theme';
@@ -3035,9 +3036,12 @@ function LearnerProfilePanel({ studentId, onClose, onDeleted }) {
   const [message, setMessage] = useState("Loading learner report…");
   const [deleting, setDeleting] = useState(false);
   useEffect(() => {
-    api(`/staff/students/${studentId}/profile`)
-      .then((data) => { setReport(data); setMessage(""); })
-      .catch((error) => setMessage(error.message));
+    let live=true;setReport(null);setMessage("Loading learner report…");
+    const load=()=>api(`/staff/students/${studentId}/profile`)
+      .then(data=>{if(live){setReport(data);setMessage("")}})
+      .catch(error=>{if(live)setMessage(error.message)});
+    void load();const timer=setInterval(load,60000);window.addEventListener("focus",load);
+    return()=>{live=false;clearInterval(timer);window.removeEventListener("focus",load)};
   }, [studentId]);
 
   function downloadCsv() {
@@ -3048,7 +3052,7 @@ function LearnerProfilePanel({ studentId, onClose, onDeleted }) {
     };
     const rows = [
       ["Livingworth Academy learner report"],
-      ["Learner", report.student.fullName], ["Email", report.student.email], ["Overall standing", report.standing.label],
+      ["Learner", report.student.fullName], ["Email", report.student.email], ["Account status",report.student.accountStatus], ["Last signed in",report.student.lastSignedInAt||"Not recorded"], ["Overall score",report.scores.overallScore??"Not assessed"], ["Quiz score",report.scores.quizScore??"Not assessed"], ["Class activity score",report.scores.activityScore??"Not assessed"], ["Assignment score",report.scores.assignmentScore??"Not assessed"], ["Attendance score",report.scores.attendanceScore??"Not assessed"], ["Probation started",report.probation.onProbation?report.probation.startedAt:""], ["Probation deadline",report.probation.onProbation?report.probation.dueAt:""], ["Overall standing", report.standing.label],
       ["Attendance", `${report.attendance.summary.percentage}%`], ["Materials completed", `${report.materials.summary.done}/${report.materials.summary.total}`],
       ["Quiz average", `${report.quizzes.summary.average}%`], ["Overdue assignments", report.assignments.summary.overdue], [],
       ["Registration details"], ["Phone", report.student.phone], ["Location", [report.student.stateCity, report.student.country].filter(Boolean).join(", ")],
@@ -3060,6 +3064,8 @@ function LearnerProfilePanel({ studentId, onClose, onDeleted }) {
       ...report.attendance.records.map((item) => [reportDate(item.sessionDate), readableStatus(item.status), item.note]), [],
       ["Quiz attempts"], ["Quiz", "Attempt", "Score", "Completed"],
       ...report.quizzes.attempts.map((item) => [item.title, item.attemptNo, `${item.percentage}%`, reportDate(item.completedAt, true)]), [],
+      ["Class activity attempts"], ["Week","Activity","Attempt","Score","Completed"],
+      ...report.classActivities.attempts.map(item=>[item.weekNumber,item.title,item.attemptNo,`${item.percentage}/100`,reportDate(item.completedAt,true)]), [],
       ["Assignments"], ["Week", "Assignment", "Status", "Score", "Due", "Feedback"],
       ...report.assignments.items.map((item) => [item.weekNumber, item.title, item.overdue ? "Overdue" : readableStatus(item.status), item.score == null ? "" : `${item.score}/${item.maxScore}`, reportDate(item.dueAt, true), item.feedback])
     ];
@@ -3094,9 +3100,10 @@ function LearnerProfilePanel({ studentId, onClose, onDeleted }) {
     <section className="learner-report" role="dialog" aria-modal="true" aria-labelledby="learner-report-name">
       {!report ? <div className="progress-loading">{message}</div> : <>
         <header className="learner-report-head">
-          <div><p className="eyebrow">Learner performance report</p><h2 id="learner-report-name">{report.student.fullName}</h2><p>{report.student.email} · {report.student.phone || "No phone"}</p></div>
+          <div className="learner-profile-identity"><ProfileAvatar user={report.student} className="student-avatar"/><div><p className="eyebrow">Complete learner profile</p><h2 id="learner-report-name">{report.student.fullName}</h2><p>{report.student.email} · {report.student.phone || "No phone"}</p></div></div>
           <div className="learner-report-actions"><button className="button light-border" onClick={downloadCsv}>Download CSV</button><button className="button primary" onClick={() => window.print()}>Print / Save PDF</button><button className="learner-report-close" aria-label="Close learner report" onClick={onClose}>×</button></div>
         </header>
+        <StudentAccountDetails report={report}/><StudentScoreDetails report={report}/>
         <div className={`learner-standing ${report.standing.tone}`}><div><span>Overall standing</span><strong>{report.standing.label}</strong></div><p>{report.standing.reasons.join(" · ")}</p></div>
         <div className="learner-report-metrics">
           <article><span>Attendance</span><strong>{report.attendance.summary.percentage}%</strong><small>{report.attendance.summary.attended} of {report.attendance.summary.counted} attended</small></article>
@@ -3106,10 +3113,10 @@ function LearnerProfilePanel({ studentId, onClose, onDeleted }) {
         </div>
 
         <section className="learner-report-section"><h3>Registration details</h3><div className="learner-detail-grid">{[
-          ["Full name", report.student.fullName], ["Email", report.student.email], ["Phone", report.student.phone], ["Gender", report.student.gender],
+          ["Full name", report.student.fullName], ["First name", report.student.firstName], ["Last name", report.student.lastName], ["Email", report.student.email], ["Phone", report.student.phone], ["Gender", report.student.gender],
           ["Location", [report.student.stateCity, report.student.country].filter(Boolean).join(", ")], ["Employment/Study", report.student.employmentStatus],
           ["Education", report.student.educationalLevel], ["Course", report.student.courseChoice], ["Learning mode", report.student.learningMode],
-          ["Tech experience", report.student.techExperience], ["Registered", reportDate(report.student.createdAt)]
+          ["Tech experience", report.student.techExperience], ["Experience level", report.student.experienceLevel], ["Learning goal", report.student.learningGoal]
         ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value || "—"}</strong></div>)}</div></section>
 
         <section className="learner-report-section"><div className="report-section-head"><h3>Learning materials</h3><div className="report-key"><span>{report.materials.summary.done} done</span><span>{report.materials.summary.inProgress} in progress</span><span>{report.materials.summary.notStarted} not started</span></div></div>
@@ -3126,6 +3133,7 @@ function LearnerProfilePanel({ studentId, onClose, onDeleted }) {
           </section>
         </div>
 
+        <StudentClassActivityDetails report={report}/>
         <section className="learner-report-section"><h3>Assignments and feedback</h3>
           {report.assignments.items.length === 0 ? <p className="progress-empty">No published assignments yet.</p> : <div className="learner-report-table assignment-report-table"><b>Assignment</b><b>Status</b><b>Score</b><b>Feedback</b>{report.assignments.items.map((item) => <div className="report-table-row" key={item.assignmentId}><span><strong>{item.title}</strong><small>Week {item.weekNumber} · Due {reportDate(item.dueAt, true)}</small></span><i className={`report-status ${item.overdue ? "overdue" : item.status || "not_started"}`}>{item.overdue ? "Overdue" : readableStatus(item.status)}</i><span>{item.score == null ? "—" : `${item.score}/${item.maxScore}`}</span><span>{item.feedback || "No feedback yet"}</span></div>)}</div>}
         </section>
@@ -3152,7 +3160,7 @@ function StudentDirectory({ demo = false, canDelete = false, canManageClassReps 
     if (demo) return;
     api("/staff/students").then((data) => { setStudents(data); setMessage(""); }).catch((error) => setMessage(error.message));
   }
-  useEffect(load, [demo]);
+  useEffect(() => {load();if(demo)return;const timer=setInterval(load,60000);window.addEventListener("focus",load);return()=>{clearInterval(timer);window.removeEventListener("focus",load)}}, [demo]);
   const classRepCount = students.filter((student) => student.isClassRep).length;
   async function setClassRep(student, enabled) {
     if (!window.confirm(`${enabled ? "Appoint" : "Remove"} ${student.fullName} ${enabled ? "as a class representative" : "from the class-rep position"}?`)) return;
@@ -3179,8 +3187,9 @@ function StudentDirectory({ demo = false, canDelete = false, canManageClassReps 
     {message && <p className="form-message" role="status">{message}</p>}
     {!message && <p className="directory-result-count">Showing {filtered.length} of {students.length} students</p>}
     <div className="directory-grid">{!message && filtered.length === 0 ? <div className="empty">No students match these filters.</div> : filtered.map((student) => <article key={student.id}>
-      <div className="directory-card-head"><ProfileAvatar user={student} className="student-avatar"/><div><h3>{student.fullName}</h3><p>{student.email}</p></div><b className={`status ${student.isClassRep ? "class-rep" : "approved"}`}>{student.isClassRep ? "class rep" : "active"}</b></div>
+      <div className="directory-card-head"><ProfileAvatar user={student} className="student-avatar"/><div><h3>{student.fullName}</h3><p>{student.email}</p></div><div className="directory-card-badges"><StudentAccountBadge student={student}/>{student.isClassRep&&<b className="status class-rep">Class rep</b>}</div></div>
       <div className="student-facts"><span><small>Phone</small><b>{student.phone || "Not provided"}</b></span><span><small>Location</small><b>{[student.stateCity, student.country].filter(Boolean).join(", ") || "Not provided"}</b></span><span><small>Learning mode</small><b>{student.learningMode || "Not provided"}</b></span><span><small>Current status</small><b>{student.employmentStatus || "Not provided"}</b></span><span><small>Education</small><b>{student.educationalLevel || "Not provided"}</b></span><span><small>Tech experience</small><b>{student.techExperience || student.experienceLevel || "Not provided"}</b></span></div>
+      <StudentDirectorySummary student={student}/>
       <button type="button" className="button primary full" onClick={() => setSelectedId(student.id)}>View full profile</button>{canManageClassReps && <button type="button" className="button light-border full" disabled={!student.isClassRep && classRepCount >= academy.classRepLimit} onClick={() => setClassRep(student, !student.isClassRep)}>{student.isClassRep ? "Remove class rep" : "Appoint class rep"}</button>}
     </article>)}</div>
     {selectedId && <LearnerProfilePanel studentId={selectedId} onClose={() => setSelectedId(null)} onDeleted={canDelete ? (notice) => { setSelectedId(null); setMessage(notice); load(); } : undefined} />}
