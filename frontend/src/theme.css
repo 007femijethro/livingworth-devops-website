@@ -85,3 +85,13 @@ html[data-theme=dark] :is(.auth-box .switch,.auth-box .switch button,.progress-s
 html[data-theme=dark] img.brand-logo{background:transparent!important;border-radius:0!important;object-fit:contain}
 html[data-theme=dark] :is(.learning-logo,.modern-logo,.auth-brand .brand,.cta .brand){background:transparent!important;border-radius:0}
 @media print{html[data-theme=dark]{--theme-page:#fff;--theme-panel:#fff;--theme-raised:#f5f8fa;--theme-text:#142f50;--theme-muted:#526b7b;--theme-border:#d5e0e6;--theme-accent:#087f88;--certificate-warm:#fffaf0;--certificate-green:#eef9f4;color-scheme:light}}
+/* Calendar filters and secondary feature forms must theme their surfaces as well as labels. */
+html[data-theme=dark] :is(.calendar-filters button,.story-form,.phone-push-settings,.story-filter,.story-review-actions textarea,.home-story-grid article,.home-stories){background:var(--theme-panel)!important;color:var(--theme-text)!important;border-color:var(--theme-border)!important}
+html[data-theme=dark] .calendar-filters button.active{background:#164c55!important;color:#e6edf5!important;border-color:#70dedb!important}
+html[data-theme=dark] :is(.notification-list time,.notification-list>article>span,.story-card small,.story-form small,.story-featured){color:var(--theme-muted)!important}
+html[data-theme=dark] :is(.notification-list>article>b,.calendar-summary span,.stories-heading p){color:var(--theme-accent)!important}
+html[data-theme=dark] :is(.story-reason,.story-card.rejected){background:#432b36!important;color:#ffd5da!important}
+html[data-theme=dark] :is(.story-delete,.story-reject){background:var(--theme-raised)!important;color:#ffd5da!important;border-color:#a55d72!important}
+html[data-theme=dark] .answer-grid button.incorrect{background:#8a3448!important;color:#fff!important}
+html[data-theme=dark] .workspace-content form,html[data-theme=dark] :is(.quiz-center,.csv-import,.quiz-builder,.live-class-form,.certificate-issue-form,.directory-filters,.student-profile-form,.email-control-status){background:var(--theme-panel)!important;color:var(--theme-text)!important;border-color:var(--theme-border)!important}
+html[data-theme=dark] :is(.calendar-filters,.story-form-actions,.story-review-actions) button:focus-visible{outline:3px solid var(--theme-accent);outline-offset:3px}

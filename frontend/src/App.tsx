@@ -1,4 +1,6 @@
 // @ts-nocheck
+import QuizScheduleEditor, {QuizScheduleFields, QuizScheduleStatus} from './QuizSchedule';
+import {scheduleInstant,scheduleInput} from './quiz-schedule-time';
 import { BrandLogo } from './Theme';
 import ActivitySessionGate from './ActivitySessionGate';
 import QuizLifelineLimits, {LifelineLimitsFields,quizLifelineLimits} from './QuizLifelineLimits';
@@ -2329,12 +2331,16 @@ function QuizCenter({ mode, demo = false }) {
   const [retakeSaving,setRetakeSaving] = useState(null);
   const [lifelines, setLifelines] = useState(null);
   const [lifelineBusy, setLifelineBusy] = useState(false);
+  const quizAcademy = useAcademySettings();
+  const [startsAt,setStartsAt] = useState("");
+  const [quizClock,setQuizClock] = useState(Date.now());
   const [scheduledAt, setScheduledAt] = useState("");
   const [rankingVisibility, setRankingVisibility] = useState("full");
   const [editingQuizId, setEditingQuizId] = useState(null);
   const [questions, setQuestions] = useState([
     { prompt: "", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "" },
   ]);
+  useEffect(()=>{if(demo)return;const clock=setInterval(()=>setQuizClock(Date.now()),1000);const refresh=setInterval(()=>load(),10000);return()=>{clearInterval(clock);clearInterval(refresh)}},[mode,demo]);
   function playSound(kind) {
     if (!soundEnabledRef.current) return;
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -2388,7 +2394,7 @@ function QuizCenter({ mode, demo = false }) {
   }
   const load = () =>
     api(mode === "admin" ? "/admin/quizzes" : "/quizzes/active")
-      .then(setQuizzes)
+      .then(items=>{setQuizzes(items);const current=roomRef.current;const updated=current&&items.find(item=>item.id===current.id);if(updated)setRoom(previous=>previous?{...previous,scheduledAt:updated.scheduledAt,startsAt:updated.startsAt,scheduleStartedAt:updated.scheduleStartedAt}:previous)})
       .catch((e) => setMessage(e.message));
   useEffect(() => {
     if (demo) {
@@ -2581,7 +2587,7 @@ function QuizCenter({ mode, demo = false }) {
     try {
       const quiz = await api(editingQuizId ? `/admin/quizzes/${editingQuizId}` : "/admin/quizzes", {
         method: editingQuizId ? "PUT" : "POST",
-        body: JSON.stringify({ title, materialId, questions, questionTimeSeconds, navigationMode, speedScoring, lifelineLimit, lifelineLimits, scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null, rankingVisibility }),
+        body: JSON.stringify({ title, materialId, questions, questionTimeSeconds, navigationMode, speedScoring, lifelineLimit, lifelineLimits, scheduledAt: scheduleInstant(scheduledAt,quizAcademy.classTimezone), startsAt: scheduleInstant(startsAt,quizAcademy.classTimezone), rankingVisibility }),
       });
       setMessage(editingQuizId ? quiz.message : `Quiz created. Join code: ${quiz.joinCode}`);
       cancelQuizEdit();
@@ -2598,7 +2604,7 @@ function QuizCenter({ mode, demo = false }) {
     setNavigationMode("manual");
     setLifelineLimit(3);
     setLifelineLimits({fifty_fifty:1,free_pass:1,audience:1});
-    setSpeedScoring(true); setScheduledAt(""); setRankingVisibility("full");
+    setSpeedScoring(true); setScheduledAt(""); setStartsAt(""); setRankingVisibility("full");
     setQuestions([{ prompt: "", questionType: "single_choice", options: ["", "", "", ""], correctIndex: 0, correctAnswers: [], correctText: "" }]);
   }
   async function editQuiz(quiz) {
@@ -2611,7 +2617,7 @@ function QuizCenter({ mode, demo = false }) {
       setNavigationMode(detail.navigationMode || "manual");
       setLifelineLimit(Number(detail.lifelineLimit || 0));
       setLifelineLimits(quizLifelineLimits(detail.lifelineLimits,detail.lifelineLimit));
-      setSpeedScoring(detail.speedScoring !== false); setScheduledAt(detail.scheduledAt ? new Date(detail.scheduledAt).toISOString().slice(0, 16) : ""); setRankingVisibility(detail.rankingVisibility || "full");
+      setSpeedScoring(detail.speedScoring !== false); setScheduledAt(detail.scheduledAt ? scheduleInput(detail.scheduledAt,quizAcademy.classTimezone) : ""); setStartsAt(detail.startsAt ? scheduleInput(detail.startsAt,quizAcademy.classTimezone) : ""); setRankingVisibility(detail.rankingVisibility || "full");
       setQuestions(detail.questions.map(question => ({ prompt: question.prompt, questionType: question.questionType || "single_choice", options: question.options, correctIndex: Number(question.correctIndex), correctAnswers: question.correctAnswers || [], correctText: question.correctText || "" })));
       setMessage(`Editing ${detail.title}.`);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2744,8 +2750,8 @@ function QuizCenter({ mode, demo = false }) {
             <div className="active-quizzes">
               Active:{" "}
               {quizzes.map((q) => (
-                <button key={q.id} onClick={() => join(q.joinCode)}>
-                  {q.title} · {q.joinCode}
+                <button key={q.id} disabled={q.scheduledAt && +new Date(q.scheduledAt)>quizClock} onClick={() => join(q.joinCode)}>
+                  {q.title} · {q.joinCode}<QuizScheduleStatus quiz={q}/>
                 </button>
               ))}
             </div>
@@ -2796,11 +2802,7 @@ function QuizCenter({ mode, demo = false }) {
             <label>Total lifelines per learner<input type="number" min="0" max="10" step="1" required value={lifelineLimit} onChange={event => setLifelineLimit(event.target.value === "" ? "" : Number(event.target.value))} /><small>0 disables lifelines. Up to 10 uses per attempt, one per question, before answering. Types may be reused on later questions. Free Pass earns no speed bonus.</small></label>
             <fieldset className="quiz-lifeline-limit-editor"><legend>Maximum uses of each lifeline</legend><LifelineLimitsFields value={lifelineLimits} onChange={setLifelineLimits}/><small>The total limit and these individual maxima both apply. Set a type to 0 to disable it.</small></fieldset>
             <label className="quiz-check-setting"><input type="checkbox" checked={speedScoring} onChange={(event) => setSpeedScoring(event.target.checked)} /> Add a speed bonus to correct answers</label>
-            <label>
-              Schedule opening (optional)
-              <input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} />
-              <small>Students cannot join before this date and time.</small>
-            </label>
+<QuizScheduleFields opening={scheduledAt} starting={startsAt} onOpening={setScheduledAt} onStarting={setStartsAt}/>
             <label>
               Student leaderboard privacy
               <select value={rankingVisibility} onChange={(event) => setRankingVisibility(event.target.value)}>
@@ -2914,6 +2916,7 @@ function QuizCenter({ mode, demo = false }) {
               >
                 {q.status === "completed" ? "Reopen quiz" : "Open lobby"}
               </button>
+              <QuizScheduleStatus quiz={q}/><QuizScheduleEditor key={`${q.id}-${q.scheduledAt}-${q.startsAt}`} quiz={q} onSaved={message=>{setMessage(message);load()}}/>
               <QuizLifelineLimits quiz={q} onSave={updateQuizLifelineMaxima}/>
               <div className="quiz-manage-actions"><button type="button" onClick={() => editQuiz(q)} disabled={q.status === "live" || deletingQuizId === q.id}>Edit</button><button type="button" className="delete-quiz" onClick={() => deleteQuiz(q)} disabled={q.status === "live" || deletingQuizId === q.id} aria-label={`Delete ${q.title}${q.status === "completed" ? " and all completed results" : ""}`}>{deletingQuizId === q.id ? "Deleting…" : q.status === "completed" ? "Delete quiz & results" : "Delete"}</button></div>
               <label className="retake-toggle">
@@ -2927,7 +2930,7 @@ function QuizCenter({ mode, demo = false }) {
       {room && !question && (
         <div className="quiz-lobby">
           <span className="live-dot">● LIVE ROOM</span>
-          <h3>{room.title}</h3>
+          <h3>{room.title}</h3><QuizScheduleStatus quiz={room}/>
           <strong>{room.joinCode}</strong>
           <p>
             {presence} connected participant{presence === 1 ? "" : "s"}
@@ -2943,7 +2946,7 @@ function QuizCenter({ mode, demo = false }) {
             <div className="quiz-lobby-actions"><button className="button gold" onClick={start}>Start quiz for everyone</button><button className="button close-quiz-room" onClick={closeQuizRoom}>Close room &amp; go back</button></div>
           ) : (
             <><div className="quiz-lifelines"><strong>🛟 Quiz lifelines</strong><p>50:50 · ✓ Free Pass · 👥 Audience</p><small>{Number(room.lifelineLimit) > 0 ? `${room.lifelineLimit} uses per attempt. The buttons unlock when a question starts. Use a lifeline before answering.` : "Your instructor has disabled lifelines for this quiz."}</small></div>
-            <div className="student-lobby-actions"><p>{room.lifelineLimit || 0} lifelines per attempt. Waiting for your instructor to start…</p><button type="button" className="button leave-quiz-room" onClick={leaveWaitingRoom}>Leave quiz room</button></div></>
+            <div className="student-lobby-actions"><p>{room.lifelineLimit || 0} lifelines per attempt. {room.startsAt && !room.scheduleStartedAt ? "The quiz will start automatically at the scheduled time." : "Waiting for your instructor to start…"}</p><button type="button" className="button leave-quiz-room" onClick={leaveWaitingRoom}>Leave quiz room</button></div></>
           )}
         </div>
       )}

@@ -26,6 +26,7 @@ test('live socket flow enforces limits, hides removed answers, saves automatic a
  const quizId=991,students=[1,2,3],sockets=[],uses=[],saved=[],attempts=new Map();let connectionHandler;const locks=new Map();
  const quiz={id:quizId,title:'Test',joinCode:'LIFETEST',status:'lobby',allowRetakes:true,questionTimeSeconds:300,navigationMode:'manual',lifelineLimit:2,lifelineLimits:{fifty_fifty:1,free_pass:1,audience:1},speedScoring:true};
  const execute=async(sql,p=[])=>{
+  if(sql.startsWith('SELECT id FROM quizzes WHERE status IN'))return [[]];
   if(sql.startsWith('SELECT id,title,join_code'))return [[{...quiz}]];
   if(sql.startsWith('SELECT lifeline_limit'))return [[quiz]];
   if(sql.startsWith('SELECT id,prompt'))return [[q,{...q,id:502},{...q,id:503}]];
