@@ -1,4 +1,4 @@
-import { AppearanceSettings } from './Theme';
+import { BrandLogo, AppearanceSettings } from './Theme';
 import {useEffect,useState} from 'react';
 import {Capacitor} from '@capacitor/core';
 import {App} from '@capacitor/app';
@@ -16,7 +16,7 @@ export default function AboutHelp({role}:{role:string}) {
  const email=academy.supportEmail,phone=academy.supportPhone.replace(/[^+0-9]/g,'');
  const report=`mailto:${email}?subject=${encodeURIComponent(`${academy.academyName} app support`)}&body=${encodeURIComponent(`Please describe what happened and the steps to repeat it:\n\n\nApp: ${version}\nPlatform: ${Capacitor.getPlatform()}\nPortal: ${role}\n\nPlease do not include passwords, sign-in keys or private quiz answers.`)}`;
  return <section className="about-help">
-  <article className="about-card about-brand"><img src="/livingworth-wordmark.png" alt={academy.academyName}/><div><h2>{academy.academyName}</h2><p>Your classes, materials, activities and learning progress.</p><span className="about-version">{version}</span></div></article>
+  <article className="about-card about-brand"><BrandLogo alt={academy.academyName}/><div><h2>{academy.academyName}</h2><p>Your classes, materials, activities and learning progress.</p><span className="about-version">{version}</span></div></article>
   <AppearanceSettings />
   {native&&<article className="about-card"><h2>App updates</h2><p role="status">{update.message}</p><div className="about-actions"><button type="button" className="button primary" disabled={update.phase==='checking'||applying} onClick={()=>void checkMobileUpdates()}>{update.phase==='checking'?'Checking…':'Check for updates'}</button>{update.phase==='ready'&&<button type="button" className="button primary" disabled={applying} onClick={()=>void applyUpdate()}>{applying?'Applying…':'Apply update'}</button>}</div><p>Updates reload the interface. Leave a live quiz and save your work before applying one.</p></article>}
   <article className="about-card"><h2>Get help</h2><p>Include the page you were using, what you expected and what happened. The support email draft includes your app version so we can investigate.</p><div className="about-actions">{email&&<><a className="button primary" href={report}>Report a problem</a><a className="button light-border" href={`mailto:${email}`}>{email}</a></>}{phone&&<a className="button light-border" href={`tel:${phone}`}>Call {academy.supportPhone}</a>}</div>{!email&&!phone&&<p>Contact your class mentor through your usual class channel.{role==='admin'?' Add the academy support email and phone under Settings → Academy & contact to show them here.':''}</p>}</article>

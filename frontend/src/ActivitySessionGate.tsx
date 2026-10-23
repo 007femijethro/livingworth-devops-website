@@ -1,3 +1,4 @@
+import { BrandLogo } from './Theme';
 import {useCallback,useEffect,useState,type ReactNode} from 'react';
 import {useAcademySettings} from './AcademySettingsContext';
 import AboutHelp from './AboutHelp';
@@ -21,7 +22,7 @@ export default function ActivitySessionGate({children,logout,renderActivity,onUn
  },[load,bypass]);
  if(bypass||(gate&&!gate.required))return <>{children}</>;
  return <main className="activity-session-page">
-  <header className="activity-session-top"><img src="/livingworth-wordmark.png" alt={academy.academyName}/><div><button type="button" className="button light-border" onClick={()=>setHelp(!help)}>{help?'Back to activity':'Help & updates'}</button><button type="button" className="button light-border" onClick={logout}>Log out</button></div></header>
+  <header className="activity-session-top"><BrandLogo alt={academy.academyName}/><div><button type="button" className="button light-border" onClick={()=>setHelp(!help)}>{help?'Back to activity':'Help & updates'}</button><button type="button" className="button light-border" onClick={logout}>Log out</button></div></header>
   {help?<AboutHelp role="student"/>:<>
    <section className="activity-session-intro" aria-labelledby="session-activity-heading"><span className="eyebrow">One activity per sign-in</span><h1 id="session-activity-heading">{gate?.activity?`Complete Week ${gate.activity.weekNumber} to continue`:'Preparing your learning session'}</h1><p>{gate?.activity?'Complete this one class activity to open all published learning materials for this session. You do not need to complete every week now.':'Checking your next unfinished class activity…'}</p>{gate?.activity&&<p className="activity-session-next">Your next activity: <strong>{gate.activity.title}</strong></p>}<small>Activities follow week order. Your completed activities count. A page refresh does not require another activity.</small></section>
    {error&&<section className="activity-session-error"><p role="alert">{error}</p><button type="button" className="button primary" onClick={()=>void load()}>Try again</button></section>}

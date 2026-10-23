@@ -28,7 +28,7 @@ html[data-theme=dark] a:not(.button):not(.modern-apply):not(.learning-logo):not(
 html[data-theme=dark] .modern-site{--ink:#e6edf5;--cream:#213349;--aqua:#70dedb}
 html[data-theme=dark] .modern-hero{background:linear-gradient(120deg,#182639 0 66%,#213f46 66%)!important}
 html[data-theme=dark] .modern-hero-actions a{color:var(--theme-text)}
-html[data-theme=dark] :is(.learning-logo,.modern-logo,.modern-footer>img,.about-brand>img,.activity-session-top>img,.mobile-welcome img){background:#fff;border-radius:10px}
+html[data-theme=dark] :is(.learning-logo,.modern-logo,.modern-footer>img,.about-brand>img,.activity-session-top>img,.mobile-welcome img){background:transparent;border-radius:0}
 html[data-theme=dark] :is(pre,.markdown-body pre,.lesson-content pre){background:#09131f!important;color:#e0edf8!important;border-color:var(--theme-border)!important}
 html[data-theme=dark] :is(dialog,.profile-crop-panel){background:var(--theme-panel);color:var(--theme-text);border-color:var(--theme-border)}
 html[data-theme=dark] ::selection{background:#247982;color:#fff}
@@ -58,3 +58,30 @@ html[data-theme=dark] :is(.portal-bottom-nav button,.portal-switcher button){col
 html[data-theme=dark] :is(.portal-bottom-nav button[aria-current=page],.portal-bottom-nav button[aria-expanded=true],.portal-switcher button.active){background:#164c55!important;color:#e6edf5!important}
 html[data-theme=dark] :is(.portal-switcher,.programme-week,.programme-progress-state,.continue-learning-progress,.assignment-meta span,.assignment-meta b,.student-materials a,.student-lesson-content th,.assignment-markdown blockquote,.student-lesson-content :not(pre)>code,.assignment-markdown :not(pre)>code){background:var(--theme-raised)!important;color:var(--theme-text)!important;border-color:var(--theme-border)!important}
 html[data-theme=dark] :is(.student-lesson-content,.assignment-markdown,.student-lesson-content blockquote,.programme-week-work,.programme-week-status,.continue-learning-progress>strong,.continue-learning-progress>span){color:var(--theme-text)!important}
+
+/* The overview uses clickable metric buttons as well as article cards. */
+html[data-theme=dark]{--certificate-warm:#2d2b26;--certificate-green:#183930}
+html[data-theme=dark] :is(.progress-metrics>button,.progress-metrics>article,.progress-loading,.progress-empty,.attention-card,.recent-quiz-card,.staff-metrics>*,.learner-support-card,.staff-side-stack>section,.recent-staff-activity,.mentor-admin>form,.mentor-admin>.student-list){background:var(--theme-panel)!important;color:var(--theme-text)!important;border-color:var(--theme-border)!important}
+html[data-theme=dark] :is(.progress-metrics,.staff-metrics) :is(strong,span){color:var(--theme-text)!important}
+html[data-theme=dark] :is(.progress-metrics,.staff-metrics) small{color:var(--theme-muted)!important}
+html[data-theme=dark] .progress-metrics .class-live-metric{background:#39232b!important;border-top-color:#f0828a!important}
+html[data-theme=dark] .progress-metrics .class-live-metric strong{color:#ffb9bf!important}
+html[data-theme=dark] .overview-certificate-card{border-color:#776341;background:linear-gradient(135deg,var(--certificate-warm),var(--theme-panel) 66%);color:var(--theme-text)}
+html[data-theme=dark] .overview-certificate-card.eligible{border-color:#3c7861;background:linear-gradient(135deg,var(--certificate-green),var(--theme-panel) 66%)}
+html[data-theme=dark] .certificate-score-ring:after{background:var(--theme-panel)}
+html[data-theme=dark] :is(.certificate-score-ring span,.certificate-score-breakdown button strong,.pending-work-summary strong){color:var(--theme-text)!important}
+html[data-theme=dark] :is(.certificate-score-breakdown button,.pending-work-summary>button){background:var(--theme-raised);color:var(--theme-muted);border-color:var(--theme-border)}
+html[data-theme=dark] .certificate-score-breakdown .focus-recommendation{background:#393324;border-color:#776341;color:#ffe3a3}
+html[data-theme=dark] .certificate-score-breakdown .certificate-overview-link{background:#164c55;border-color:#3b828a;color:#d8ffff}
+html[data-theme=dark] .certificate-overview-copy .progress-kicker{color:#f1cf85}
+html[data-theme=dark] .overview-certificate-card.eligible .progress-kicker{color:#8ce3ba}
+html[data-theme=dark] :is(.certificate-threshold,.continue-learning-progress [role=progressbar]){background:var(--theme-border)}
+html[data-theme=dark] :is(.certificate-eligibility.not-eligible,.certificate-eligibility.eligible,.pending-work-card .progress-section-title>strong,.dashboard-announcement){background:var(--theme-raised);color:var(--theme-text);border-color:var(--theme-border)}
+/* Status messages must change surface and text together. */
+html[data-theme=dark] .form-message:not(:empty){background:#432b36!important;color:#ffd5da!important;border-color:#e58e99!important}
+html[data-theme=dark] .form-message.success:not(:empty){background:#183f34!important;color:#b4f1d0!important;border-color:#70c99a!important}
+html[data-theme=dark] :is(.auth-box .switch,.auth-box .switch button,.progress-section-title button){color:var(--theme-accent)!important}
+/***** Transparent brand artwork, without the light logo's white plaque. *****/
+html[data-theme=dark] img.brand-logo{background:transparent!important;border-radius:0!important;object-fit:contain}
+html[data-theme=dark] :is(.learning-logo,.modern-logo,.auth-brand .brand,.cta .brand){background:transparent!important;border-radius:0}
+@media print{html[data-theme=dark]{--theme-page:#fff;--theme-panel:#fff;--theme-raised:#f5f8fa;--theme-text:#142f50;--theme-muted:#526b7b;--theme-border:#d5e0e6;--theme-accent:#087f88;--certificate-warm:#fffaf0;--certificate-green:#eef9f4;color-scheme:light}}

@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { BrandLogo } from './Theme';
 import ActivitySessionGate from './ActivitySessionGate';
 import QuizLifelineLimits, {LifelineLimitsFields,quizLifelineLimits} from './QuizLifelineLimits';
 import LearningCalendar from './LearningCalendar';
@@ -91,7 +92,7 @@ const demoStudents = [
 
 const Logo = () => (
   <a className="brand" href="#home">
-    <img src="/livingworth-wordmark.png" alt="Livingworth Academy" />
+    <BrandLogo alt="Livingworth Academy" />
   </a>
 );
 
@@ -1624,7 +1625,7 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
           <button onClick={() => onNavigate("Live quiz")}><span>Quiz average</span><strong>{quizAverage}%</strong><small>{data.quizzes.length} completed attempt{data.quizzes.length === 1 ? "" : "s"}</small></button>
         </div>
         <section className={`overview-certificate-card ${eligibility?.eligible ? "eligible" : "not-eligible"}`}>
-          <div className="certificate-score-ring" style={{ background: `conic-gradient(${eligibility?.eligible ? "#11855f" : "#d29b32"} ${scoreProgress * 3.6}deg, #e3e9e6 0deg)` }}><span>{overallScore === null ? "—" : overallScore}</span><small>/100</small></div>
+          <div className="certificate-score-ring" style={{ background: `conic-gradient(${eligibility?.eligible ? "#11855f" : "#d29b32"} ${scoreProgress * 3.6}deg, var(--theme-border, #e3e9e6) 0deg)` }}><span>{overallScore === null ? "—" : overallScore}</span><small>/100</small></div>
           <div className="certificate-overview-copy"><span className="progress-kicker">Certificate journey</span><h2>{eligibility?.eligible ? "You are certificate eligible" : "Keep building toward your certificate"}</h2><p>{eligibility?.eligible ? `Excellent work — your overall score meets the ${eligibility.requiredScore}/100 certificate requirement.` : overallScore === null ? `Your overall score will appear as you complete quizzes, assignments and attendance. The certificate requirement is ${eligibility?.requiredScore || 75}/100.` : `You are ${scoreGap} point${scoreGap === 1 ? "" : "s"} away from the ${eligibility.requiredScore}/100 certificate requirement.`}</p><div className="certificate-threshold"><span style={{ width: `${scoreProgress}%` }} /></div><small>{overallScore === null ? "Start completing assessed activities" : eligibility?.eligible ? "Requirement achieved" : `${overallScore}/100 current · ${eligibility?.requiredScore || 75}/100 required`}</small></div>
           <div className="certificate-score-breakdown">{performanceAreas.map((area) => <button key={area.label} onClick={() => onNavigate(area.page)}><span>{area.label}</span><strong>{area.score === null ? "—" : area.score}</strong></button>)}{focusArea && !eligibility?.eligible && <button className="focus-recommendation" onClick={() => onNavigate(focusArea.page)}><span>Best next move</span><strong>Improve {focusArea.label.toLowerCase()} →</strong></button>}<button className="certificate-overview-link" onClick={() => onNavigate("Certificates")}><span>Credential status</span><strong>View certificates →</strong></button></div>
         </section>
@@ -3735,7 +3736,7 @@ export default function App() {
     return <div className="loading">Loading Livingworth Academy…</div>;
   if (page === "mobile-welcome") return (
     <main className="mobile-welcome">
-      <img src="/livingworth-wordmark.png" alt="Livingworth Academy" />
+      <BrandLogo alt="Livingworth Academy" />
       <h1>Sign in to {academy.academyName}</h1>
       <p>Your classes, learning materials and academy tools in one place.</p>
       <button className="button primary" onClick={() => navigate("student-login")}>Student sign in</button>

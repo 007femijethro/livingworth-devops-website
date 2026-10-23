@@ -1,4 +1,4 @@
-import {createContext, useContext, useEffect, useState, type ReactNode} from 'react';
+import {createContext, useContext, useEffect, useState, type ReactNode, type ImgHTMLAttributes} from 'react';
 
 type Preference = 'light' | 'dark' | 'system';
 const key = 'lw_appearance';
@@ -37,4 +37,10 @@ export function ThemeToggle({standalone = false}: {standalone?: boolean}) {
 export function AppearanceSettings() {
   const {preference, setPreference} = useContext(ThemeContext);
   return <article className="about-card appearance-settings"><h2>Appearance</h2><p>Choose how the academy looks on this device. Your preference is remembered for your next visit.</p><div className="appearance-options" role="group" aria-label="Colour mode">{(['light', 'dark', 'system'] as const).map(value => <button type="button" key={value} aria-pressed={preference === value} onClick={() => setPreference(value)}><span aria-hidden="true">{value === 'light' ? '☀' : value === 'dark' ? '☾' : '◐'}</span>{value === 'system' ? 'Follow device' : `${value[0].toUpperCase()}${value.slice(1)} mode`}</button>)}</div></article>;
+}
+
+/** Screen logos follow the saved appearance; printable certificates keep their original artwork. */
+export function BrandLogo({className = '', alt = 'Livingworth Academy', ...props}: Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'>) {
+  const {dark} = useContext(ThemeContext);
+  return <img {...props} className={`brand-logo ${className}`.trim()} src={dark ? '/livingworth-wordmark-dark.png' : '/livingworth-wordmark.png'} alt={alt} />;
 }
