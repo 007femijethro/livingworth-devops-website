@@ -2,7 +2,7 @@ import { ThemeProvider, ThemeToggle } from './Theme';
 import { AcademySettingsProvider } from './AcademySettingsContext';
 import { startMobile } from './mobile';
 import './mobile.css';
-import React, { useEffect } from 'react';
+import React, { useEffect, lazy, Suspense } from 'react';
 import { startMobileUpdates } from './mobile-updates';
 import { createRoot } from 'react-dom/client';
 import App from './App';
@@ -36,7 +36,9 @@ import './theme.css';
 import { startClientLogging } from './client-logging';
 
 startMobile();
-startClientLogging();
+const reviewerPath=/^\/review(?:\/|$)/.test(window.location.pathname);
+if(!reviewerPath)startClientLogging();
+const ReviewerPortal=lazy(()=>import('./ReviewerPortal'));
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Application root element was not found.');
@@ -47,5 +49,5 @@ function MobileLifecycle() {
 }
 
 createRoot(root).render(
-  <React.StrictMode><ThemeProvider><AcademySettingsProvider><MobileLifecycle /><App /><ThemeToggle standalone /></AcademySettingsProvider></ThemeProvider></React.StrictMode>
+  <React.StrictMode><ThemeProvider>{reviewerPath?<Suspense fallback={<div className="review-loading">Loading reviewer portal…</div>}><ReviewerPortal/></Suspense>:<AcademySettingsProvider><MobileLifecycle /><App /><ThemeToggle standalone /></AcademySettingsProvider>}</ThemeProvider></React.StrictMode>
 );

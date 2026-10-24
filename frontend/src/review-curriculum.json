@@ -1,0 +1,82 @@
+[
+  {
+    "week": 1,
+    "title": "Introduction to DevOps",
+    "summary": "Understand what DevOps is, how teams work together and how software moves from an idea to a running service. Review the software development lifecycle, academy expectations and the foundations needed for the practical weeks ahead."
+  },
+  {
+    "week": 2,
+    "title": "VIRTUAL MACHINES AND PHYSICAL SERVERS",
+    "summary": "Explore physical servers, virtual machines and the role of virtualization in modern infrastructure. Compare cloud and local environments, understand the resources a server needs and connect these concepts to your virtual-machine assignment."
+  },
+  {
+    "week": 3,
+    "title": "Amazon Web Services",
+    "summary": "Build your AWS foundations by learning how to connect to an EC2 instance and work with the AWS command line. Develop confidence accessing a cloud server and using commands to inspect and manage cloud resources."
+  },
+  {
+    "week": 4,
+    "title": "LINUX & SHELL SCRIPTING",
+    "summary": "Develop the Linux and shell scripting skills used in everyday DevOps work. Practise working with the terminal, automating repeatable tasks and checking server health, then apply these skills in the Node Health Monitoring Project."
+  },
+  {
+    "week": 5,
+    "title": "NETWORKING IN DEVOPS",
+    "summary": "Understand how services communicate across networks and how networking affects application availability. Explore IP addressing, DNS, ports, routing and connectivity checks, and learn to reason through common connection problems."
+  },
+  {
+    "week": 6,
+    "title": "GIT & GITHUB",
+    "summary": "Track changes and collaborate confidently with Git and GitHub. Learn core commands, branching strategies and practical team workflows, then strengthen your ability to explain version-control decisions and troubleshoot common Git problems."
+  },
+  {
+    "week": 7,
+    "title": "AMAZON WEB SERVICE",
+    "summary": "Expand your understanding of the AWS services commonly used by DevOps engineers. Connect compute, storage, networking, identity and monitoring concepts, and learn how to choose services that work together in a cloud solution."
+  },
+  {
+    "week": 8,
+    "title": "CONFIG MANAGEMENT",
+    "summary": "Learn how configuration management makes server setup consistent and repeatable. Explore Ansible inventories, playbooks and automation workflows, and understand how to manage changes across multiple machines without repeating manual steps."
+  },
+  {
+    "week": 9,
+    "title": "INFRASTRUCTURE AS CODE",
+    "summary": "Define and manage infrastructure through code using Terraform. Work through the supplied notes and videos to understand providers, resources, variables, state and the plan-and-apply workflow, with an emphasis on repeatable, reviewable infrastructure changes."
+  },
+  {
+    "week": 10,
+    "title": "Continuous Integration and Continuous Delivery (or Continuous Deployment)",
+    "summary": "Explore how a code change moves through automated build, test and deployment stages. This week focuses on pipeline design, release checks, artifact handling and rollback, so you can explain how teams deliver changes reliably."
+  },
+  {
+    "week": 11,
+    "title": "Project Management (JIRA)",
+    "summary": "Learn how engineering teams organize work and communicate progress using Jira. This week focuses on breaking goals into manageable tasks, tracking issues, setting priorities and making blockers and delivery responsibilities clear."
+  },
+  {
+    "week": 12,
+    "title": "CONTAINERIZATION (DOCKER)",
+    "summary": "Understand how containers package applications and their dependencies into repeatable environments. This week focuses on Docker images, Dockerfiles, containers, networking, storage and troubleshooting, preparing you to run and explain a containerized application."
+  },
+  {
+    "week": 13,
+    "title": "KUBERNETES",
+    "summary": "Explore how Kubernetes runs and manages containerized applications. This week focuses on pods, deployments, services, configuration, health checks and resource management, building toward reliable deployment and troubleshooting practices."
+  },
+  {
+    "week": 14,
+    "title": "Monitoring, Observability & Incident Response",
+    "summary": "Connect metrics, logs and traces to the health of a real application. Build monitoring and alerting skills with Prometheus and Grafana, practise a controlled incident drill and document how to detect, investigate and verify recovery from a service failure."
+  },
+  {
+    "week": 15,
+    "title": "DevSecOps, Backups & Recovery",
+    "summary": "Build security and recovery into the delivery process through least privilege, safe secrets handling and dependency and container checks. Define backup and recovery objectives, then use an isolated restore drill to demonstrate that protected data can be recovered."
+  },
+  {
+    "week": 16,
+    "title": "End-to-End DevOps Capstone & Portfolio",
+    "summary": "Bring your skills together in one reproducible application delivery project. Combine infrastructure as code, CI/CD, containers, monitoring, security and recovery, then present a working demonstration, clear documentation and sanitized portfolio evidence that explains your engineering decisions."
+  }
+]

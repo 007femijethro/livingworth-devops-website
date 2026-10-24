@@ -79,3 +79,11 @@ cd frontend && npm install && npm run dev
 ```
 
 The frontend development server proxies `/api` to `http://localhost:5000`.
+
+## Reviewer walkthrough
+
+Share `https://bridgess.co.uk/review` for an account-free product demonstration. A copyable link is also available in Admin Settings under **GTV & reviewer access**. Learner and admin perspectives use fictional records, original sample assessment content and the academy topic outline. Sample metrics are not production analytics.
+
+The `/review` route renders a separate component outside the authenticated app, academy settings provider, mobile-update lifecycle and client-error reporting. It does not issue an auth token, read or alter the saved login, contact private APIs, connect a quiz socket or upload files. Interactive lesson, activity and quiz state stays in memory and resets when the page is reloaded or the reviewer selects **Reset sample interactions**. Native-only integrations are described rather than presented as real demo integrations.
+
+Use `npm run test:reviewer --prefix frontend` and `npm run build --prefix frontend` to validate the sample routing and assessment logic. The review landing page asks search engines not to index it; this is not an access-control mechanism. No real or sensitive content may be added to the reviewer fixtures.

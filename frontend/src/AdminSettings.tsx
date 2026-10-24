@@ -1,3 +1,4 @@
+import ReviewerAccessCard from './ReviewerAccessCard';
 import { AdminProbationPanel } from './Probation';
 import { AdminPushStatus } from './PushSettings';
 import { useEffect, useState } from 'react';
@@ -48,6 +49,7 @@ export default function AdminSettings({demo=false,onNavigate}:{demo?:boolean;onN
  const shown=groups.filter(group=>query?[group.title,group.description,...group.fields.flatMap(field=>[field.label,field.help||''])].join(' ').toLowerCase().includes(query):selected==='all'||selected===group.id);
  return <section className="admin-settings">
   <header className="settings-heading"><div><p className="eyebrow">Administration</p><h2>Academy settings</h2><p>Manage your academy in one place. Save each section to apply its changes.</p></div><div><span className={`settings-state ${count?'dirty':''}`} role="status">{count?`${count} unsaved change${count===1?'':'s'}`:'All changes saved'}</span><button className="button light-border" disabled={!!saving} onClick={()=>{if(!count||window.confirm('Discard unsaved changes and reload settings?'))void load()}}>Reload saved settings</button></div></header>
+  <ReviewerAccessCard/>
   <label className="settings-search">Find a setting<input type="search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Search schedules, certificates, email…"/></label>
   <nav className="settings-nav" aria-label="Settings categories">{[{id:'all',title:'All settings'},...groups,{id:'tools',title:'System & tools'}].map(group=><button type="button" key={group.id} className={selected===group.id&&!query?'active':''} aria-pressed={selected===group.id&&!query} onClick={()=>{setSelected(group.id);setSearch('');setDiagnostic('')}}>{group.title}</button>)}</nav>
   {message.text&&!message.section&&<p className={`settings-message ${message.error?'error':''}`} role={message.error?'alert':'status'}>{message.text}</p>}
