@@ -4,3 +4,5 @@
 @media(max-width:420px){.review-topbar img.brand-logo{width:155px;height:54px}.review-capabilities,.review-profile-facts,.review-setting-examples{grid-template-columns:1fr}.review-role-switch{width:100%}.review-role-switch button{flex:1}.review-demo-lifelines .button{flex:1;padding:8px}.review-card-heading .button{width:100%}}
 
 .review-topbar>div{min-width:0}.review-quiz .question-stage .button.light-border{color:#e8f5fa!important;border-color:#82a5c2;background:transparent}@media(max-width:420px){.review-topbar .theme-toggle-label{display:none}}
+
+.review-app :is(h1,h2,h3){font-family:Manrope,sans-serif}.review-app h1[tabindex="-1"]:focus{outline:none!important}.review-selected-profile{scroll-margin-top:24px}
