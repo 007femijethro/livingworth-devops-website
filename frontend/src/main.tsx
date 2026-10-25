@@ -1,6 +1,7 @@
 import { ThemeProvider, ThemeToggle } from './Theme';
 import { AcademySettingsProvider } from './AcademySettingsContext';
 import { startMobile } from './mobile';
+import {startMobileViewport} from './mobile-interaction';
 import './mobile.css';
 import React, { useEffect, lazy, Suspense } from 'react';
 import { startMobileUpdates } from './mobile-updates';
@@ -33,8 +34,10 @@ import './account-settings.css';
 import './brand-display.css';
 import './app-polish.css';
 import './theme.css';
+import './mobile-usability.css';
 import { startClientLogging } from './client-logging';
 
+startMobileViewport();
 startMobile();
 const reviewerPath=/^\/review(?:\/|$)/.test(window.location.pathname);
 if(!reviewerPath)startClientLogging();

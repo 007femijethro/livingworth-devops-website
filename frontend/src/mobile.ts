@@ -5,6 +5,7 @@ import { AppLauncher } from '@capacitor/app-launcher';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { Network } from '@capacitor/network';
+import {handleMobileBack} from './mobile-interaction';
 
 export const isNative = Capacitor.isNativePlatform();
 import { academyOrigin, resolveAcademyUrl } from './mobile-url';
@@ -123,10 +124,9 @@ export function startMobile() {
   offline.textContent = 'You are offline. Reconnect to load classes and save your work.';
   offline.hidden = true;
   document.body.appendChild(offline);
-  void Network.getStatus().then(status => { offline.hidden = status.connected; });
+  void Network.getStatus().then(status => { offline.hidden = status.connected; }).catch(() => { offline.hidden = navigator.onLine; });
   void Network.addListener('networkStatusChange', status => { offline.hidden = status.connected; });
   void App.addListener('backButton', ({ canGoBack }) => {
-    if (canGoBack) window.history.back();
-    else void App.minimizeApp();
+    handleMobileBack(window,canGoBack,()=>window.history.back(),()=>{void App.minimizeApp();});
   });
 }

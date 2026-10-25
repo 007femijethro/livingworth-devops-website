@@ -1,0 +1,23 @@
+/* Mobile navigation owns focus and scrolling while it is open. */
+.portal-menu-backdrop,.rail-menu-close{display:none}.rail-menu-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+@media(max-width:760px){
+ .portal-menu-backdrop.open{display:block;position:fixed;inset:0;z-index:59;border:0;background:#0617297a;backdrop-filter:blur(3px);cursor:pointer}
+ .learning-rail.open{z-index:61;top:12px;bottom:calc(12px + var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)));left:12px;right:12px;border:1px solid var(--theme-border);border-radius:20px;max-width:480px;margin-left:auto;background:var(--theme-panel);box-shadow:0 20px 70px #0004;overflow-y:auto;scroll-padding:18px}
+ .native-app .learning-rail.open{top:calc(12px + var(--safe-area-inset-top,env(safe-area-inset-top,0px)));bottom:calc(12px + var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))}
+ .rail-menu-close{display:grid;place-items:center;flex-shrink:0;min-height:44px;min-width:44px;border:1px solid var(--theme-border);border-radius:12px;background:var(--theme-raised);color:var(--theme-text);font-size:1.15rem;cursor:pointer}
+ .learning-topbar{min-width:0}.learning-user{flex-shrink:0}.learning-logo{min-width:0}.learning-logo img{width:min(185px,100%)}
+ .workspace-content :is(.settings-card,.module-editor,.module-resources,.student-module-head,.student-assignment,.submission-review-list>article,.quiz-main){min-width:0}
+ .workspace-content :is(.settings-card,.student-assignment,.module-editor,.learner-report) :is(p,a,code){overflow-wrap:anywhere}
+ .workspace-content :is(button,.button){touch-action:manipulation}
+ .workspace-content :is(input,textarea,select){scroll-margin-block:100px}
+ .workspace-content :is(.submission-heading,.assignment-title){flex-wrap:wrap;gap:10px}
+ .workspace-content .submission-review-list form{grid-template-columns:minmax(0,1fr)}
+ .workspace-content .module-resources>div{flex-wrap:wrap}
+ [data-keyboard-open] .portal-bottom-nav{display:none}
+ [data-keyboard-open] .learning-workspace{padding-bottom:24px}
+ [data-keyboard-open] .native-notice,[data-keyboard-open] .native-update-status{bottom:12px}
+ .native-offline{pointer-events:none;top:auto;bottom:calc(84px + var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)));font-size:.8rem;padding:10px 14px}
+ [data-keyboard-open] .native-offline{bottom:12px}
+}
+@media(max-width:380px){.learning-topbar{padding-inline:10px;gap:8px}.learning-user{gap:4px}.learning-user .profile-avatar{display:none}.workspace-heading h1{font-size:1.65rem}.workspace-content .quiz-lifeline-buttons{gap:6px}}
+@media(prefers-reduced-motion:reduce){.learning-app *, .auth-page *{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}

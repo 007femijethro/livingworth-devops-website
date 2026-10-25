@@ -11,7 +11,7 @@
     "android:sync": "npm run test:mobile && npm run build && cap sync android",
     "android:open": "cap open android",
     "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug",
-    "test:mobile": "node --experimental-strip-types --test src/mobile-url.test.mjs src/mobile-update-engine.test.mjs scripts/native-runtime.test.mjs src/continue-learning.test.mjs src/quiz-schedule-time.test.mjs src/biometric-engine.test.mjs scripts/release-signing.test.mjs",
+    "test:mobile": "node --experimental-strip-types --test src/mobile-interaction.test.mjs src/mobile-url.test.mjs src/mobile-update-engine.test.mjs scripts/native-runtime.test.mjs src/continue-learning.test.mjs src/quiz-schedule-time.test.mjs src/biometric-engine.test.mjs scripts/release-signing.test.mjs",
     "test:reviewer": "node --experimental-strip-types --test src/reviewer-data.test.mjs"
   },
   "dependencies": {
