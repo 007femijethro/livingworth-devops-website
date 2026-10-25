@@ -68,6 +68,7 @@ export async function requireAuth(req, res, next) {
     }
     next();
   } catch (error) {
+    if(!['JsonWebTokenError','TokenExpiredError','NotBeforeError'].includes(error?.name))return next(error);
     res.status(401).json({
       message: error?.name === 'TokenExpiredError'
         ? 'Your student session has expired. Please log in again.'

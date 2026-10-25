@@ -27,11 +27,15 @@ These are browser-driven checks performed in this session, not a new unattended 
 - Small-screen marking forms stack, long resource rows wrap, focus targets have scroll margins, and reduced-motion preferences are respected.
 - Admin Settings includes **Open responsive preview** so the same real views can be inspected at 320, 360, 390, 430, 768 and 1280px, with a portrait/landscape toggle.
 
+## Session reliability
+
+A preview reload returned to the homepage during deployment. The exact failed request was not captured, but the code review found two concrete problems: the client erased saved authentication after every failed startup check, and the authentication middleware treated database errors as invalid credentials. Temporary server/network failures now keep the saved token and show a Retry connection screen; the server forwards infrastructure errors to its normal error handler. Invalid, expired and deleted-account sessions remain rejected. Startup checks are cancelled when replaced, and malformed successful responses cannot enter the portal. Regression tests cover outage versus authentication rejection.
+
 ## Automated validation
 
 - Strict TypeScript and production Vite build passed after the changes.
-- 27 mobile regression tests passed, including keyboard/viewport lifecycle, native Back, signed updates, API routing, biometric error handling, learning continuation and quiz scheduling.
-- 109 backend tests and four reviewer tests passed during the preceding mobile interaction pass. No backend changes were made in this responsive-layout pass.
+- 28 mobile regression tests passed, including keyboard/viewport lifecycle, native Back, signed updates, API routing, biometric error handling, learning continuation and quiz scheduling.
+- 110 backend tests passed after the session-reliability fix; four reviewer tests also passed earlier in the review.
 
 ## Remaining limits
 

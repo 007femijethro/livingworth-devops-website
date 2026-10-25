@@ -1,4 +1,5 @@
 // @ts-nocheck
+import {sessionRestoreAction} from './session-restore';
 import QuizCompletion,{QuizCountdownControl} from './QuizCompletion';
 import {StudentAccountBadge,StudentDirectorySummary,StudentAccountDetails,StudentScoreDetails,StudentClassActivityDetails} from './StudentRecordDetails';
 import QuizScheduleEditor, {QuizScheduleFields, QuizScheduleStatus} from './QuizSchedule';
@@ -58,7 +59,7 @@ async function api(path, options = {}) {
       localStorage.removeItem("lw_token");
       window.dispatchEvent(new CustomEvent("lw-session-expired", { detail: data.message }));
     }
-    throw new Error(data.message || "Something went wrong.");
+    throw Object.assign(new Error(data.message || "Something went wrong."), {status:response.status});
   }
   if (options.method && options.method !== 'GET' && /assignment|submission|learning/.test(path)) window.dispatchEvent(new Event('lw-assignments-changed'));
   return data;
@@ -3701,6 +3702,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authNotice, setAuthNotice] = useState("");
+  const [restoreVersion,setRestoreVersion]=useState(0);
   const [picturePromptDismissed, setPicturePromptDismissed] = useState(false);
   useEffect(() => {
     const changed = (event) => setUser(current => current && String(current.id) === String(event.detail.userId) ? {...current, profilePicture:event.detail.profilePicture} : current);
@@ -3750,18 +3752,28 @@ export default function App() {
     const saved = isNative ? savedBiometric() : null;
     if (saved) { localStorage.removeItem('lw_token'); setPage(`${saved.portal}-login`); setLoading(false); return; }
     const token = localStorage.getItem("lw_token");
-    if (token)
-      api("/auth/me")
+    if (token) {
+      const controller=new AbortController();
+      api("/auth/me",{signal:controller.signal})
         .then((u) => {
+          if(controller.signal.aborted)return;
+          if(!u?.id||!['student','mentor','admin'].includes(u.role))throw new Error('Unable to verify the saved session.');
           setUser(u);
           setPage("dashboard");
         })
-        .catch((error) => { localStorage.removeItem("lw_token"); if (error.message.startsWith("Your student session has expired")) { setAuthNotice(error.message); setPage("student-login"); } })
-        .finally(() => setLoading(false));
-    else setLoading(false);
-  }, []);
+        .catch((error) => {
+          if(controller.signal.aborted)return;
+          if(sessionRestoreAction(error)==='retry'){setPage('session-unavailable');return;}
+          localStorage.removeItem("lw_token");setAuthNotice(error.message);
+          setPage(window.location.pathname.startsWith('/portal/student/')?'student-login':'staff-login');
+        })
+        .finally(() => {if(!controller.signal.aborted)setLoading(false)});
+      return()=>controller.abort();
+    } else setLoading(false);
+  }, [restoreVersion]);
   if (loading)
     return <div className="loading">Loading Livingworth Academy…</div>;
+  if(page==='session-unavailable')return <main className="mobile-welcome"><BrandLogo alt={academy.academyName}/><h1>We couldn’t reconnect</h1><p>Your saved sign-in is still on this device. Check your connection and try again.</p><button className="button primary" onClick={()=>{setLoading(true);setRestoreVersion(v=>v+1)}}>Retry connection</button><button className="button light-border" onClick={()=>void logout()}>Sign out</button></main>;
   if (page === "mobile-welcome") return (
     <main className="mobile-welcome">
       <BrandLogo alt="Livingworth Academy" />
@@ -3780,7 +3792,7 @@ export default function App() {
   if (page === "student-login")
     return <Login portal="student" navigate={navigate} onLogin={onLogin} notice={authNotice} />;
   if (["staff-login", "mentor-login", "admin-login"].includes(page))
-    return <Login portal="staff" navigate={navigate} onLogin={onLogin} />;
+    return <Login portal="staff" navigate={navigate} onLogin={onLogin} notice={authNotice} />;
   if (page === "dashboard" && user) {
     if (user.role === "student" && !user.demo && !user.mustChangePassword && !user.profilePicture && !picturePromptDismissed)
       return <ProfilePictureWelcome user={user} onContinue={() => setPicturePromptDismissed(true)} logout={logout}/>;
