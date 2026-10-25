@@ -43,6 +43,7 @@ const reviewerPath=/^\/review(?:\/|$)/.test(window.location.pathname);
 if(!reviewerPath)startClientLogging();
 const ReviewerPortal=lazy(()=>import('./ReviewerPortal'));
 const LiveReviewerPortal=lazy(()=>import('./LiveReviewerPortal'));
+const ResponsivePreview=lazy(()=>import('./ResponsivePreview'));
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Application root element was not found.');
@@ -53,5 +54,5 @@ function MobileLifecycle() {
 }
 
 createRoot(root).render(
-  <React.StrictMode><ThemeProvider>{reviewerPath?<Suspense fallback={<div className="review-loading">Loading reviewer portal…</div>}>{window.location.pathname==='/review/live'?<LiveReviewerPortal/>:<ReviewerPortal/>}</Suspense>:<AcademySettingsProvider><MobileLifecycle /><App /><ThemeToggle standalone /></AcademySettingsProvider>}</ThemeProvider></React.StrictMode>
+  <React.StrictMode><ThemeProvider>{window.location.pathname==='/responsive-preview'?<Suspense fallback={<div className="review-loading">Loading responsive preview…</div>}><ResponsivePreview/></Suspense>:reviewerPath?<Suspense fallback={<div className="review-loading">Loading reviewer portal…</div>}>{window.location.pathname==='/review/live'?<LiveReviewerPortal/>:<ReviewerPortal/>}</Suspense>:<AcademySettingsProvider><MobileLifecycle /><App /><ThemeToggle standalone /></AcademySettingsProvider>}</ThemeProvider></React.StrictMode>
 );
