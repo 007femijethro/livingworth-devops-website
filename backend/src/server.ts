@@ -1,5 +1,6 @@
 // @ts-nocheck
 import 'dotenv/config';
+import {registerReviewerAccessRoutes} from './reviewer-access.js';
 import {registerProbationRoutes,startProbationScheduler} from './probation.js';
 import { registerBiometricLoginRoutes } from './biometric-login.js';
 import cors from 'cors';
@@ -46,6 +47,7 @@ app.use(requestLogger);
 app.use('/api/admin/quizzes/import', express.text({ type: ['text/csv', 'text/plain'], limit: '2mb' }));
 app.use(express.json());
 registerAcademySettingsRoutes(app, pool, requireAuth, requireAdmin);
+registerReviewerAccessRoutes(app,pool,requireAuth,requireAdmin);
 registerProfilePictureRoutes(app, pool, requireAuth);
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || '/app/uploads'));
 
