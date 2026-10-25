@@ -21,3 +21,20 @@
 }
 @media(max-width:380px){.learning-topbar{padding-inline:10px;gap:8px}.learning-user{gap:4px}.learning-user .profile-avatar{display:none}.workspace-heading h1{font-size:1.65rem}.workspace-content .quiz-lifeline-buttons{gap:6px}}
 @media(prefers-reduced-motion:reduce){.learning-app *, .auth-page *{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
+/* Real phone-width checks: intrinsic form sizes must not force a grid wider than its screen. */
+@media(max-width:760px){
+ .workspace-content :is(.quiz-admin-grid,.quiz-create-grid){grid-template-columns:minmax(0,1fr)}
+ .workspace-content :is(form,fieldset,label,input,select,textarea,.quiz-builder,.csv-import){min-width:0}
+ .workspace-content fieldset{min-inline-size:0}
+ .workspace-content :is(input:not([type=checkbox]):not([type=radio]),select,textarea){max-width:100%;box-sizing:border-box}
+ .workspace-content .quiz-builder :is(input:not([type=checkbox]):not([type=radio]),select,textarea){width:100%}
+ .workspace-content .profile-picture-editor form>*{max-width:100%}
+ .workspace-content .profile-picture-controls{width:100%;min-width:0}
+ .workspace-content .profile-picture-controls input[type=file]{width:100%;min-width:0;font-size:.85rem}
+ .workspace-content .profile-picture-controls .button{max-width:100%;white-space:normal}
+}
+@media(max-width:600px){
+ .workspace-content .assignment-overview{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .workspace-content .assignment-overview>div:last-child:nth-child(odd){grid-column:1/-1}
+ .workspace-content .assignment-overview span{overflow-wrap:normal;word-break:normal}
+}
