@@ -3785,7 +3785,7 @@ export default function App() {
     </main>
   );
   if (page === "verify-certificate") return <CertificateVerification navigate={navigate} initialNumber={verificationNumber} />;
-  if (page === "register" && !academy.registrationOpen) return <main className="mobile-welcome"><h1>Applications are currently closed</h1><p>Contact the academy for the next intake.</p>{academy.supportEmail && <a href={`mailto:${academy.supportEmail}`}>Email the academy</a>}<button className="button" onClick={() => navigate("home")}>Back to homepage</button></main>;
+  if (page === "register" && !academy.registrationOpen) return <main className="mobile-welcome"><h1>Applications are currently closed</h1><p>Contact the academy for the next intake. Thank you.</p>{academy.supportEmail && <a href={`mailto:${academy.supportEmail}`}>Email the academy</a>}<button className="button" onClick={() => navigate("home")}>Back to homepage</button></main>;
   if (page === "register") return <Register navigate={navigate} />;
   if (page === "forgot-password") return <ForgotPassword navigate={navigate} />;
   if (page === "reset-password") return <ResetPassword navigate={navigate} token={resetToken} />;
