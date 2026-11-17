@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { parseRubric, scoreRubric } from './assignment-rubric.js';
 import crypto from 'node:crypto';
 import { programmeProgress } from './programme-progress.js';
 import fs from 'node:fs';
@@ -59,16 +60,16 @@ export async function modulesFor(pool, studentId = null, staff = false, assignme
       : await pool.execute('SELECT id, title, material_type AS materialType, resource_url AS resourceUrl, lesson_content AS lessonContent, original_name AS originalName, visible FROM learning_materials WHERE module_id = ? ORDER BY display_order, created_at, id', [module.id]);
     const [assignments] = studentId
       ? await pool.execute(
-          `SELECT a.id, a.title, a.instructions, a.due_at AS dueAt, a.max_score AS maxScore, a.upload_slots AS uploadSlots,
+          `SELECT a.id, a.title, a.instructions, a.due_at AS dueAt, a.max_score AS maxScore, a.upload_slots AS uploadSlots, a.rubric,
             a.assignment_type AS assignmentType, a.closed_at AS closedAt,
             s.id AS submissionId, s.submission_url AS submissionUrl, s.note AS submissionNote, s.file_name AS fileName, s.files,
-            s.status AS submissionStatus, s.score, s.feedback, s.submitted_at AS submittedAt, s.reviewed_at AS reviewedAt,
+            s.status AS submissionStatus, s.score, s.feedback, s.submitted_at AS submittedAt, s.reviewed_at AS reviewedAt, s.grade_breakdown AS gradeBreakdown,
             CASE WHEN s.id IS NOT NULL AND s.submitted_at > a.due_at THEN TRUE ELSE FALSE END AS isLate
            FROM assignments a LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.student_id = ?
            WHERE a.module_id = ? ORDER BY a.display_order, a.due_at, a.id`, [studentId, module.id]
         )
       : await pool.execute(
-          'SELECT id, title, instructions, due_at AS dueAt, max_score AS maxScore, upload_slots AS uploadSlots, assignment_type AS assignmentType, closed_at AS closedAt FROM assignments WHERE module_id = ? ORDER BY display_order, due_at, id',
+          'SELECT id, title, instructions, due_at AS dueAt, max_score AS maxScore, upload_slots AS uploadSlots, rubric, assignment_type AS assignmentType, closed_at AS closedAt FROM assignments WHERE module_id = ? ORDER BY display_order, due_at, id',
           [module.id]
         );
     const [activities] = studentId
@@ -165,7 +166,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const modules = await modulesFor(pool, null, true);
       const [submissions] = await pool.query(`SELECT s.id, s.assignment_id AS assignmentId, s.student_id AS studentId,
         u.full_name AS studentName, u.email, s.submission_url AS submissionUrl, s.note, s.status, s.score, s.file_name AS fileName, s.files,
-        s.feedback, s.submitted_at AS submittedAt, a.title AS assignmentTitle, a.due_at AS dueAt, a.assignment_type AS assignmentType,
+        s.feedback, s.review_draft AS reviewDraft, s.grade_breakdown AS gradeBreakdown, s.submitted_at AS submittedAt, a.title AS assignmentTitle, a.due_at AS dueAt, a.assignment_type AS assignmentType,
         CASE WHEN s.submitted_at > a.due_at THEN TRUE ELSE FALSE END AS isLate
         FROM assignment_submissions s JOIN users u ON u.id = s.student_id JOIN assignments a ON a.id = s.assignment_id
         ORDER BY CASE WHEN s.status IN ('submitted', 'needs_correction') THEN 1 ELSE 2 END, s.submitted_at DESC`);
@@ -259,7 +260,12 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const maxScore = Number.parseInt(req.body.maxScore, 10);
       if (!title || !instructions || !dueAt || !maxScore || maxScore < 1 || maxScore > 1000) return res.status(400).json({ message: 'Add a valid title, instructions, deadline and score.' });
       const slots = readSlots(req, res); if (!slots) return;
-      const [result] = await pool.execute('UPDATE assignments SET title = ?, instructions = ?, due_at = ?, max_score = ?, upload_slots = COALESCE(?::jsonb, upload_slots) WHERE id = ?', [title, instructions, dueAt, maxScore, req.body.uploadSlots == null ? null : JSON.stringify(slots), req.params.id]);
+      let rubric = null;
+      if (req.body.rubricText != null) {
+        try { rubric = JSON.stringify(parseRubric(req.body.rubricText, maxScore)); }
+        catch (error) { return res.status(400).json({ message: error.message }); }
+      }
+      const [result] = await pool.execute('UPDATE assignments SET title = ?, instructions = ?, due_at = ?, max_score = ?, upload_slots = COALESCE(?::jsonb, upload_slots), rubric = COALESCE(?::jsonb, rubric) WHERE id = ?', [title, instructions, dueAt, maxScore, req.body.uploadSlots == null ? null : JSON.stringify(slots), rubric, req.params.id]);
       if (!result.affectedRows) return res.status(404).json({ message: 'Assignment not found.' });
       res.json({ message: 'Assignment updated.' });
     } catch (error) { next(error); }
@@ -382,7 +388,10 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       if (!title || !instructions || !dueAt) return res.status(400).json({ message: 'Add a title, instructions and deadline.' });
       const slots = assignmentType === 'portal' ? readSlots(req, res) : [];
       if (!slots) return;
-      await pool.execute('INSERT INTO assignments (module_id, title, instructions, due_at, max_score, created_by, upload_slots, assignment_type, display_order) SELECT ?, ?, ?, ?, ?, ?, ?::jsonb, ?, COALESCE(MAX(display_order), 0) + 1 FROM assignments WHERE module_id = ?', [req.params.id, title, instructions, dueAt, maxScore, req.user.id, JSON.stringify(slots), assignmentType, req.params.id]);
+      let rubric;
+      try { rubric = parseRubric(req.body.rubricText ?? '', maxScore); }
+      catch (error) { return res.status(400).json({ message: error.message }); }
+      await pool.execute('INSERT INTO assignments (module_id, title, instructions, due_at, max_score, created_by, upload_slots, assignment_type, rubric, display_order) SELECT ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?::jsonb, COALESCE(MAX(display_order), 0) + 1 FROM assignments WHERE module_id = ?', [req.params.id, title, instructions, dueAt, maxScore, req.user.id, JSON.stringify(slots), assignmentType, JSON.stringify(rubric), req.params.id]);
       await notifyStudents(pool, { title: `New assignment: ${title}`, message: `A new assignment is due ${new Date(dueAt).toLocaleString('en-GB')}.`, category: 'assignment', actionTarget: 'Learning' });
       res.status(201).json({ message: 'Assignment created.' });
     } catch (error) { next(error); }
@@ -434,7 +443,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       const fileName = files[0]?.name || null;
       await pool.execute(`INSERT INTO assignment_submissions (assignment_id, student_id, submission_url, note, file_path, file_name, files)
         VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (assignment_id, student_id) DO UPDATE SET submission_url = EXCLUDED.submission_url, note = EXCLUDED.note, file_path = EXCLUDED.file_path, file_name = EXCLUDED.file_name, files = EXCLUDED.files,
-        status = 'submitted', score = NULL, feedback = NULL, reviewed_at = NULL, reviewed_by = NULL, submitted_at = CURRENT_TIMESTAMP`,
+        status = 'submitted', score = NULL, feedback = NULL, review_draft = NULL, grade_breakdown = NULL, reviewed_at = NULL, reviewed_by = NULL, submitted_at = CURRENT_TIMESTAMP`,
         [req.params.id, req.user.id, submissionUrl, String(req.body.note || '').trim(), filePath, fileName, JSON.stringify(files)]);
       saved = true;
       await Promise.all(attachments(previous[0]).filter(old => !files.some(f => f.path === old.path)).map(file => fs.promises.unlink(path.join(assignmentDirectory, path.basename(file.path))).catch(() => {})));
@@ -463,7 +472,7 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
       if (!reason || reason.length > 500) return res.status(400).json({ message: 'Enter a rejection reason (1–500 characters).' });
       const [rows] = await pool.execute('SELECT s.student_id AS studentId, s.status, a.title FROM assignment_submissions s JOIN assignments a ON a.id = s.assignment_id WHERE s.id = ?', [req.params.id]);
       if (!rows.length) return res.status(404).json({ message: 'Submission not found.' });
-      const [result] = await pool.execute("UPDATE assignment_submissions SET status = 'rejected', score = NULL, feedback = ?, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ? AND status <> 'rejected'", [reason, req.user.id, req.params.id]);
+      const [result] = await pool.execute("UPDATE assignment_submissions SET status = 'rejected', score = NULL, feedback = ?, review_draft = NULL, grade_breakdown = NULL, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ? AND status <> 'rejected'", [reason, req.user.id, req.params.id]);
       if (!result.affectedRows) return res.status(409).json({ message: 'This submission has already been rejected.' });
       await notifyUser(pool, rows[0].studentId, { title: 'Assignment needs to be redone', message: `${reason} Open Assignments to redo and resubmit your work.`, emailMessage: `Your submission for “${rows[0].title}” needs to be redone. Reason: ${reason}. Sign in to your student portal, open Assignments, and submit the corrected work for another review.`, category: 'review', actionTarget: 'Assignments' });
       res.json({ message: 'Assignment rejected for correction. The student can now redo and resubmit it; email delivery follows your email settings.' });
@@ -473,10 +482,25 @@ export function registerLearningRoutes(app, pool, requireAuth, requireStaff) {
   app.patch('/api/staff/submissions/:id/review', requireAuth, requireStaff, async (req, res, next) => {
     try {
       const feedback = String(req.body.feedback || '').trim();
-      const score = req.body.score === '' || req.body.score == null ? null : Number.parseInt(req.body.score, 10);
+      const draft = req.body.draft === true;
+      const [rows] = await pool.execute('SELECT a.max_score AS maxScore, a.rubric, s.grade_breakdown AS gradeBreakdown FROM assignment_submissions s JOIN assignments a ON a.id = s.assignment_id WHERE s.id = ?', [req.params.id]);
+      if (!rows.length) return res.status(404).json({ message: 'Submission not found.' });
+      const { maxScore, rubric, gradeBreakdown } = rows[0];
+      const criteria = gradeBreakdown?.length ? gradeBreakdown.map(({ label, max }) => ({ label, max })) : rubric;
+      const limit = gradeBreakdown?.length ? criteria.reduce((sum, row) => sum + row.max, 0) : maxScore;
+      let score = req.body.score === '' || req.body.score == null ? null : Number(req.body.score);
+      let breakdown = null;
+      if (criteria?.length) {
+        try { ({ score, breakdown } = scoreRubric(criteria, req.body.scores, draft, limit)); }
+        catch (error) { return res.status(400).json({ message: error.message }); }
+      }
+      if ((!draft || score !== null) && (!Number.isInteger(score) || score < 0 || score > limit)) return res.status(400).json({ message: 'Enter a valid score within the assignment maximum.' });
+      if (draft) {
+        await pool.execute('UPDATE assignment_submissions SET review_draft = ?::jsonb WHERE id = ?', [JSON.stringify({ score, feedback, breakdown }), req.params.id]);
+        return res.json({ message: 'Private review draft saved.' });
+      }
       if (!feedback) return res.status(400).json({ message: 'Add final feedback.' });
-      if (score === null || score < 0 || score > 1000) return res.status(400).json({ message: 'Enter the final score.' });
-      const [result] = await pool.execute("UPDATE assignment_submissions SET status = 'completed', score = ?, feedback = ?, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ?", [score, feedback, req.user.id, req.params.id]);
+      const [result] = await pool.execute("UPDATE assignment_submissions SET status = 'completed', score = ?, feedback = ?, grade_breakdown = ?::jsonb, review_draft = NULL, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ?", [score, feedback, breakdown ? JSON.stringify(breakdown) : null, req.user.id, req.params.id]);
       if (!result.affectedRows) return res.status(404).json({ message: 'Submission not found.' });
       const [submissions] = await pool.execute('SELECT student_id AS studentId FROM assignment_submissions WHERE id = ?', [req.params.id]);
       if (submissions.length) await notifyUser(pool, submissions[0].studentId, { title: 'Final assignment result', message: feedback.slice(0, 500), category: 'review', actionTarget: 'Learning' });
