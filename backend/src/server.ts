@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { startMissingWorkAlerts } from './missing-work.js';
 import 'dotenv/config';
 import {registerReviewerAccessRoutes} from './reviewer-access.js';
 import {registerProbationRoutes,startProbationScheduler} from './probation.js';
@@ -777,7 +778,7 @@ async function start() {
   startReminderScheduler(pool);
   startPushWorker(pool);
   startLiveClassAttendanceScheduler(pool);
-  httpServer.listen(port, '0.0.0.0', () => {logger.info('server_started', { port });startProbationScheduler(pool,io);});
+  httpServer.listen(port, '0.0.0.0', () => {logger.info('server_started', { port });startProbationScheduler(pool,io);startMissingWorkAlerts(pool,httpServer);});
 }
 
 start().catch((error) => { logger.error('server_start_failed', { error }); process.exit(1); });

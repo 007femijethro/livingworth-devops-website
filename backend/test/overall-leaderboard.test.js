@@ -25,6 +25,7 @@ test('overall leaderboard normalizes quiz, assignment and attendance scores over
       { studentId: 2, status: 'present' }
     ]];
     if (sql.includes('FROM activity_attempts')) return [[]];
+    if (sql.includes('lw_assignment_submissions')) return [[]];
     throw new Error(sql);
   }};
   registerAnalyticsRoutes(app, pool, (req, _res, next) => { req.user = { role: 'mentor' }; next(); }, (_req, _res, next) => next());
@@ -37,7 +38,7 @@ test('overall leaderboard normalizes quiz, assignment and attendance scores over
     assert.equal(data.leaderboard[0].fullName, 'Ada Student');
     assert.deepEqual(data.leaderboard[0], {
       id: 1, fullName: 'Ada Student', email: 'ada@example.com',
-      quizScore: 75, quizCount: 2, activityScore: null, activityCount: 0, assignmentScore: 80, assignmentCount: 2,
+      quizScore: 75, quizCount: 2, activityScore: null, activityCount: 0, assignmentScore: 80, assignmentCount: 2, temporaryZeros: [],
       attendanceScore: 67, attendanceCount: 3, categoriesCounted: 3, overallScore: 74
     });
     assert.equal(data.leaderboard[1].overallScore, 100);
@@ -53,6 +54,7 @@ test('student leaderboard returns the top 10 and the signed-in student without e
     if (sql.includes('FROM quiz_attempts')) return [students.map((student, index) => ({ studentId: student.id, quizId: 10, correctCount: 12 - index, totalQuestions: 12 }))];
     if (sql.includes('FROM assignment_submissions') || sql.includes('FROM attendance')) return [[]];
     if (sql.includes('FROM activity_attempts')) return [[]];
+    if (sql.includes('lw_assignment_submissions')) return [[]];
     throw new Error(sql);
   }};
   registerAnalyticsRoutes(app, pool, (req, _res, next) => { req.user = { id: 12, role: 'student' }; next(); }, (_req, _res, next) => next());

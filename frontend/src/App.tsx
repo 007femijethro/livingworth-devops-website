@@ -1602,8 +1602,9 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
   const performance = data.overall?.currentStudent;
   const eligibility = data.overall?.certificateEligibility;
   const overallScore = performance?.overallScore ?? null;
-  const scoreGap = eligibility && overallScore !== null ? Math.max(0, eligibility.requiredScore - overallScore) : eligibility?.requiredScore || 75;
-  const scoreProgress = overallScore === null ? 0 : Math.min(100, Math.round(overallScore * 100 / (eligibility?.requiredScore || 75)));
+  const certificateScore = eligibility?.overallScore ?? null;
+  const scoreGap = eligibility && certificateScore !== null ? Math.max(0, eligibility.requiredScore - certificateScore) : eligibility?.requiredScore || 75;
+  const scoreProgress = certificateScore === null ? 0 : Math.min(100, Math.round(certificateScore * 100 / (eligibility?.requiredScore || 75)));
   const performanceAreas = performance ? [
     { label: "Quiz", score: performance.quizScore, page: "Live quiz" },
     { label: "Assignments", score: performance.assignmentScore, page: "Assignments" },
@@ -1627,6 +1628,11 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
       {message && <div className="progress-loading">{message}</div>}
       {!message && <>
         {data.announcements.announcements[0] && <button className="dashboard-announcement" onClick={() => onNavigate("Announcements")}><span>{data.announcements.announcements[0].category}</span><div><strong>{data.announcements.announcements[0].title}</strong><p>{data.announcements.announcements[0].message}</p></div><b>View update</b></button>}
+        {performance?.temporaryZeros?.length > 0 && <section className="attention-card" aria-label="Temporary zeros">
+          <h2>Missing work: temporary zeros</h2>
+          <p>These items currently count as zero in your overall grade. Submit assignments or finish the quizzes to clear the temporary zeros. Ask your mentor to reopen anything you can’t access.</p>
+          <ul>{performance.temporaryZeros.map(item => <li key={item.kind + item.id}><button type="button" className="button light-border" onClick={() => onNavigate(item.kind === "quiz" ? "Live quiz" : "Assignments")}>{item.title} · 0/{item.maxPoints}</button></li>)}</ul>
+        </section>}
         <div className="progress-metrics">
           <button onClick={() => onNavigate("Attendance")}><span>Attendance</span><strong>{data.attendance.summary.percentage}%</strong><small>{data.attendance.summary.attended} of {data.attendance.summary.total} counted sessions</small></button>
           <button onClick={() => onNavigate("Leaderboard")}><span>Overall score</span><strong>{overallScore === null ? "—" : `${overallScore}/100`}</strong><small>{performance ? `Position #${performance.rank} · ${performance.categoriesCounted}/4 categories` : "Complete activities to receive a score"}</small></button>
@@ -1634,8 +1640,8 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
           <button onClick={() => onNavigate("Live quiz")}><span>Quiz average</span><strong>{quizAverage}%</strong><small>{data.quizzes.length} completed attempt{data.quizzes.length === 1 ? "" : "s"}</small></button>
         </div>
         <section className={`overview-certificate-card ${eligibility?.eligible ? "eligible" : "not-eligible"}`}>
-          <div className="certificate-score-ring" style={{ background: `conic-gradient(${eligibility?.eligible ? "#11855f" : "#d29b32"} ${scoreProgress * 3.6}deg, var(--theme-border, #e3e9e6) 0deg)` }}><span>{overallScore === null ? "—" : overallScore}</span><small>/100</small></div>
-          <div className="certificate-overview-copy"><span className="progress-kicker">Certificate journey</span><h2>{eligibility?.eligible ? "You are certificate eligible" : "Keep building toward your certificate"}</h2><p>{eligibility?.eligible ? `Excellent work — your overall score meets the ${eligibility.requiredScore}/100 certificate requirement.` : overallScore === null ? `Your overall score will appear as you complete quizzes, assignments and attendance. The certificate requirement is ${eligibility?.requiredScore || 75}/100.` : `You are ${scoreGap} point${scoreGap === 1 ? "" : "s"} away from the ${eligibility.requiredScore}/100 certificate requirement.`}</p><div className="certificate-threshold"><span style={{ width: `${scoreProgress}%` }} /></div><small>{overallScore === null ? "Start completing assessed activities" : eligibility?.eligible ? "Requirement achieved" : `${overallScore}/100 current · ${eligibility?.requiredScore || 75}/100 required`}</small></div>
+          <div className="certificate-score-ring" style={{ background: `conic-gradient(${eligibility?.eligible ? "#11855f" : "#d29b32"} ${scoreProgress * 3.6}deg, var(--theme-border, #e3e9e6) 0deg)` }}><span>{certificateScore === null ? "—" : certificateScore}</span><small>/100</small></div>
+          <div className="certificate-overview-copy"><span className="progress-kicker">Certificate journey</span><h2>{eligibility?.eligible ? "You are certificate eligible" : "Keep building toward your certificate"}</h2><p>{eligibility?.eligible ? `Excellent work — your overall score meets the ${eligibility.requiredScore}/100 certificate requirement.` : certificateScore === null ? `Your overall score will appear as you complete quizzes, assignments and attendance. The certificate requirement is ${eligibility?.requiredScore || 75}/100.` : `You are ${scoreGap} point${scoreGap === 1 ? "" : "s"} away from the ${eligibility.requiredScore}/100 certificate requirement.`}</p><div className="certificate-threshold"><span style={{ width: `${scoreProgress}%` }} /></div><small>{certificateScore === null ? "Start completing assessed activities" : eligibility?.eligible ? "Requirement achieved" : `${certificateScore}/100 current · ${eligibility?.requiredScore || 75}/100 required`}</small></div>
           <div className="certificate-score-breakdown">{performanceAreas.map((area) => <button key={area.label} onClick={() => onNavigate(area.page)}><span>{area.label}</span><strong>{area.score === null ? "—" : area.score}</strong></button>)}{focusArea && !eligibility?.eligible && <button className="focus-recommendation" onClick={() => onNavigate(focusArea.page)}><span>Best next move</span><strong>Improve {focusArea.label.toLowerCase()} →</strong></button>}<button className="certificate-overview-link" onClick={() => onNavigate("Certificates")}><span>Credential status</span><strong>View certificates →</strong></button></div>
         </section>
         <div className="progress-columns">

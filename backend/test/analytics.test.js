@@ -5,7 +5,7 @@ import {buildOverallLeaderboard,registerAnalyticsRoutes} from '../dist/analytics
 function fixture() {
  const data={students:[{id:1,fullName:'Learner A'},{id:2,fullName:'Learner B'},{id:3,fullName:'Learner C'},{id:4,fullName:'Learner D'}],quizzes:[{studentId:1,quizId:1,correctCount:8,totalQuestions:10},{studentId:2,quizId:1,correctCount:10,totalQuestions:10}],assignments:[{studentId:1,score:90,maxScore:100}],attendance:[{studentId:1,status:'present'},{studentId:1,status:'excused'}],activities:[{studentId:1,activityId:1,correctCount:3,totalQuestions:15},{studentId:1,activityId:1,correctCount:12,totalQuestions:15},{studentId:1,activityId:2,correctCount:6,totalQuestions:10},{studentId:3,activityId:1,correctCount:0,totalQuestions:15}]};
  const calls=[];
- const pool={query:async sql=>{calls.push(sql);return [sql.includes('FROM users')?data.students:sql.includes('FROM quiz_attempts')?data.quizzes:sql.includes('FROM assignment_submissions')?data.assignments:sql.includes('FROM activity_attempts')?data.activities:data.attendance]}};
+ const pool={query:async sql=>{calls.push(sql);return [sql.includes('FROM users')?data.students:sql.includes('FROM quiz_attempts')?data.quizzes:sql.includes('FROM assignment_submissions')?data.assignments:sql.includes('FROM activity_attempts')?data.activities:sql.includes("lw_missing") || sql.includes("lw_assignments") ? (data.missing || []) : data.attendance]}};
  return {data,pool,calls};
 }
 test('class activity uses the best attempt per activity and equally weights four categories',async()=>{
@@ -26,4 +26,24 @@ test('deleting an attempt recalculates the current activity grade and overall sc
 test('student leaderboard exposes aggregate activity grades without answer reviews',async()=>{
  const {pool}=fixture();const app=express();registerAnalyticsRoutes(app,pool,(req,res,next)=>{if(!req.get('x-role'))return res.sendStatus(401);req.user={id:2,role:req.get('x-role')};next()},(req,res,next)=>next());const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const url=`http://127.0.0.1:${server.address().port}/api/student/overall-leaderboard`;
  try{assert.equal((await fetch(url)).status,401);assert.equal((await fetch(url,{headers:{'x-role':'mentor'}})).status,403);const response=await fetch(url,{headers:{'x-role':'student'}});const body=await response.json();assert.equal(response.status,200);assert.equal(body.currentStudent.id,2);assert.equal(body.topTen[0].activityScore,70);assert.equal(body.topTen[0].activityCount,2);assert.equal(body.topTen[0].categoriesCounted,4);assert.ok(!JSON.stringify(body).includes('correctAnswers'));assert.ok(!JSON.stringify(body).includes('review'));}finally{server.closeAllConnections();await new Promise(r=>server.close(r))}
+});
+
+test('missing work counts as a temporary zero only in the provisional grade and clears on completion', async () => {
+ const {pool,data}=fixture();
+ data.missing=[
+  {studentId:1,kind:'quiz',workId:8,title:'Missed quiz',maxPoints:100},
+  {studentId:1,kind:'assignment',workId:9,title:'Missing lab',maxPoints:50},
+ ];
+ const score=async includeProvisional=>(await buildOverallLeaderboard(pool,{includeProvisional})).leaderboard.find(s=>s.id===1);
+ const provisional=await score(true);
+ assert.equal(provisional.quizScore,40);
+ assert.equal(provisional.assignmentScore,60);
+ assert.equal(provisional.temporaryZeros.length,2);
+ assert.equal((await score(false)).overallScore,85);
+ data.missing=[];
+ data.quizzes.push({studentId:1,quizId:8,correctCount:9,totalQuestions:10});
+ const after=await score(true);
+ assert.equal(after.quizScore,85);
+ assert.equal(after.assignmentScore,90);
+ assert.deepEqual(after.temporaryZeros,[]);
 });

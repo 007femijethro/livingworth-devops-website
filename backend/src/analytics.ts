@@ -1,8 +1,9 @@
 // @ts-nocheck
+import { missingWork } from "./missing-work.js";
 import { getAcademySettings } from './academy-settings.js';
 export const CERTIFICATE_ELIGIBILITY_SCORE = 75;
 
-export async function buildOverallLeaderboard(pool, {includeInactive = false, studentId = null} = {}) {
+export async function buildOverallLeaderboard(pool, {includeInactive = false, studentId = null, includeProvisional = false} = {}) {
   const [[students], [quizAttempts], [assignmentResults], [attendanceRows], [activityAttempts]] = await Promise.all([
         pool.query(`SELECT id, full_name AS fullName, email FROM users WHERE role = 'student'${includeInactive ? '' : " AND status = 'approved'"}${studentId == null ? '' : ' AND id = ?'} ORDER BY full_name, id`, studentId == null ? [] : [studentId]),
         pool.query(`SELECT student_id AS studentId, quiz_id AS quizId, correct_count AS correctCount, total_questions AS totalQuestions
@@ -41,6 +42,25 @@ export async function buildOverallLeaderboard(pool, {includeInactive = false, st
         totals.earned += Number(result.score || 0); totals.possible += Number(result.maxScore || 0); totals.count += 1;
         assignmentsByStudent.set(studentId, totals);
   }
+  const provisionalByStudent = new Map();
+  if (includeProvisional) for (const item of await missingWork(pool)) {
+    const id = Number(item.studentId);
+    if (item.kind === 'quiz') {
+      const quizzes = quizByStudent.get(id) || new Map();
+      const quizId = Number(item.workId);
+      if (quizzes.has(quizId)) continue;
+      quizzes.set(quizId, 0);
+      quizByStudent.set(id, quizzes);
+    } else {
+      const assignment = assignmentsByStudent.get(id) || { earned: 0, possible: 0, count: 0 };
+      assignment.possible += Number(item.maxPoints);
+      assignment.count += 1;
+      assignmentsByStudent.set(id, assignment);
+    }
+    const items = provisionalByStudent.get(id) || [];
+    items.push({ kind: item.kind, id: Number(item.workId), title: item.title, maxPoints: Number(item.maxPoints) });
+    provisionalByStudent.set(id, items);
+  }
   const attendanceByStudent = new Map();
   for (const record of attendanceRows) {
         const studentId = Number(record.studentId);
@@ -64,6 +84,7 @@ export async function buildOverallLeaderboard(pool, {includeInactive = false, st
         const available = [quizScore, assignmentScore, attendanceScore, activityScore].filter(score => score !== null);
         return {
           id: Number(student.id), fullName: student.fullName, email: student.email,
+          ...(includeProvisional ? { temporaryZeros: provisionalByStudent.get(Number(student.id)) || [] } : {}),
           quizScore, quizCount: quizzes?.size || 0,
           activityScore, activityCount: activities?.size || 0,
           assignmentScore, assignmentCount: assignment?.count || 0,
@@ -87,26 +108,29 @@ export async function buildOverallLeaderboard(pool, {includeInactive = false, st
 export function registerAnalyticsRoutes(app, pool, requireAuth, requireStaff) {
   app.get('/api/staff/overall-leaderboard', requireAuth, requireStaff, async (_req, res, next) => {
     try {
-      res.json(await buildOverallLeaderboard(pool));
+      res.json(await buildOverallLeaderboard(pool, {includeProvisional:true}));
     } catch (error) { next(error); }
   });
 
   app.get('/api/student/overall-leaderboard', requireAuth, async (req, res, next) => {
     try {
       if (req.user.role !== 'student') return res.status(403).json({ message: 'Student access required.' });
-      const data = await buildOverallLeaderboard(pool);
+      const data = await buildOverallLeaderboard(pool, {includeProvisional:true});
       const ranked = data.leaderboard.filter(student => student.overallScore !== null);
       const position = ranked.findIndex(student => student.id === Number(req.user.id));
       const currentStudent = position >= 0 ? { ...ranked[position], rank: position + 1, isCurrentStudent: true } : null;
+      const certificateScore = currentStudent?.temporaryZeros?.length
+        ? (await buildOverallLeaderboard(pool, {studentId: req.user.id})).leaderboard[0]?.overallScore ?? null
+        : currentStudent?.overallScore ?? null;
       res.json({
         scoring: data.scoring,
         summary: { ranked: data.summary.ranked },
         certificateEligibility: {
           requiredScore: getAcademySettings().certificateRequiredScore,
-          overallScore: currentStudent?.overallScore ?? null,
-          eligible: currentStudent?.overallScore != null && currentStudent.overallScore >= getAcademySettings().certificateRequiredScore
+          overallScore: certificateScore,
+          eligible: certificateScore != null && certificateScore >= getAcademySettings().certificateRequiredScore
         },
-        topTen: ranked.slice(0, 10).map((student, index) => ({ ...student, rank: index + 1, isCurrentStudent: student.id === Number(req.user.id) })),
+        topTen: ranked.slice(0, 10).map(({temporaryZeros, ...student}, index) => ({ ...student, temporaryZeroCount: temporaryZeros.length, rank: index + 1, isCurrentStudent: student.id === Number(req.user.id) })),
         currentStudent,
         hiddenCount: currentStudent?.rank > 10 ? currentStudent.rank - 11 : 0
       });
