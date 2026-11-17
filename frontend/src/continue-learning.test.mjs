@@ -36,3 +36,18 @@ test('resumes the most recently touched week and advances after its materials ar
  assert.equal(continueLearning([earlier,latest,next]).week.weekNumber,8);
  latest.materials[0].progressStatus='done';assert.equal(continueLearning([earlier,latest,next]).week.weekNumber,9);
 });
+
+test('the Kubernetes pilot guides a learner from video and note to activity and assignment', () => {
+ const intro = {id:1,title:'INTRODUCTION TO KUBERNETES',materialType:'video',progressStatus:'done'};
+ const note = {id:2,title:'Kubernetes Architecture — Control Plane and Worker Nodes',materialType:'note',progressStatus:'not_started'};
+ const video = {...note,id:3,materialType:'video'};
+ const pilot = week({weekNumber:13,materials:[note,video,intro],activity:{title:'Kubernetes check'},assignments:[{id:4,title:'Deploy an app'}]});
+ const later = week({weekNumber:14});
+ assert.match(continueLearning([pilot,later]).href,/material=3$/);
+ video.progressStatus='done';
+ assert.match(continueLearning([pilot,later]).href,/material=2$/);
+ note.progressStatus='done'; note.progressUpdatedAt='2026-11-17T08:00:00Z';
+ assert.equal(continueLearning([pilot,later]).href,'/portal/student/class-activity?week=13');
+ pilot.activity.submittedAt='2026-11-17T08:05:00Z';
+ assert.equal(continueLearning([pilot,later]).href,'/portal/student/assignments?week=13&assignment=4');
+});

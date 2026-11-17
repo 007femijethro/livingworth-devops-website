@@ -13,6 +13,8 @@ import BiometricSettings from './BiometricSettings';
 import { rememberedEmail, rememberEmail, savedBiometric, biometricAvailability, loginWithBiometric, forgetBiometric } from './biometric-login';
 import './biometric-login.css';
 import ContinueLearning from './ContinueLearning';
+import WeekGuide from './WeekGuide';
+import { orderedMaterials } from './week-guide';
 import { resumeLearningWeek } from './continue-learning';
 import ProgrammeProgress from './ProgrammeProgress';
 import useLearningFocus from './useLearningFocus';
@@ -1561,7 +1563,7 @@ function LearningCenter({ mode, demo = false }) {
     </section>
   );
   return (
-    <section className="learning-center student-learning"><div className="learning-head"><div><p className="eyebrow">DevOps programme</p><h2>Learning workspace</h2><p>Open your lessons, mark your progress and review learning resources.</p></div><div className="course-progress"><strong>{progress.percentage}%</strong><span>{progress.completed} of {progress.total} assignments completed</span></div></div><div className="progress-track"><span style={{ width: `${progress.percentage}%` }} /></div><p className="form-message success">{message}</p>{modules.length === 0 ? <div className="empty">Your learning modules will appear here when they are published.</div> : <div className="student-modules">{modules.map((module) => { return <article key={module.id} id={`learning-week-${module.weekNumber}`} tabIndex={-1} className="learning-destination"><div className="student-module-head"><span>Week {module.weekNumber}</span><div><h3>{module.title}</h3><p>{module.summary}</p></div>{module.isComplete && <b className="week-complete">Week complete</b>}</div>{module.materials.length > 0 && <div className="student-materials"><h4>1. Learning materials</h4>{module.materials.map((material) => <StudentMaterial key={material.id} material={material} onProgress={updateMaterialProgress} />)}</div>}{module.assignments.map((assignment) => <AssignmentCard key={assignment.id} assignment={assignment} onSubmitted={load} />)}<WeekActivityPrompt module={module} /></article>; })}</div>}</section>
+    <section className="learning-center student-learning"><div className="learning-head"><div><p className="eyebrow">DevOps programme</p><h2>Learning workspace</h2><p>Open your lessons, mark your progress and review learning resources.</p></div><div className="course-progress"><strong>{progress.percentage}%</strong><span>{progress.completed} of {progress.total} assignments completed</span></div></div><div className="progress-track"><span style={{ width: `${progress.percentage}%` }} /></div><p className="form-message success">{message}</p>{modules.length === 0 ? <div className="empty">Your learning modules will appear here when they are published.</div> : <div className="student-modules">{modules.map((module) => { return <article key={module.id} id={`learning-week-${module.weekNumber}`} tabIndex={-1} className="learning-destination"><div className="student-module-head"><span>Week {module.weekNumber}</span><div><h3>{module.title}</h3><p>{module.summary}</p></div>{module.isComplete && <b className="week-complete">Week complete</b>}</div>{module.weekNumber === 13 && <WeekGuide week={module} />}{module.materials.length > 0 && <div className="student-materials"><h4>1. Learning materials</h4>{orderedMaterials(module).map((material) => <StudentMaterial key={material.id} material={material} onProgress={updateMaterialProgress} />)}</div>}{module.weekNumber === 13 && <WeekActivityPrompt module={module} />}{module.assignments.map((assignment) => <AssignmentCard key={assignment.id} assignment={assignment} onSubmitted={load} />)}{module.weekNumber !== 13 && <WeekActivityPrompt module={module} />}</article>; })}</div>}</section>
   );
 }
 
@@ -1593,10 +1595,14 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
   ) || [];
   const outstanding = assignments
     .filter((assignment) => assignment.assignmentType === "portal"
-      && !assignment.closedAt
-      && (!assignment.submissionId || (assignment.score != null && Number(assignment.score) === 0) || ["rejected", "needs_correction"].includes(assignment.submissionStatus)))
+      && (assignment.submissionStatus === "rejected" || (!assignment.closedAt && !assignment.submissionId)))
     .sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt));
   const pendingQuizzes = data.pendingQuizzes || [];
+  const upcomingDeadline = outstanding.find(assignment => new Date(assignment.dueAt) >= clock);
+  const feedback = assignments.filter(assignment => assignment.feedback && ["completed", "rejected"].includes(assignment.submissionStatus))
+    .sort((a,b) => Date.parse(b.reviewedAt || b.submittedAt || "") - Date.parse(a.reviewedAt || a.submittedAt || ""))[0];
+  const assignmentLink = assignment => `/portal/student/assignments?week=${assignment.weekNumber}&assignment=${encodeURIComponent(assignment.id)}`;
+  const localDate = date => new Intl.DateTimeFormat("en-GB", { weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit", timeZone:academy.classTimezone, timeZoneName:"short" }).format(date);
   const quizAverage = data.quizzes?.length
     ? Math.round(data.quizzes.reduce((total, quiz) => total + Number(quiz.percentage || 0), 0) / data.quizzes.length)
     : 0;
@@ -1620,6 +1626,11 @@ function StudentProgressOverview({ user, onNavigate, onUnreadChange }) {
         <ProfileAvatar user={user}/>
       </div>
       <ContinueLearning />
+      <nav className="overview-next-details" aria-label="Classes, deadlines and feedback">
+        {nextClass && <button type="button" onClick={() => onNavigate("Live class")}><small>{classSession.isLive ? "Live now" : "Next class"}</small><strong>{classSession.isLive ? "Open live class" : localDate(nextClass)}</strong></button>}
+        {upcomingDeadline && <a href={assignmentLink(upcomingDeadline)}><small>Next deadline · {localDate(new Date(upcomingDeadline.dueAt))}</small><strong>{upcomingDeadline.title}</strong></a>}
+        {feedback && <a href={assignmentLink(feedback)}><small>Mentor feedback</small><strong>{feedback.title}</strong></a>}
+      </nav>
       {message && <div className="progress-loading">{message}</div>}
       {!message && <>
         {data.announcements.announcements[0] && <button className="dashboard-announcement" onClick={() => onNavigate("Announcements")}><span>{data.announcements.announcements[0].category}</span><div><strong>{data.announcements.announcements[0].title}</strong><p>{data.announcements.announcements[0].message}</p></div><b>View update</b></button>}
@@ -2099,7 +2110,7 @@ function StudentDashboard({ user, logout }) {
   useEffect(() => { api("/announcements").then((data) => setUnreadAnnouncements(data.unreadCount)).catch(() => {}); }, []);
   useEffect(() => { if (active === "Attendance") api("/auth/me").then(data => setIsClassRep(Boolean(data.isClassRep))).catch(() => {}); }, [active]);
   return (
-    <ActivitySessionGate bypass={user.mustChangePassword} key={user.id} logout={logout} onUnlocked={()=>setActive("Learning")} renderActivity={(id,done)=><ClassActivityCenter mode="student" requiredActivityId={id} onSessionContinue={done}/>}>
+    <ActivitySessionGate bypass={user.mustChangePassword} key={user.id} logout={logout} onUnlocked={()=>setActive("Overview")} renderActivity={(id,done)=><ClassActivityCenter mode="student" requiredActivityId={id} onSessionContinue={done}/>}>
     <PortalShell role="student" user={user} active={active} items={portalItems.student} onSelect={setActive} logout={logout} unreadAnnouncements={unreadAnnouncements} forceSecurity={user.mustChangePassword}>
         {active === "About & Help" && <AboutHelp role="student"/>}
         {active === "Overview" && <StudentProgressOverview user={user} onNavigate={setActive} onUnreadChange={setUnreadAnnouncements} />}

@@ -20,13 +20,13 @@ export default function ContinueLearning() {
   if (!data) return <section className="continue-learning continue-learning-state" aria-label="Continue learning" aria-busy="true"><p role="status">Finding your next learning step…</p></section>;
   const next = continueLearning(data.modules, data.lockedWeeks);
   return <section className={`continue-learning continue-learning-${next.kind}`} aria-labelledby="continue-learning-heading">
-    <div className="continue-learning-copy"><p className="continue-learning-kicker">Continue learning{next.week ? ` · Week ${next.week.weekNumber}` : ''}</p>
+    <div className="continue-learning-copy"><p className="continue-learning-kicker">Next up{next.week ? ` · Week ${next.week.weekNumber}` : ''}</p>
       {next.week && <p className="continue-learning-week">{next.week.title}</p>}
       <h2 id="continue-learning-heading">{next.title}</h2><p>{next.description}</p>
       <a className="button primary" href={next.href}>{next.label} <span aria-hidden="true">→</span></a>
     </div>
     <div className="continue-learning-progress">
-      {next.week && <><strong>{next.percentage}%</strong><span>of this week’s required work</span><div role="progressbar" aria-label={`Week ${next.week.weekNumber} progress`} aria-valuenow={next.percentage} aria-valuemin={0} aria-valuemax={100}><span style={{width:`${next.percentage}%`}} /></div><small>{next.completed} of {next.total} steps complete</small></>}
+      {next.week && <><strong>{next.percentage}%</strong><span>of tracked steps this week</span><div role="progressbar" aria-label={`Week ${next.week.weekNumber} progress`} aria-valuenow={next.percentage} aria-valuemin={0} aria-valuemax={100}><span style={{width:`${next.percentage}%`}} /></div><small>{next.completed} of {next.total} steps complete</small></>}
       <p>{next.completedWeeks} of {next.totalWeeks} published weeks complete</p>
       {data.lockedWeeks ? <small>Your mentor will publish more weeks as they become available.</small> : null}
     </div>

@@ -62,7 +62,7 @@ export async function modulesFor(pool, studentId = null, staff = false, assignme
           `SELECT a.id, a.title, a.instructions, a.due_at AS dueAt, a.max_score AS maxScore, a.upload_slots AS uploadSlots,
             a.assignment_type AS assignmentType, a.closed_at AS closedAt,
             s.id AS submissionId, s.submission_url AS submissionUrl, s.note AS submissionNote, s.file_name AS fileName, s.files,
-            s.status AS submissionStatus, s.score, s.feedback, s.submitted_at AS submittedAt,
+            s.status AS submissionStatus, s.score, s.feedback, s.submitted_at AS submittedAt, s.reviewed_at AS reviewedAt,
             CASE WHEN s.id IS NOT NULL AND s.submitted_at > a.due_at THEN TRUE ELSE FALSE END AS isLate
            FROM assignments a LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.student_id = ?
            WHERE a.module_id = ? ORDER BY a.display_order, a.due_at, a.id`, [studentId, module.id]
