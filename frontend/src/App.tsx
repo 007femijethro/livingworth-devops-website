@@ -3720,7 +3720,7 @@ export default function App() {
   const query = new URLSearchParams(window.location.search);
   const resetToken = query.get("reset") || "";
   const verificationNumber = query.get("verify") || "";
-  const [page, setPage] = useState(resetToken ? "reset-password" : verificationNumber ? "verify-certificate" : isNative ? "mobile-welcome" : "home");
+  const [page, setPage] = useState(resetToken ? "reset-password" : verificationNumber ? "verify-certificate" : ["/apply", "/register"].includes(window.location.pathname.replace(/\/$/, "")) ? "register" : isNative ? "mobile-welcome" : "home");
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authNotice, setAuthNotice] = useState("");
@@ -3733,6 +3733,8 @@ export default function App() {
   }, []);
   const navigate = (p) => {
     if (window.location.search) window.history.replaceState({}, "", window.location.pathname);
+    if (p === "register") window.history.replaceState({}, "", "/apply");
+    else if (["/apply", "/register"].includes(window.location.pathname)) window.history.replaceState({}, "", "/");
     setPage(p);
     scrollTo(0, 0);
   };
