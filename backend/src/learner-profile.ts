@@ -31,7 +31,7 @@ export function registerLearnerProfileRoutes(app, pool, requireAuth, requireStaf
         last_name AS lastName, email, phone, gender, country, state_city AS stateCity,
         employment_status AS employmentStatus, educational_level AS educationalLevel,
         course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience,
-        experience_level AS experienceLevel,learning_goal AS learningGoal,terms_accepted AS termsAccepted,role,status,
+        cohort,application_fee AS applicationFee,offer_closes_at AS offerClosesAt,experience_level AS experienceLevel,learning_goal AS learningGoal,terms_accepted AS termsAccepted,role,status,
         is_class_rep AS isClassRep,must_change_password AS mustChangePassword,rejection_reason AS rejectionReason,
         expelled_reason AS expelledReason,expelled_at AS expelledAt,updated_at AS updatedAt,
         last_signed_in_at AS lastSignedInAt,probation_started_at AS probationStartedAt,probation_due_at AS probationDueAt,

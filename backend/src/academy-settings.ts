@@ -4,7 +4,7 @@ import { logger } from './logger.js';
 
 export function settingsDefaults() {
   return {
-    academyName: 'Livingworth Academy', supportEmail: '', supportPhone: '', registrationOpen: true, applicationCohort: 'C',
+    academyName: 'Livingworth Academy', supportEmail: '', supportPhone: '', registrationOpen: true, applicationCohort: 'C', onlineFee: 150000, physicalFee: 300000, offerClosingDate: '2027-01-15',
     classTime: /^\d{2}:\d{2}$/.test(process.env.CLASS_TIME || '') ? process.env.CLASS_TIME : '20:00',
     classTimezone: process.env.CLASS_TIMEZONE || 'Africa/Lagos', classDays: [1, 3, 5], classDurationMinutes: 60,
     meetingUrl: process.env.CLASS_MEETING_LINK || 'https://meet.google.com/paj-rthm-woe',
@@ -23,7 +23,7 @@ const keys = Object.keys(settingsDefaults());
 export function validateSettings(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) || !Object.keys(input).length) throw new Error('Choose settings to save.');
   const result = {};
-  const ranges = { probationThreshold:[1,100], probationWeeks:[1,52], assignmentReminderMinutes:[5,10080], expiryHours:[1,720], classDurationMinutes:[15,240], classReminderMinutes:[5,1440], quizReminderMinutes:[5,1440], certificateRequiredScore:[1,100], attendanceAlertScore:[1,100], studentSessionHours:[1,24], classRepLimit:[1,5] };
+  const ranges = { onlineFee:[1,10000000], physicalFee:[1,10000000], probationThreshold:[1,100], probationWeeks:[1,52], assignmentReminderMinutes:[5,10080], expiryHours:[1,720], classDurationMinutes:[15,240], classReminderMinutes:[5,1440], quizReminderMinutes:[5,1440], certificateRequiredScore:[1,100], attendanceAlertScore:[1,100], studentSessionHours:[1,24], classRepLimit:[1,5] };
   for (const [key, value] of Object.entries(input)) {
     if (!keys.includes(key)) throw new Error(`Unknown setting: ${key}`);
     if (ranges[key]) {
@@ -38,6 +38,7 @@ export function validateSettings(input) {
     } else {
       if (typeof value !== 'string') throw new Error(`${key} must be text.`);
       const text = value.trim();
+      if (key === 'offerClosingDate' && (!/^\d{4}-\d{2}-\d{2}$/.test(text) || !Number.isFinite(Date.parse(text)) || new Date(text).toISOString().slice(0,10) !== text)) throw new Error('Choose a valid offer closing date.');
       if (key === 'applicationCohort' && !['B','C'].includes(text)) throw new Error('Choose Cohort B or C.');
       if (key === 'academyName' && (!text || text.length > 100)) throw new Error('Portal name must contain 1–100 characters.');
       if (key === 'supportEmail' && text && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) || text.length > 180)) throw new Error('Enter a valid support email address.');
@@ -71,8 +72,8 @@ async function readSettings(pool, lock = false) {
 export async function loadAcademySettings(pool) { const result=await readSettings(pool);current=result.settings;return result; }
 export function registerAcademySettingsRoutes(app,pool,requireAuth,requireAdmin) {
   app.get('/api/academy-settings',(_req,res)=>{
-    const {academyName,supportEmail,supportPhone,registrationOpen,applicationCohort,classTime,classTimezone,classDays,classDurationMinutes,meetingUrl,certificateRequiredScore,classRepLimit}=getAcademySettings();
-    res.set('Cache-Control','no-store').json({academyName,supportEmail,supportPhone,registrationOpen,applicationCohort,classTime,classTimezone,classDays,classDurationMinutes,meetingUrl,certificateRequiredScore,classRepLimit});
+    const {academyName,supportEmail,supportPhone,registrationOpen,applicationCohort,onlineFee,physicalFee,offerClosingDate,classTime,classTimezone,classDays,classDurationMinutes,meetingUrl,certificateRequiredScore,classRepLimit}=getAcademySettings();
+    res.set('Cache-Control','no-store').json({academyName,supportEmail,supportPhone,registrationOpen,applicationCohort,onlineFee,physicalFee,offerClosingDate,classTime,classTimezone,classDays,classDurationMinutes,meetingUrl,certificateRequiredScore,classRepLimit});
   });
   app.get('/api/admin/settings',requireAuth,requireAdmin,async(_req,res,next)=>{
     try {res.json(await loadAcademySettings(pool));}catch(error){next(error)}

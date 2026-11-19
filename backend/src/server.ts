@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { startMissingWorkAlerts } from './missing-work.js';
 import 'dotenv/config';
+import {intakeQuote} from './intake-offer.js';
 import {registerReviewerAccessRoutes} from './reviewer-access.js';
 import {registerProbationRoutes,startProbationScheduler} from './probation.js';
 import { registerBiometricLoginRoutes } from './biometric-login.js';
@@ -146,23 +147,25 @@ app.post('/api/auth/register', async (req, res, next) => {
     const normalEmail = email.trim().toLowerCase();
     const [existing] = await pool.execute('SELECT id FROM users WHERE email = ?', [normalEmail]);
     if (existing.length) return res.status(409).json({ message: 'An account already exists for this email.' });
+    let quote;
+    try { quote = intakeQuote(intake, learningMode); } catch (error) { return res.status(400).json({message:error.message}); }
     const passwordHash = await bcrypt.hash(password, 12);
     await pool.execute(
       `INSERT INTO users (full_name, first_name, last_name, email, password_hash, phone, gender, country,
-        state_city, employment_status, educational_level, course_choice, learning_mode, tech_experience, terms_accepted, cohort)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)`,
+        state_city, employment_status, educational_level, course_choice, learning_mode, tech_experience, terms_accepted, cohort, application_fee, offer_closes_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?)`,
       [`${firstName.trim()} ${lastName.trim()}`, firstName.trim(), lastName.trim(), normalEmail, passwordHash,
-        phone.trim(), gender, country, stateCity.trim(), employmentStatus, educationalLevel, courseChoice, learningMode, techExperience, intake.applicationCohort]
+        phone.trim(), gender, country, stateCity.trim(), employmentStatus, educationalLevel, courseChoice, learningMode, techExperience, intake.applicationCohort, quote.fee, quote.offerClosesAt]
     );
     const emailResults = await sendApplicationEmails({
       fullName: `${firstName.trim()} ${lastName.trim()}`,
       email: normalEmail,
-      courseChoice
+      courseChoice, learningMode, cohort: intake.applicationCohort, ...quote
     });
     const emailSent = emailResults[0].status === 'fulfilled' && emailResults[0].value === true;
     res.status(201).json({
       message: `Application for Cohort ${intake.applicationCohort} received. You can log in after an administrator approves your account.`,
-      cohort: intake.applicationCohort,
+      cohort: intake.applicationCohort, learningMode, ...quote,
       emailSent
     });
   } catch (error) { next(error); }
@@ -344,7 +347,7 @@ app.get('/api/admin/students', requireAuth, requireAdmin, async (req, res, next)
       `SELECT id, full_name AS fullName, first_name AS firstName, last_name AS lastName, email, phone, gender,
         country, state_city AS stateCity, employment_status AS employmentStatus, educational_level AS educationalLevel,
         course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience,
-        experience_level AS experienceLevel, learning_goal AS learningGoal, cohort, status, is_class_rep AS isClassRep, profile_picture AS profilePicture,
+        experience_level AS experienceLevel, learning_goal AS learningGoal, cohort, application_fee AS applicationFee, offer_closes_at AS offerClosesAt, status, is_class_rep AS isClassRep, profile_picture AS profilePicture,
         rejection_reason AS rejectionReason, expelled_reason AS expelledReason, expelled_at AS expelledAt,
         created_at AS createdAt, updated_at AS updatedAt
        FROM users WHERE ${where.join(' AND ')}
@@ -373,11 +376,11 @@ app.get('/api/admin/students/export', requireAuth, requireAdmin, async (req, res
       params.push(term, term, term);
     }
     const [rows] = await pool.execute(
-      `SELECT full_name, cohort, email, phone, gender, country, state_city, employment_status, educational_level,
+      `SELECT full_name, cohort, application_fee, offer_closes_at, email, phone, gender, country, state_city, employment_status, educational_level,
         course_choice, learning_mode, tech_experience, status, rejection_reason, expelled_reason, expelled_at, created_at
        FROM users WHERE ${where.join(' AND ')} ORDER BY created_at DESC`, params
     );
-    const columns = ['full_name','cohort','email','phone','gender','country','state_city','employment_status','educational_level','course_choice','learning_mode','tech_experience','status','rejection_reason','expelled_reason','expelled_at','created_at'];
+    const columns = ['full_name','cohort','application_fee','offer_closes_at','email','phone','gender','country','state_city','employment_status','educational_level','course_choice','learning_mode','tech_experience','status','rejection_reason','expelled_reason','expelled_at','created_at'];
     const csvCell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
     const csv = [columns.join(','), ...rows.map(row => columns.map(column => csvCell(row[column])).join(','))].join('\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

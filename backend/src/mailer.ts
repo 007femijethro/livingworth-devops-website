@@ -76,16 +76,17 @@ export function sendApplicationEmails(applicant) {
   const name = escapeHtml(applicant.fullName);
   const email = escapeHtml(applicant.email);
   const course = escapeHtml(applicant.courseChoice);
+  const feeDetails = applicant.cohort ? `<p><strong>Cohort:</strong> ${escapeHtml(applicant.cohort)}<br><strong>Learning mode:</strong> ${escapeHtml(applicant.learningMode || '')}<br><strong>Course fee:</strong> ${applicant.fee == null ? 'Contact the academy for the current fee' : 'NGN ' + Number(applicant.fee).toLocaleString('en-NG')}</p>` : '';
   const confirmation = send({
     to: applicant.email,
     subject: 'We received your Livingworth Academy application',
-    html: `<h2>Application received</h2><p>Hello ${name},</p><p>Thank you for applying to study <strong>${course}</strong> with Livingworth Academy.</p><p>Your application is awaiting review. We will email you when a decision has been made. You will be able to sign in after approval.</p><p>Livingworth Academy</p>`
+    html: `<h2>Application received</h2><p>Hello ${name},</p><p>Thank you for applying to study <strong>${course}</strong> with Livingworth Academy.</p>${feeDetails}<p>Your application is awaiting review. We will email you when a decision has been made. You will be able to sign in after approval.</p><p>Livingworth Academy</p>`
   });
   const adminAlert = adminNotificationEmail
     ? send({
         to: adminNotificationEmail,
         subject: `New Livingworth application: ${applicant.fullName}`,
-        html: `<h2>New student application</h2><p><strong>Name:</strong> ${name}</p><p><strong>Email:</strong> ${email}</p><p><strong>Course:</strong> ${course}</p><p>Sign in to the administrator portal to review the application.</p>`
+        html: `<h2>New student application</h2><p><strong>Name:</strong> ${name}</p><p><strong>Email:</strong> ${email}</p><p><strong>Course:</strong> ${course}</p>${feeDetails}<p>Sign in to the administrator portal to review the application.</p>`
       })
     : Promise.resolve(false);
   return Promise.allSettled([confirmation, adminAlert]);

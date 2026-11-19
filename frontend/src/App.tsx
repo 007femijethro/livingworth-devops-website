@@ -1,6 +1,7 @@
 // @ts-nocheck
 import {sessionRestoreAction} from './session-restore';
 import QuizCompletion,{QuizCountdownControl} from './QuizCompletion';
+import IntakePromotion, {naira,useIntakeOffer} from './IntakePromotion';
 import {StudentAccountBadge,StudentDirectorySummary,StudentAccountDetails,StudentScoreDetails,StudentClassActivityDetails} from './StudentRecordDetails';
 import QuizScheduleEditor, {QuizScheduleFields, QuizScheduleStatus} from './QuizSchedule';
 import {scheduleInstant,scheduleInput} from './quiz-schedule-time';
@@ -730,6 +731,8 @@ function ResetPassword({ navigate, token }) {
 }
 
 function Register({ navigate }) {
+  const offer = useIntakeOffer();
+  const [learningMode, setLearningMode] = useState("");
   const academy = useAcademySettings();
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
@@ -755,7 +758,7 @@ function Register({ navigate }) {
         body: JSON.stringify(values),
       });
       setMessage(data.message);
-      setApplicant({ firstName: values.firstName, email: values.email, emailSent: data.emailSent, cohort: data.cohort });
+      setApplicant({ firstName: values.firstName, email: values.email, emailSent: data.emailSent, cohort: data.cohort, fee:data.fee, learningMode:data.learningMode });
       form.reset();
       setCountry("Nigeria");
       setDone(true);
@@ -779,6 +782,7 @@ function Register({ navigate }) {
               : <>Your application was saved for <strong>{applicant?.email}</strong>. </>}
             Your Cohort {applicant?.cohort} application is now awaiting administrator review.
           </p>
+          <p><strong>{applicant?.learningMode}</strong> · Course fee: {applicant?.fee == null ? "Contact the academy for current fees" : naira(applicant.fee)}. This is an application confirmation, not a payment receipt.</p>
           <div className="success-next">
             <b>What happens next?</b>
             <ol>
@@ -804,6 +808,7 @@ function Register({ navigate }) {
       subtitle="Complete the application below. We will review it before activating your student portal."
     >
       <section className="intake-intro" aria-label="About this intake"><span className="status approved">Applications open · Cohort {academy.applicationCohort}</span><h2>Your next step into DevOps</h2><p>Learn through live classes, practical labs and mentor feedback. Tell us about yourself below; beginners and career changers are welcome.</p><ul><li>Four months of practical learning</li><li>Physical or online learning options</li><li>Application → review → approval → student portal access</li></ul><p>Applying does not guarantee admission. We will contact you after reviewing your application. Your application will be assigned to <strong>Cohort {academy.applicationCohort}</strong>.</p></section>
+      <IntakePromotion compact/>
       <form className="form two application-form" onSubmit={submit}>
         <div className="form-section wide">
           <span>01</span>
@@ -965,11 +970,12 @@ function Register({ navigate }) {
             "Hybrid (Mix of online & physical)",
           ].map((x) => (
             <label key={x}>
-              <input type="radio" name="learningMode" value={x} required />
+              <input type="radio" name="learningMode" value={x} checked={learningMode===x} onChange={()=>setLearningMode(x)} required />
               {x}
             </label>
           ))}
         </fieldset>
+        {learningMode && academy.applicationCohort==='C' && <p className="wide selected-intake-fee" role="status"><strong>{learningMode}</strong> · {offer.offerActive ? `Course fee: ${naira(learningMode==='Online'?offer.onlineFee:offer.physicalFee)}` : "Contact the academy for current fees"}. {offer.offerActive && `Offer closes ${offer.closingLabel}.`} Payment instructions will be provided by the academy.</p>}
         <div className="form-section wide">
           <span>04</span>
           <div>
@@ -3536,6 +3542,7 @@ function AdminDashboard({ user, logout }) {
               <h3>{student.fullName}</h3>
               <p>{student.email} · {student.phone || "No phone"}</p>
               <small>Cohort {student.cohort || "B"} · {student.courseChoice || "DevOps Engineering"} · Applied {student.createdAt ? new Date(student.createdAt).toLocaleDateString() : "recently"}</small>
+              {student.cohort==="C" && <p>{student.learningMode} · {student.applicationFee == null ? "Fee to be confirmed" : naira(student.applicationFee)}</p>}
             </div>
             <b className={`status ${student.status}`}>{student.status}</b>
             <button className="profile-button" onClick={() => { setSelectedApplicant(student); setRejectionReason(student.rejectionReason || ""); }}>
@@ -3564,7 +3571,7 @@ function AdminDashboard({ user, logout }) {
                 ["Email", selectedApplicant.email], ["Phone", selectedApplicant.phone],
                 ["Gender", selectedApplicant.gender], ["Location", [selectedApplicant.stateCity, selectedApplicant.country].filter(Boolean).join(", ")],
                 ["Employment/Study", selectedApplicant.employmentStatus], ["Education", selectedApplicant.educationalLevel],
-                ["Course", selectedApplicant.courseChoice], ["Learning mode", selectedApplicant.learningMode],
+                ["Course", selectedApplicant.courseChoice], ["Learning mode", selectedApplicant.learningMode], ["Quoted course fee", selectedApplicant.applicationFee == null ? "Not recorded" : naira(selectedApplicant.applicationFee)],
                 ["Tech experience", selectedApplicant.techExperience], ["Applied", selectedApplicant.createdAt ? new Date(selectedApplicant.createdAt).toLocaleString() : "—"],
               ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value || "—"}</strong></div>)}
             </div>

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-export const defaultAcademySettings = { academyName:'Livingworth Academy',supportEmail:'',supportPhone:'',registrationOpen:true,applicationCohort:'C',classTime:'20:00',classTimezone:'Africa/Lagos',classDays:[1,3,5],classDurationMinutes:60,meetingUrl:'https://meet.google.com/paj-rthm-woe',certificateRequiredScore:75,classRepLimit:2 };
+export const defaultAcademySettings = { academyName:'Livingworth Academy',supportEmail:'',supportPhone:'',registrationOpen:true,applicationCohort:'C',onlineFee:150000,physicalFee:300000,offerClosingDate:'2027-01-15',classTime:'20:00',classTimezone:'Africa/Lagos',classDays:[1,3,5],classDurationMinutes:60,meetingUrl:'https://meet.google.com/paj-rthm-woe',certificateRequiredScore:75,classRepLimit:2 };
 const AcademyContext=createContext(defaultAcademySettings);
 export const useAcademySettings=()=>useContext(AcademyContext);
 export function AcademySettingsProvider({children}:{children:ReactNode}) {

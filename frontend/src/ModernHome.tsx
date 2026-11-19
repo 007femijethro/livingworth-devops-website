@@ -1,3 +1,4 @@
+import IntakePromotion from './IntakePromotion';
 import { useAcademySettings } from './AcademySettingsContext';
 import { BrandLogo } from './Theme';
 import { useState } from 'react';
@@ -92,6 +93,7 @@ export default function ModernHome({ navigate, stories }: { navigate: Navigate; 
 
       {stories.length>0&&<section className="modern-voices"><div className="modern-section-heading"><span>Learner voices</span><h2>Growth, in their own words.</h2></div><div>{stories.slice(0,3).map(story=><article key={story.id}><span>“</span><p>{story.content}</p><footer><b>{story.studentName}</b><small>{story.storyType.replaceAll('_',' ')}</small></footer></article>)}</div></section>}
 
+      <IntakePromotion onApply={()=>navigate('register')}/>
       <section className="modern-final"><span>{academy.registrationOpen ? `Cohort ${academy.applicationCohort} applications are open` : "Applications are currently closed"}</span><h2>Ready to build your<br/>DevOps future?</h2><p>Join the next Livingworth Academy cohort and turn curiosity into practical engineering confidence.</p><button onClick={() => navigate('register')}>Apply for Cohort {academy.applicationCohort} <b>↗</b></button></section>
     </main>
     <footer className="modern-footer"><a className="modern-logo" href="#top"><BrandLogo alt="Livingworth Academy" /></a><p>Practical learning. Real engineering confidence.</p><div><button onClick={() => navigate('student-login')}>Student portal</button><button onClick={() => navigate('staff-login')}>Staff portal</button></div><small>© {new Date().getFullYear()} Livingworth Academy</small></footer>
