@@ -17,7 +17,7 @@ export function registerStudentDirectoryRoutes(app,pool,requireAuth,requireStaff
         pool.query(`SELECT id,full_name AS fullName,email,phone,gender,country,state_city AS stateCity,
           employment_status AS employmentStatus,educational_level AS educationalLevel,course_choice AS courseChoice,
           learning_mode AS learningMode,tech_experience AS techExperience,experience_level AS experienceLevel,
-          learning_goal AS learningGoal,status,is_class_rep AS isClassRep,profile_picture AS profilePicture,
+          learning_goal AS learningGoal,cohort,status,is_class_rep AS isClassRep,profile_picture AS profilePicture,
           created_at AS createdAt,last_signed_in_at AS lastSignedInAt,probation_started_at AS probationStartedAt,
           probation_due_at AS probationDueAt,probation_policy AS probationPolicy,probation_score AS overallScore,
           probation_checked_at AS checkedAt FROM users WHERE role='student' AND status='approved' ORDER BY full_name`),

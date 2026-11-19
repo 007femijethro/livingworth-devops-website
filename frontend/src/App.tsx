@@ -730,6 +730,8 @@ function ResetPassword({ navigate, token }) {
 }
 
 function Register({ navigate }) {
+  const academy = useAcademySettings();
+  const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [done, setDone] = useState(false);
   const [applicant, setApplicant] = useState(null);
@@ -737,6 +739,7 @@ function Register({ navigate }) {
   const courses = ["DevOps Engineering"];
   async function submit(e) {
     e.preventDefault();
+    if (submitting) return;
     const form = e.currentTarget;
     const values = Object.fromEntries(new FormData(form));
     if (values.country === "Other") values.country = values.otherCountry;
@@ -744,6 +747,7 @@ function Register({ navigate }) {
       setMessage("Passwords do not match.");
       return;
     }
+    setSubmitting(true);
     setMessage("Submitting…");
     try {
       const data = await api("/auth/register", {
@@ -751,13 +755,13 @@ function Register({ navigate }) {
         body: JSON.stringify(values),
       });
       setMessage(data.message);
-      setApplicant({ firstName: values.firstName, email: values.email, emailSent: data.emailSent });
+      setApplicant({ firstName: values.firstName, email: values.email, emailSent: data.emailSent, cohort: data.cohort });
       form.reset();
       setCountry("Nigeria");
       setDone(true);
     } catch (err) {
       setMessage(err.message);
-    }
+    } finally { setSubmitting(false); }
   }
   if (done) {
     return (
@@ -773,7 +777,7 @@ function Register({ navigate }) {
             {applicant?.emailSent
               ? <>We sent your confirmation to <strong>{applicant.email}</strong>. </>
               : <>Your application was saved for <strong>{applicant?.email}</strong>. </>}
-            It is now awaiting administrator review.
+            Your Cohort {applicant?.cohort} application is now awaiting administrator review.
           </p>
           <div className="success-next">
             <b>What happens next?</b>
@@ -796,9 +800,10 @@ function Register({ navigate }) {
   return (
     <AuthLayout
       navigate={navigate}
-      title="Apply to Livingworth Academy"
+      title={`Apply for Cohort ${academy.applicationCohort}`}
       subtitle="Complete the application below. We will review it before activating your student portal."
     >
+      <section className="intake-intro" aria-label="About this intake"><span className="status approved">Applications open · Cohort {academy.applicationCohort}</span><h2>Your next step into DevOps</h2><p>Learn through live classes, practical labs and mentor feedback. Tell us about yourself below; beginners and career changers are welcome.</p><ul><li>Four months of practical learning</li><li>Physical or online learning options</li><li>Application → review → approval → student portal access</li></ul><p>Applying does not guarantee admission. We will contact you after reviewing your application. Your application will be assigned to <strong>Cohort {academy.applicationCohort}</strong>.</p></section>
       <form className="form two application-form" onSubmit={submit}>
         <div className="form-section wide">
           <span>01</span>
@@ -998,8 +1003,8 @@ function Register({ navigate }) {
             . <b>*</b>
           </span>
         </label>
-        <button className="button primary full wide" disabled={done}>
-          {done ? "Application submitted" : "Submit application"}
+        <button className="button primary full wide" disabled={done || submitting}>
+          {submitting ? "Submitting…" : done ? "Application submitted" : `Submit Cohort ${academy.applicationCohort} application`}
         </button>
         <p className={`form-message wide ${done ? "success" : ""}`}>
           {message}
@@ -3175,6 +3180,7 @@ function LearnerProfilePanel({ studentId, onClose, onDeleted }) {
 }
 
 function StudentDirectory({ demo = false, canDelete = false, canManageClassReps = false }) {
+  const [cohort, setCohort] = useState("");
   const academy = useAcademySettings();
   const [students, setStudents] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -3200,11 +3206,11 @@ function StudentDirectory({ demo = false, canDelete = false, canManageClassReps 
   const query = search.trim().toLowerCase();
   const filtered = students.filter((student) => {
     const searchable = `${student.fullName} ${student.email} ${student.phone || ""} ${student.stateCity || ""} ${student.country || ""}`.toLowerCase();
-    return (!query || searchable.includes(query)) && (!learningMode || student.learningMode === learningMode) && (!country || student.country === country);
+    return (!cohort || student.cohort === cohort) && (!query || searchable.includes(query)) && (!learningMode || student.learningMode === learningMode) && (!country || student.country === country);
   });
   return <section className="student-directory">
     <div className="directory-heading"><div><p className="eyebrow">Student records</p><h2>Student directory</h2><p>Find a learner and open their complete registration and performance profile.</p>{canManageClassReps && <small className="class-rep-limit">Class representatives: <b>{classRepCount}/{academy.classRepLimit}</b> appointed. They can mark attendance only.</small>}</div><strong>{students.length}<span>approved student{students.length === 1 ? "" : "s"}</span></strong></div>
-    <div className="directory-filters">
+    <div className="directory-filters"><label>Cohort<select value={cohort} onChange={e=>setCohort(e.target.value)}><option value="">All cohorts</option><option value="B">Cohort B</option><option value="C">Cohort C</option></select></label>
       <label>Search<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, email, phone or city" /></label>
       <label>Country<select value={country} onChange={(event) => setCountry(event.target.value)}><option value="">All countries</option>{countries.map((value) => <option key={value}>{value}</option>)}</select></label>
       <label>Learning mode<select value={learningMode} onChange={(event) => setLearningMode(event.target.value)}><option value="">All learning modes</option>{modes.map((value) => <option key={value}>{value}</option>)}</select></label>
@@ -3213,7 +3219,7 @@ function StudentDirectory({ demo = false, canDelete = false, canManageClassReps 
     {message && <p className="form-message" role="status">{message}</p>}
     {!message && <p className="directory-result-count">Showing {filtered.length} of {students.length} students</p>}
     <div className="directory-grid">{!message && filtered.length === 0 ? <div className="empty">No students match these filters.</div> : filtered.map((student) => <article key={student.id}>
-      <div className="directory-card-head"><ProfileAvatar user={student} className="student-avatar"/><div><h3>{student.fullName}</h3><p>{student.email}</p></div><div className="directory-card-badges"><StudentAccountBadge student={student}/>{student.isClassRep&&<b className="status class-rep">Class rep</b>}</div></div>
+      <div className="directory-card-head"><ProfileAvatar user={student} className="student-avatar"/><div><h3>{student.fullName}</h3><p>{student.email}</p></div><div className="directory-card-badges"><b className="status">Cohort {student.cohort}</b><StudentAccountBadge student={student}/>{student.isClassRep&&<b className="status class-rep">Class rep</b>}</div></div>
       <div className="student-facts"><span><small>Phone</small><b>{student.phone || "Not provided"}</b></span><span><small>Location</small><b>{[student.stateCity, student.country].filter(Boolean).join(", ") || "Not provided"}</b></span><span><small>Learning mode</small><b>{student.learningMode || "Not provided"}</b></span><span><small>Current status</small><b>{student.employmentStatus || "Not provided"}</b></span><span><small>Education</small><b>{student.educationalLevel || "Not provided"}</b></span><span><small>Tech experience</small><b>{student.techExperience || student.experienceLevel || "Not provided"}</b></span></div>
       <StudentDirectorySummary student={student}/>
       <button type="button" className="button primary full" onClick={() => setSelectedId(student.id)}>View full profile</button>{canManageClassReps && <button type="button" className="button light-border full" disabled={!student.isClassRep && classRepCount >= academy.classRepLimit} onClick={() => setClassRep(student, !student.isClassRep)}>{student.isClassRep ? "Remove class rep" : "Appoint class rep"}</button>}
@@ -3223,12 +3229,13 @@ function StudentDirectory({ demo = false, canDelete = false, canManageClassReps 
 }
 
 function OverallLeaderboard({ demo = false }) {
+  const [cohort, setCohort] = useState("");
   const [data, setData] = useState(null);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState(demo ? "Connect the backend to view the live leaderboard." : "Loading academy leaderboard…");
   useEffect(() => {
-    if (!demo) api("/staff/overall-leaderboard").then((result) => { setData(result); setMessage(""); }).catch((error) => setMessage(error.message));
-  }, [demo]);
+    if (!demo) api(`/staff/overall-leaderboard?cohort=${cohort}`).then((result) => { setData(result); setMessage(""); }).catch((error) => setMessage(error.message));
+  }, [demo, cohort]);
   if (!data) return <section className="overall-leaderboard"><div className="progress-loading">{message}</div></section>;
   const ranks = new Map(data.leaderboard.map((student, index) => [student.id, student.overallScore == null ? null : index + 1]));
   const query = search.trim().toLowerCase();
@@ -3238,7 +3245,7 @@ function OverallLeaderboard({ demo = false }) {
     <div className="overall-leaderboard-heading"><div><p className="eyebrow">Academy performance</p><h2>Overall leaderboard</h2><p>Quiz, class activity, assignment and attendance results combined into one transparent score.</p></div><strong>{data.summary.classAverage == null ? "—" : `${data.summary.classAverage}/100`}<span>class average</span></strong></div>
     <div className="overall-summary"><article><span>Approved students</span><strong>{data.summary.students}</strong></article><article><span>Students with results</span><strong>{data.summary.ranked}</strong></article><article><span>Scoring categories</span><strong>4</strong></article></div>
     <details className="leaderboard-method"><summary>How the overall score is calculated</summary><ul><li><b>Quiz:</b> {data.scoring.quiz}.</li><li><b>Class Activity:</b> {data.scoring.activity}.</li><li><b>Assignments:</b> {data.scoring.assignment}.</li><li><b>Attendance:</b> {data.scoring.attendance}.</li><li><b>Overall:</b> {data.scoring.overall}. Students with fewer than four categories are marked provisional and ranked after complete records.</li></ul></details>
-    <label className="leaderboard-search">Find student<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or email…" /></label>
+    <label className="leaderboard-search">Cohort<select value={cohort} onChange={e=>setCohort(e.target.value)}><option value="">All cohorts</option><option value="B">Cohort B</option><option value="C">Cohort C</option></select></label><label className="leaderboard-search">Find student<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or email…" /></label>
     <p className="directory-result-count">Showing {students.length} of {data.leaderboard.length} students</p>
     {students.length === 0 ? <div className="empty">No students match this search.</div> : <div className="overall-leaderboard-table">
       <div className="overall-table-head"><span>Rank</span><span>Student</span><span>Quiz grade</span><span>Class Activity grade</span><span>Assignment grade</span><span>Attendance</span><span>Overall</span></div>
@@ -3330,6 +3337,7 @@ function AdminDashboard({ user, logout }) {
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
+  const [cohortFilter, setCohortFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [selectedApplicant, setSelectedApplicant] = useState(null);
@@ -3346,6 +3354,7 @@ function AdminDashboard({ user, logout }) {
       const filtered = all.filter(
         (student) =>
           (!statusFilter || student.status === statusFilter) &&
+          (!cohortFilter || (student.cohort || "B") === cohortFilter) &&
           (!search || `${student.fullName} ${student.email} ${student.phone}`.toLowerCase().includes(search.toLowerCase())),
       );
       setStudents(filtered);
@@ -3360,6 +3369,7 @@ function AdminDashboard({ user, logout }) {
       return;
     }
     const params = new URLSearchParams({ page: String(page) });
+    if (cohortFilter) params.set("cohort", cohortFilter);
     if (statusFilter) params.set("status", statusFilter);
     if (search) params.set("search", search);
     api(`/admin/students?${params}`)
@@ -3370,7 +3380,7 @@ function AdminDashboard({ user, logout }) {
       })
       .catch((e) => setMessage(e.message));
   };
-  useEffect(loadApplications, [page, statusFilter, search]);
+  useEffect(loadApplications, [page, statusFilter, search, cohortFilter]);
   useEffect(() => {
     if (!user.demo) api("/admin/mentors").then(setMentors).catch((e) => setMessage(e.message));
   }, []);
@@ -3439,7 +3449,8 @@ function AdminDashboard({ user, logout }) {
   async function exportApplications() {
     try {
       const params = new URLSearchParams();
-      if (statusFilter) params.set("status", statusFilter);
+      if (cohortFilter) params.set("cohort", cohortFilter);
+    if (statusFilter) params.set("status", statusFilter);
       if (search) params.set("search", search);
       const response = await fetch(`/api/admin/students/export?${params}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("lw_token")}` },
@@ -3481,6 +3492,7 @@ function AdminDashboard({ user, logout }) {
   }
   const applications = (
     <section className="application-manager">
+      <div className="cohort-toolbar"><label>View cohort<select value={cohortFilter} onChange={e => {setCohortFilter(e.target.value);setPage(1);}}><option value="">All cohorts</option><option value="B">Cohort B · existing students</option><option value="C">Cohort C · new intake</option></select></label><p>Manage intake availability and the cohort for new applications in Settings → Academy &amp; contact.</p></div>
       <div className="application-metrics">
         {[
           ["All", applicationSummary.total, ""],
@@ -3523,7 +3535,7 @@ function AdminDashboard({ user, logout }) {
             <div className="student-info">
               <h3>{student.fullName}</h3>
               <p>{student.email} · {student.phone || "No phone"}</p>
-              <small>{student.courseChoice || "DevOps Engineering"} · Applied {student.createdAt ? new Date(student.createdAt).toLocaleDateString() : "recently"}</small>
+              <small>Cohort {student.cohort || "B"} · {student.courseChoice || "DevOps Engineering"} · Applied {student.createdAt ? new Date(student.createdAt).toLocaleDateString() : "recently"}</small>
             </div>
             <b className={`status ${student.status}`}>{student.status}</b>
             <button className="profile-button" onClick={() => { setSelectedApplicant(student); setRejectionReason(student.rejectionReason || ""); }}>

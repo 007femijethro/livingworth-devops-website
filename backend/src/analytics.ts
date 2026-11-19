@@ -3,9 +3,9 @@ import { missingWork } from "./missing-work.js";
 import { getAcademySettings } from './academy-settings.js';
 export const CERTIFICATE_ELIGIBILITY_SCORE = 75;
 
-export async function buildOverallLeaderboard(pool, {includeInactive = false, studentId = null, includeProvisional = false} = {}) {
+export async function buildOverallLeaderboard(pool, {includeInactive = false, studentId = null, includeProvisional = false, cohort = null} = {}) {
   const [[students], [quizAttempts], [assignmentResults], [attendanceRows], [activityAttempts]] = await Promise.all([
-        pool.query(`SELECT id, full_name AS fullName, email FROM users WHERE role = 'student'${includeInactive ? '' : " AND status = 'approved'"}${studentId == null ? '' : ' AND id = ?'} ORDER BY full_name, id`, studentId == null ? [] : [studentId]),
+        pool.query(`SELECT id, full_name AS fullName, email FROM users WHERE role = 'student'${includeInactive ? '' : " AND status = 'approved'"}${studentId == null ? '' : ' AND id = ?'}${cohort ? ' AND cohort = ?' : ''} ORDER BY full_name, id`, [...(studentId == null ? [] : [studentId]), ...(cohort ? [cohort] : [])]),
         pool.query(`SELECT student_id AS studentId, quiz_id AS quizId, correct_count AS correctCount, total_questions AS totalQuestions
           FROM quiz_attempts WHERE status = 'completed' AND total_questions > 0`),
         pool.query(`SELECT s.student_id AS studentId, s.score, a.max_score AS maxScore
@@ -106,9 +106,11 @@ export async function buildOverallLeaderboard(pool, {includeInactive = false, st
 }
 
 export function registerAnalyticsRoutes(app, pool, requireAuth, requireStaff) {
-  app.get('/api/staff/overall-leaderboard', requireAuth, requireStaff, async (_req, res, next) => {
+  app.get('/api/staff/overall-leaderboard', requireAuth, requireStaff, async (req, res, next) => {
     try {
-      res.json(await buildOverallLeaderboard(pool, {includeProvisional:true}));
+      const cohort = String(req.query.cohort || '');
+      if (cohort && !['B','C'].includes(cohort)) return res.status(400).json({message:'Choose Cohort B, C or all cohorts.'});
+      res.json(await buildOverallLeaderboard(pool, {includeProvisional:true, cohort}));
     } catch (error) { next(error); }
   });
 

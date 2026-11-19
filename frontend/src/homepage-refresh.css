@@ -196,3 +196,11 @@
 .modern-site .modern-logo img{position:static;display:block;width:100%;height:auto;max-width:100%;object-fit:contain;transform:none}
 @media(min-width:761px) and (max-width:1050px){.modern-site .modern-nav .modern-logo{width:210px;height:76px}}
 @media(max-width:760px){.modern-site .modern-nav{gap:10px;grid-template-columns:minmax(0,1fr) auto}.modern-site .modern-nav .modern-logo{width:clamp(165px,46vw,210px);height:64px}.modern-site .modern-nav .modern-apply{padding:12px 14px;font-size:.85rem;white-space:nowrap}.modern-site .modern-footer .modern-logo{width:240px;height:84px}}
+
+.intake-intro { padding:24px; margin-bottom:24px; background:var(--theme-surface,#f1f7f7); border:1px solid var(--theme-border,#dce7e9); border-radius:18px; color:var(--theme-text,#15324f); }
+.intake-intro h2 { margin:16px 0 10px; }
+.intake-intro p,.intake-intro li { line-height:1.7; }
+.cohort-toolbar { display:flex; gap:20px; flex-wrap:wrap; align-items:center; margin-bottom:20px; }
+.cohort-toolbar label { display:grid;gap:8px;font-weight:600; }
+.cohort-toolbar select,.leaderboard-search select { padding:12px;border:1px solid var(--theme-border,#dce7e9);border-radius:10px;background:var(--theme-surface,#fff);color:inherit; }
+.cohort-toolbar p { flex:1;min-width:200px; }

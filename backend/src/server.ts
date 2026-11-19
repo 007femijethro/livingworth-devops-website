@@ -132,7 +132,8 @@ app.get('/api/courses', async (_req, res, next) => {
 
 app.post('/api/auth/register', async (req, res, next) => {
   try {
-    if (!getAcademySettings().registrationOpen) return res.status(403).json({ message: 'Applications are currently closed. Please contact the academy for the next intake.' });
+    const intake = getAcademySettings();
+    if (!intake.registrationOpen) return res.status(403).json({ message: 'Applications are currently closed. Please contact the academy for the next intake.' });
     const { firstName, lastName, email, password, phone = '', gender, country, stateCity,
       employmentStatus, educationalLevel, courseChoice, learningMode, techExperience, termsAccepted } = req.body;
     const required = [firstName, lastName, email, phone, gender, country, stateCity, employmentStatus,
@@ -148,10 +149,10 @@ app.post('/api/auth/register', async (req, res, next) => {
     const passwordHash = await bcrypt.hash(password, 12);
     await pool.execute(
       `INSERT INTO users (full_name, first_name, last_name, email, password_hash, phone, gender, country,
-        state_city, employment_status, educational_level, course_choice, learning_mode, tech_experience, terms_accepted)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
+        state_city, employment_status, educational_level, course_choice, learning_mode, tech_experience, terms_accepted, cohort)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)`,
       [`${firstName.trim()} ${lastName.trim()}`, firstName.trim(), lastName.trim(), normalEmail, passwordHash,
-        phone.trim(), gender, country, stateCity.trim(), employmentStatus, educationalLevel, courseChoice, learningMode, techExperience]
+        phone.trim(), gender, country, stateCity.trim(), employmentStatus, educationalLevel, courseChoice, learningMode, techExperience, intake.applicationCohort]
     );
     const emailResults = await sendApplicationEmails({
       fullName: `${firstName.trim()} ${lastName.trim()}`,
@@ -160,7 +161,8 @@ app.post('/api/auth/register', async (req, res, next) => {
     });
     const emailSent = emailResults[0].status === 'fulfilled' && emailResults[0].value === true;
     res.status(201).json({
-      message: 'Registration received. You can log in after an administrator approves your account.',
+      message: `Application for Cohort ${intake.applicationCohort} received. You can log in after an administrator approves your account.`,
+      cohort: intake.applicationCohort,
       emailSent
     });
   } catch (error) { next(error); }
@@ -323,13 +325,16 @@ app.get('/api/admin/students', requireAuth, requireAdmin, async (req, res, next)
     const limit = 10;
     const where = ["role = 'student'"];
     const params = [];
+    const cohort = String(req.query.cohort || '');
+    if (cohort && !['B','C'].includes(cohort)) return res.status(400).json({message:'Choose Cohort B, C or all cohorts.'});
+    if (cohort) { where.push('cohort = ?'); params.push(cohort); }
     if (status) { where.push('status = ?'); params.push(status); }
     if (search) {
       where.push('(full_name LIKE ? OR email LIKE ? OR phone LIKE ?)');
       const term = `%${search}%`;
       params.push(term, term, term);
     }
-    const [totals] = await pool.query("SELECT status, COUNT(*) AS count FROM users WHERE role = 'student' GROUP BY status");
+    const [totals] = await pool.execute("SELECT status, COUNT(*) AS count FROM users WHERE role = 'student'" + (cohort ? ' AND cohort = ?' : '') + ' GROUP BY status', cohort ? [cohort] : []);
     const [countRows] = await pool.execute(`SELECT COUNT(*) AS count FROM users WHERE ${where.join(' AND ')}`, params);
     const total = Number(countRows[0].count);
     const pages = Math.max(1, Math.ceil(total / limit));
@@ -339,7 +344,7 @@ app.get('/api/admin/students', requireAuth, requireAdmin, async (req, res, next)
       `SELECT id, full_name AS fullName, first_name AS firstName, last_name AS lastName, email, phone, gender,
         country, state_city AS stateCity, employment_status AS employmentStatus, educational_level AS educationalLevel,
         course_choice AS courseChoice, learning_mode AS learningMode, tech_experience AS techExperience,
-        experience_level AS experienceLevel, learning_goal AS learningGoal, status, is_class_rep AS isClassRep, profile_picture AS profilePicture,
+        experience_level AS experienceLevel, learning_goal AS learningGoal, cohort, status, is_class_rep AS isClassRep, profile_picture AS profilePicture,
         rejection_reason AS rejectionReason, expelled_reason AS expelledReason, expelled_at AS expelledAt,
         created_at AS createdAt, updated_at AS updatedAt
        FROM users WHERE ${where.join(' AND ')}
@@ -358,6 +363,9 @@ app.get('/api/admin/students/export', requireAuth, requireAdmin, async (req, res
     const status = ['pending', 'approved', 'rejected', 'expelled'].includes(req.query.status) ? req.query.status : '';
     const where = ["role = 'student'"];
     const params = [];
+    const cohort = String(req.query.cohort || '');
+    if (cohort && !['B','C'].includes(cohort)) return res.status(400).json({message:'Choose Cohort B, C or all cohorts.'});
+    if (cohort) { where.push('cohort = ?'); params.push(cohort); }
     if (status) { where.push('status = ?'); params.push(status); }
     if (search) {
       where.push('(full_name LIKE ? OR email LIKE ? OR phone LIKE ?)');
@@ -365,11 +373,11 @@ app.get('/api/admin/students/export', requireAuth, requireAdmin, async (req, res
       params.push(term, term, term);
     }
     const [rows] = await pool.execute(
-      `SELECT full_name, email, phone, gender, country, state_city, employment_status, educational_level,
+      `SELECT full_name, cohort, email, phone, gender, country, state_city, employment_status, educational_level,
         course_choice, learning_mode, tech_experience, status, rejection_reason, expelled_reason, expelled_at, created_at
        FROM users WHERE ${where.join(' AND ')} ORDER BY created_at DESC`, params
     );
-    const columns = ['full_name','email','phone','gender','country','state_city','employment_status','educational_level','course_choice','learning_mode','tech_experience','status','rejection_reason','expelled_reason','expelled_at','created_at'];
+    const columns = ['full_name','cohort','email','phone','gender','country','state_city','employment_status','educational_level','course_choice','learning_mode','tech_experience','status','rejection_reason','expelled_reason','expelled_at','created_at'];
     const csvCell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
     const csv = [columns.join(','), ...rows.map(row => columns.map(column => csvCell(row[column])).join(','))].join('\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

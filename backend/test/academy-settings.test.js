@@ -45,3 +45,5 @@ test('admin settings enforce roles, revision conflicts and transactional saves w
     assert.equal((await patch({settings:{registrationOpen:true},revision:loaded.revision})).status,409);
   }finally{await loadAcademySettings({execute:async()=>[[]]});server.closeAllConnections();await new Promise(resolve=>server.close(resolve))}
 });
+
+ test('intake cohort accepts only supported cohorts',()=>{assert.deepEqual(validateSettings({applicationCohort:'C'}),{applicationCohort:'C'});assert.deepEqual(validateSettings({applicationCohort:'B'}),{applicationCohort:'B'});for(const value of ['', 'A', 'BC', null, 3])assert.throws(()=>validateSettings({applicationCohort:value}));});

@@ -4,7 +4,7 @@ import { logger } from './logger.js';
 
 export function settingsDefaults() {
   return {
-    academyName: 'Livingworth Academy', supportEmail: '', supportPhone: '', registrationOpen: true,
+    academyName: 'Livingworth Academy', supportEmail: '', supportPhone: '', registrationOpen: true, applicationCohort: 'C',
     classTime: /^\d{2}:\d{2}$/.test(process.env.CLASS_TIME || '') ? process.env.CLASS_TIME : '20:00',
     classTimezone: process.env.CLASS_TIMEZONE || 'Africa/Lagos', classDays: [1, 3, 5], classDurationMinutes: 60,
     meetingUrl: process.env.CLASS_MEETING_LINK || 'https://meet.google.com/paj-rthm-woe',
@@ -38,6 +38,7 @@ export function validateSettings(input) {
     } else {
       if (typeof value !== 'string') throw new Error(`${key} must be text.`);
       const text = value.trim();
+      if (key === 'applicationCohort' && !['B','C'].includes(text)) throw new Error('Choose Cohort B or C.');
       if (key === 'academyName' && (!text || text.length > 100)) throw new Error('Portal name must contain 1–100 characters.');
       if (key === 'supportEmail' && text && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) || text.length > 180)) throw new Error('Enter a valid support email address.');
       if (key === 'supportPhone' && text && !/^[+0-9 ()-]{5,30}$/.test(text)) throw new Error('Enter a valid support phone number.');
@@ -70,8 +71,8 @@ async function readSettings(pool, lock = false) {
 export async function loadAcademySettings(pool) { const result=await readSettings(pool);current=result.settings;return result; }
 export function registerAcademySettingsRoutes(app,pool,requireAuth,requireAdmin) {
   app.get('/api/academy-settings',(_req,res)=>{
-    const {academyName,supportEmail,supportPhone,registrationOpen,classTime,classTimezone,classDays,classDurationMinutes,meetingUrl,certificateRequiredScore,classRepLimit}=getAcademySettings();
-    res.set('Cache-Control','no-store').json({academyName,supportEmail,supportPhone,registrationOpen,classTime,classTimezone,classDays,classDurationMinutes,meetingUrl,certificateRequiredScore,classRepLimit});
+    const {academyName,supportEmail,supportPhone,registrationOpen,applicationCohort,classTime,classTimezone,classDays,classDurationMinutes,meetingUrl,certificateRequiredScore,classRepLimit}=getAcademySettings();
+    res.set('Cache-Control','no-store').json({academyName,supportEmail,supportPhone,registrationOpen,applicationCohort,classTime,classTimezone,classDays,classDurationMinutes,meetingUrl,certificateRequiredScore,classRepLimit});
   });
   app.get('/api/admin/settings',requireAuth,requireAdmin,async(_req,res,next)=>{
     try {res.json(await loadAcademySettings(pool));}catch(error){next(error)}
