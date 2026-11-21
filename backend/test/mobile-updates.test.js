@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { verify, createHash } from 'node:crypto';
 import express from 'express';
+import {request as httpRequest} from 'node:http';
 import { unzipSync } from 'fflate';
 import { publishMobileUpdate } from '../scripts/publish-mobile-update.mjs';
 import { registerMobileUpdateRoutes } from '../dist/mobile-updates.js';
@@ -54,6 +55,16 @@ test('public routes expose only manifests, bundles and public key with appropria
  try {
   let response=await fetch(`${base}/api/mobile-updates/android/2/manifest.json`);
   assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');assert.equal((await response.json()).bundleId,manifest.bundleId);
+  const manifestForHost = host => new Promise((resolve,reject)=>{
+   const req=httpRequest(`${base}/api/mobile-updates/android/2/manifest.json`,{headers:{Host:host}},res=>{let raw='';res.setEncoding('utf8');res.on('data',part=>raw+=part);res.on('end',()=>{try{resolve(JSON.parse(raw))}catch(error){reject(error)}})});req.on('error',reject);req.end();
+  });
+  for (const host of ['academy.livingworth.co.uk','bridgess.co.uk']) {
+   const value=await manifestForHost(host);
+   assert.equal(value.url,`https://${host}/api/mobile-updates/bundles/${manifest.bundleId}.zip`);
+   assert.equal(value.signature,manifest.signature);assert.equal(value.checksum,manifest.checksum);
+  }
+  const untrusted=await manifestForHost('untrusted.example');
+  assert.equal(untrusted.url,manifest.url);
   response=await fetch(`${base}/api/mobile-updates/public-key.pem`);
   assert.match(await response.text(),/BEGIN PUBLIC KEY/);
   response=await fetch(`${base}/api/mobile-updates/bundles/${manifest.bundleId}.zip`);

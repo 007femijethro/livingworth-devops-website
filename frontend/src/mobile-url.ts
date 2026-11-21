@@ -1,4 +1,4 @@
-export const academyOrigin = 'https://bridgess.co.uk';
+export const academyOrigin = 'https://academy.livingworth.co.uk';
 
 /** Route academy data to HTTPS, keeping bundled assets and third-party URLs intact. */
 export function resolveAcademyUrl(value: string, localOrigin: string): string {
