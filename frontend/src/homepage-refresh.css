@@ -214,3 +214,6 @@
 .intake-promotion img {width:100%;max-width:540px;height:auto;margin-top:20px;border-radius:16px;}.intake-promotion summary {cursor:pointer;font-weight:700;padding-top:20px;}
 .selected-intake-fee {padding:18px;border:1px solid var(--theme-border,#cfdfec);border-radius:12px;line-height:1.7;}
 @media(max-width:600px){.intake-promotion{margin:24px 16px;padding:22px;}.intake-promotion.compact{margin:0 0 20px;}.intake-fees{grid-template-columns:1fr;}}
+
+.modern-nav .modern-apply,.modern-hero-actions>a:first-child,.modern-roadmap-intro>a,.modern-final>a{display:inline-flex;align-items:center;gap:12px;padding:14px 22px;border-radius:10px;background:#103864;color:white;text-decoration:none;font-weight:700;}
+.academy-faq{max-width:1080px;margin:60px auto;padding:0 24px;}.academy-faq h2{font-size:2rem;}.academy-faq details{border-bottom:1px solid var(--theme-border,#dbe5ed);padding:20px 0;line-height:1.7;}.academy-faq summary{font-weight:700;cursor:pointer;}

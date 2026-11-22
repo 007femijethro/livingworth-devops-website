@@ -14,27 +14,27 @@ const tracks = [
   { number: '04', title: 'Production confidence', tools: 'Prometheus · Grafana · Capstone', copy: 'Observe real systems, troubleshoot failures and present an end-to-end engineering project with confidence.' },
 ];
 
-export default function ModernHome({ navigate, stories }: { navigate: Navigate; stories: Story[] }) {
+export default function ModernHome({ navigate, stories, staticPreview=false }: { navigate: Navigate; stories: Story[]; staticPreview?: boolean }) {
   const academy = useAcademySettings();
   const [openTrack, setOpenTrack] = useState<number | null>(null);
   return <div className="modern-site">
     <header className="modern-nav">
       <a className="modern-logo" href="#top"><BrandLogo alt="Livingworth Academy" /></a>
       <nav><a href="/portfolio/">Your mentor</a><a href="#experience">Experience</a><a href="#roadmap">Roadmap</a></nav>
-      <div><button className="modern-link" onClick={() => navigate('verify-certificate')}>Verify certificate</button><button className="modern-login" onClick={() => navigate('student-login')}>Log in</button><button className="modern-apply" onClick={() => navigate('register')}>Apply now <span>↗</span></button></div>
+      <div><button className="modern-link" onClick={() => navigate('verify-certificate')}>Verify certificate</button><button className="modern-login" onClick={() => navigate('student-login')}>Log in</button><a className="modern-apply" href="/apply" onClick={event=>{event.preventDefault();navigate('register');}}>Apply now <span>↗</span></a></div>
     </header>
 
     <main id="top">
       <section className="modern-hero">
         <div className="modern-hero-copy">
           <span className="modern-kicker">Live DevOps academy · 4 months</span>
-          <h1>Learn the work.<br/><em>Build the proof.</em></h1>
+          <h1>DevOps training.<br/><em>Build skills. Build proof.</em></h1>
           <p>A practical learning experience for people ready to understand modern infrastructure, ship real projects and grow into confident DevOps engineers.</p>
-          <div className="modern-hero-actions"><button onClick={() => navigate('register')}>Join the next cohort <span>→</span></button><a href="#mentor">Meet your mentor ↓</a></div>
+          <div className="modern-hero-actions"><a href="/apply" onClick={event=>{event.preventDefault();navigate('register');}}>Join the next cohort <span>→</span></a><a href="#mentor">Meet your mentor ↓</a></div>
           <div className="modern-proof"><div><strong>3</strong><span>classes each week</span></div><div><strong>10+</strong><span>industry tools</span></div><div><strong>1:1</strong><span>project feedback</span></div></div>
         </div>
         <div className="modern-hero-visual">
-          <figure className="home-lab"><img src="/devops-mentor-lab.jpg" alt="DevOps learning lab with hands-on engineering guidance" /><figcaption><span>THE LIVINGWORTH EXPERIENCE</span><strong>Learn together.<br/>Build with confidence.</strong><a href="#experience">Explore the programme ↗</a></figcaption></figure>
+          <figure className="home-lab"><img fetchPriority="high" src="/devops-mentor-lab.jpg" alt="DevOps learning lab with hands-on engineering guidance" /><figcaption><span>THE LIVINGWORTH EXPERIENCE</span><strong>Learn together.<br/>Build with confidence.</strong><a href="#experience">Explore the programme ↗</a></figcaption></figure>
         </div>
       </section>
 
@@ -82,10 +82,11 @@ export default function ModernHome({ navigate, stories }: { navigate: Navigate; 
       </section>
 
       <section className="modern-roadmap" id="roadmap">
-        <div className="modern-roadmap-intro"><span>Your learning journey</span><h2>A clear path from foundations to production.</h2><p>Four connected stages. Each one builds the judgment and practical confidence needed for the next.</p><button onClick={() => navigate('register')}>Start your journey →</button></div>
+        <div className="modern-roadmap-intro"><span>Your learning journey</span><h2>A clear path from foundations to production.</h2><p>Four connected stages. Each one builds the judgment and practical confidence needed for the next.</p><a href="/apply" onClick={event=>{event.preventDefault();navigate('register');}}>Start your journey →</a></div>
         <div className="modern-track-list">{tracks.map((track,index)=><article key={track.number} className={openTrack===index?'open':''}><button aria-expanded={openTrack===index} aria-controls={`track-${track.number}`} onClick={()=>setOpenTrack(openTrack===index?null:index)}><b>{track.number}</b><span><strong>{track.title}</strong><small>{track.tools}</small></span><i aria-hidden="true">{openTrack===index?'−':'+'}</i></button>{openTrack===index&&<p id={`track-${track.number}`}>{track.copy}</p>}</article>)}</div>
       </section>
 
+      <section className="academy-faq" aria-labelledby="academy-faq-heading"><p className="eyebrow">Before you apply</p><h2 id="academy-faq-heading">DevOps training questions</h2><details><summary>Can I join as a beginner?</summary><p>Yes. The programme starts with Linux, Bash and Git before moving into cloud infrastructure, automation and application delivery. You will need access to a computer and time to practise between classes.</p></details><details><summary>What tools will I learn?</summary><p>The curriculum covers Linux, Git and GitHub, AWS, Docker, Kubernetes, Terraform, Ansible, CI/CD, Prometheus and Grafana through practical labs and projects.</p></details><details><summary>Can I study online?</summary><p>Online, physical and hybrid learning options are available. See the application page for the current intake information and fees.</p></details><details><summary>How long is the programme?</summary><p>The programme runs for four months, combining live teaching, practical assignments and mentor feedback.</p></details><details><summary>How do I apply?</summary><p><a href="/apply" onClick={event=>{event.preventDefault();navigate('register');}}>Open the application form</a>, provide your details and preferred learning mode, then submit for administrator review.</p></details></section>
       <section className="modern-outcomes" id="outcomes">
         <div><span>Graduate with evidence</span><h2>Your work becomes your story.</h2><p>Finish with practical projects, GitHub evidence and the confidence to explain how you approached real engineering problems.</p></div>
         <ol><li><b>01</b><span><strong>Cloud foundation</strong><small>Secure Linux infrastructure on AWS</small></span></li><li><b>02</b><span><strong>Automated infrastructure</strong><small>Terraform and Ansible delivery</small></span></li><li><b>03</b><span><strong>Container platform</strong><small>Docker and Kubernetes deployment</small></span></li><li><b>04</b><span><strong>End-to-end capstone</strong><small>CI/CD, monitoring and presentation</small></span></li></ol>
@@ -93,8 +94,8 @@ export default function ModernHome({ navigate, stories }: { navigate: Navigate; 
 
       {stories.length>0&&<section className="modern-voices"><div className="modern-section-heading"><span>Learner voices</span><h2>Growth, in their own words.</h2></div><div>{stories.slice(0,3).map(story=><article key={story.id}><span>“</span><p>{story.content}</p><footer><b>{story.studentName}</b><small>{story.storyType.replaceAll('_',' ')}</small></footer></article>)}</div></section>}
 
-      <IntakePromotion onApply={()=>navigate('register')}/>
-      <section className="modern-final"><span>{academy.registrationOpen ? `Cohort ${academy.applicationCohort} applications are open` : "Applications are currently closed"}</span><h2>Ready to build your<br/>DevOps future?</h2><p>Join the next Livingworth Academy cohort and turn curiosity into practical engineering confidence.</p><button onClick={() => navigate('register')}>Apply for Cohort {academy.applicationCohort} <b>↗</b></button></section>
+      {!staticPreview && <IntakePromotion onApply={()=>navigate('register')}/>}
+      <section className="modern-final"><span>{staticPreview ? "Explore the current intake" : academy.registrationOpen ? `Cohort ${academy.applicationCohort} applications are open` : "Applications are currently closed"}</span><h2>Ready to build your<br/>DevOps future?</h2><p>Join the next Livingworth Academy cohort and turn curiosity into practical engineering confidence.</p><a href="/apply" onClick={event=>{event.preventDefault();navigate('register');}}>{staticPreview ? "View current intake" : `Apply for Cohort ${academy.applicationCohort}`} <b>↗</b></a></section>
     </main>
     <footer className="modern-footer"><a className="modern-logo" href="#top"><BrandLogo alt="Livingworth Academy" /></a><p>Practical learning. Real engineering confidence.</p><div><button onClick={() => navigate('student-login')}>Student portal</button><button onClick={() => navigate('staff-login')}>Staff portal</button></div><small>© {new Date().getFullYear()} Livingworth Academy</small></footer>
   </div>;

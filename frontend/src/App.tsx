@@ -1,4 +1,5 @@
 // @ts-nocheck
+import {applyPageSeo} from './seo';
 import {sessionRestoreAction} from './session-restore';
 import QuizCompletion,{QuizCountdownControl} from './QuizCompletion';
 import IntakePromotion, {naira,useIntakeOffer} from './IntakePromotion';
@@ -3728,6 +3729,7 @@ export default function App() {
   const resetToken = query.get("reset") || "";
   const verificationNumber = query.get("verify") || "";
   const [page, setPage] = useState(resetToken ? "reset-password" : verificationNumber ? "verify-certificate" : ["/apply", "/register"].includes(window.location.pathname.replace(/\/$/, "")) ? "register" : isNative ? "mobile-welcome" : "home");
+  useEffect(()=>applyPageSeo(page),[page]);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authNotice, setAuthNotice] = useState("");
